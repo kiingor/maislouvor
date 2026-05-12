@@ -1,0 +1,28 @@
+project_id = "hhqzapwtuyzchismcuie"
+
+[functions.accept-invite]
+verify_jwt = false
+
+[functions.import-cifra]
+verify_jwt = false
+
+[functions.transpose]
+verify_jwt = false
+
+[functions.sync-lyrics]
+verify_jwt = false
+
+[functions.import-moises]
+verify_jwt = false
+
+[functions.transcribe-sync]
+verify_jwt = false
+
+[functions.public-playlist]
+verify_jwt = false
+
+[functions.create-invite]
+verify_jwt = false
+
+[functions.suggest-culto-songs]
+verify_jwt = false

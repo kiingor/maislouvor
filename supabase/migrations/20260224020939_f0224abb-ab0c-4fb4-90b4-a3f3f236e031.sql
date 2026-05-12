@@ -1,0 +1,1 @@
+ALTER TABLE public.songs ADD COLUMN lyrics_text text;

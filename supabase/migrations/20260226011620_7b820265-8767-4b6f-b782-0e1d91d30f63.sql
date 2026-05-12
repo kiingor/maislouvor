@@ -1,0 +1,1 @@
+ALTER TABLE public.songs ADD COLUMN scroll_speed real DEFAULT NULL;
