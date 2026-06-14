@@ -26,3 +26,9 @@ verify_jwt = false
 
 [functions.suggest-culto-songs]
 verify_jwt = false
+
+[functions.separate-stems]
+verify_jwt = false
+
+[functions.stems-callback]
+verify_jwt = false

@@ -41,7 +41,7 @@ export default function Home() {
   const fetchAll = async () => {
     if (!profileId || !currentTeam) return;
     setLoading(true);
-    const today = new Date().toISOString().split("T")[0];
+    const today = format(new Date(), "yyyy-MM-dd");
     const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
     const monthEnd = format(endOfMonth(new Date()), "yyyy-MM-dd");
 
@@ -61,6 +61,7 @@ export default function Home() {
           .from("member_availability")
           .select("id", { count: "exact", head: true })
           .eq("team_member_id", memberId)
+          .eq("status", "available")
           .gte("available_date", monthStart)
           .lte("available_date", monthEnd),
         supabase.from("songs").select("id", { count: "exact", head: true }).eq("team_id", currentTeam.id),

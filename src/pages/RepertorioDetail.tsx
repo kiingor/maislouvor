@@ -11,7 +11,7 @@ import { GlassInput } from "@/components/GlassInput";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Music, Plus, Search, Trash2, X, Share2, Loader2 } from "lucide-react";
+import { ArrowLeft, Music, Plus, Search, Trash2, X, Share2, Loader2, MonitorPlay } from "lucide-react";
 
 export default function RepertorioDetail() {
   const { id } = useParams<{ id: string }>();
@@ -88,7 +88,27 @@ export default function RepertorioDetail() {
               Criado em {new Date(repertorio.created_at).toLocaleDateString("pt-BR")}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 justify-end">
+            {songs.length > 0 && (
+              <>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="rounded-xl sm:hidden h-9 w-9"
+                  onClick={() => navigate(`/app/repertorios/${id}/present`)}
+                  title="Iniciar ensaio"
+                >
+                  <MonitorPlay className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  className="rounded-xl gap-2 hidden sm:inline-flex"
+                  onClick={() => navigate(`/app/repertorios/${id}/present`)}
+                >
+                  <MonitorPlay className="h-4 w-4" /> Ensaio
+                </Button>
+              </>
+            )}
             <Button
               variant="outline"
               size="icon"

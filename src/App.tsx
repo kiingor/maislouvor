@@ -53,7 +53,15 @@ const App = () => {
             path="/app/cultos/:id/present"
             element={
               <AuthGuard>
-                <Presentation />
+                <Presentation source="culto" />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/app/repertorios/:id/present"
+            element={
+              <AuthGuard>
+                <Presentation source="repertorio" />
               </AuthGuard>
             }
           />

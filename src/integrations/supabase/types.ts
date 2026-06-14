@@ -161,18 +161,27 @@ export type Database = {
           available_date: string
           created_at: string
           id: string
+          instruments: string[]
+          reason: string | null
+          status: "available" | "unavailable"
           team_member_id: string
         }
         Insert: {
           available_date: string
           created_at?: string
           id?: string
+          instruments?: string[]
+          reason?: string | null
+          status?: "available" | "unavailable"
           team_member_id: string
         }
         Update: {
           available_date?: string
           created_at?: string
           id?: string
+          instruments?: string[]
+          reason?: string | null
+          status?: "available" | "unavailable"
           team_member_id?: string
         }
         Relationships: [
@@ -513,6 +522,9 @@ export type Database = {
           media_url: string | null
           scroll_speed: number | null
           segment_timestamps: Json | null
+          stems_error: string | null
+          stems_job_id: string | null
+          stems_status: string
           tags: string[] | null
           team_id: string
           theme: string | null
@@ -533,6 +545,9 @@ export type Database = {
           media_url?: string | null
           scroll_speed?: number | null
           segment_timestamps?: Json | null
+          stems_error?: string | null
+          stems_job_id?: string | null
+          stems_status?: string
           tags?: string[] | null
           team_id: string
           theme?: string | null
@@ -553,6 +568,9 @@ export type Database = {
           media_url?: string | null
           scroll_speed?: number | null
           segment_timestamps?: Json | null
+          stems_error?: string | null
+          stems_job_id?: string | null
+          stems_status?: string
           tags?: string[] | null
           team_id?: string
           theme?: string | null

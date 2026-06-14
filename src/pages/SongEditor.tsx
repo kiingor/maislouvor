@@ -13,9 +13,9 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Save, Loader2, X, Plus, CalendarDays, Download } from "lucide-react";
+import { ArrowLeft, Save, Loader2, X, Plus, CalendarDays, Download, Sparkles } from "lucide-react";
 import { splitSegments } from "@/data/chordDictionary";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { CHROMATIC_KEYS } from "@/data/chordDictionary";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
@@ -63,6 +63,57 @@ export default function SongEditor() {
     },
     enabled: !!id,
   });
+
+  // Stem separation (Demucs) status — polls while processing
+  const [separating, setSeparating] = useState(false);
+  const { data: stemsState } = useQuery({
+    queryKey: ["song-stems", id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("songs")
+        .select("stems_status, stems_error")
+        .eq("id", id!)
+        .single();
+      return data as { stems_status: string; stems_error: string | null } | null;
+    },
+    enabled: !!id,
+    refetchInterval: (query) =>
+      (query.state.data as any)?.stems_status === "processing" ? 5000 : false,
+  });
+  const stemsProcessing = stemsState?.stems_status === "processing";
+  const prevStemsStatus = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const s = stemsState?.stems_status;
+    if (!s) return;
+    if (prevStemsStatus.current === "processing" && s === "done") {
+      refetchTracks();
+      toast({ title: "Faixas separadas!", description: "As faixas geradas pela IA já estão disponíveis." });
+    } else if (prevStemsStatus.current === "processing" && s === "error") {
+      toast({ title: "Erro na separação", description: stemsState?.stems_error || "Tente novamente.", variant: "destructive" });
+    }
+    prevStemsStatus.current = s;
+  }, [stemsState?.stems_status, stemsState?.stems_error, refetchTracks]);
+
+  const handleSeparateStems = async () => {
+    if (!id || !audioPath) return;
+    setSeparating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("separate-stems", {
+        body: { song_id: id, audio_path: audioPath },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Falha ao iniciar separação");
+      toast({
+        title: "Separação iniciada",
+        description: "Leva alguns minutos. As faixas aparecem aqui automaticamente quando ficarem prontas.",
+      });
+      qc.invalidateQueries({ queryKey: ["song-stems", id] });
+    } catch (e: any) {
+      toast({ title: "Erro ao iniciar separação", description: e.message, variant: "destructive" });
+    } finally {
+      setSeparating(false);
+    }
+  };
 
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
@@ -403,6 +454,28 @@ export default function SongEditor() {
                   />
                 </div>
               )}
+              {/* Separação automática em stems (Demucs / IA) */}
+              {audioPath && !readOnly && (
+                <div className="space-y-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl gap-1.5 w-full"
+                    onClick={handleSeparateStems}
+                    disabled={separating || stemsProcessing}
+                  >
+                    {separating || stemsProcessing ? (
+                      <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Separando faixas... (alguns min)</>
+                    ) : (
+                      <><Sparkles className="h-3.5 w-3.5" /> Separar em faixas (IA)</>
+                    )}
+                  </Button>
+                  <p className="text-[11px] text-muted-foreground">
+                    Gera Vocais, Bateria, Baixo, Guitarra, Teclado e Outros a partir do áudio.
+                  </p>
+                </div>
+              )}
+
               {/* Tracks (faixas separadas) */}
               <TrackUpload
                 songId={id!}

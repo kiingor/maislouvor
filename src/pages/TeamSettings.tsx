@@ -9,7 +9,7 @@ import { RoleBadge } from "@/components/RoleBadge";
 import { InviteMemberModal } from "@/components/InviteMemberModal";
 import { EditMemberModal } from "@/components/EditMemberModal";
 import { AvatarCropModal } from "@/components/AvatarCropModal";
-import { Calendar } from "@/components/ui/calendar";
+import { MyAvailabilityCalendar } from "@/components/MyAvailabilityCalendar";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -19,7 +19,6 @@ import { useToast } from "@/hooks/use-toast";
 import { User, Users, UserPlus, Trash2, Camera, CalendarCheck, KeyRound, Pencil, Save, Mail } from "lucide-react";
 import { INSTRUMENTS, INSTRUMENT_ICONS } from "@/data/instruments";
 import { cn } from "@/lib/utils";
-import { ptBR } from "date-fns/locale";
 
 export default function TeamSettings() {
   const { currentTeam, isAdmin, canEdit, profileId } = useTeam();
@@ -65,19 +64,6 @@ export default function TeamSettings() {
       setNameValue(myProfile.full_name);
     }
   }, [myProfile?.full_name]);
-
-  const { data: myAvailability = [] } = useQuery({
-    queryKey: ["my-availability", myMember?.id],
-    queryFn: async () => {
-      if (!myMember) return [];
-      const { data } = await supabase
-        .from("member_availability")
-        .select("available_date")
-        .eq("team_member_id", myMember.id);
-      return (data ?? []).map((d: any) => new Date(d.available_date + "T00:00:00"));
-    },
-    enabled: !!myMember,
-  });
 
   const { data: invites = [] } = useQuery({
     queryKey: ["team-invites", currentTeam?.id],
@@ -145,26 +131,6 @@ export default function TeamSettings() {
       setEditingName(false);
       qc.invalidateQueries({ queryKey: ["team-members"] });
     }
-  };
-
-  const handleToggleAvailability = async (date: Date) => {
-    if (!myMember) return;
-    const dateStr = date.toISOString().split("T")[0];
-    const exists = myAvailability.some(
-      (d) => d.toISOString().split("T")[0] === dateStr
-    );
-    if (exists) {
-      await supabase
-        .from("member_availability")
-        .delete()
-        .eq("team_member_id", myMember.id)
-        .eq("available_date", dateStr);
-    } else {
-      await supabase
-        .from("member_availability")
-        .insert({ team_member_id: myMember.id, available_date: dateStr } as any);
-    }
-    qc.invalidateQueries({ queryKey: ["my-availability"] });
   };
 
   // Other members (excluding self)
@@ -316,34 +282,7 @@ export default function TeamSettings() {
                   <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                     <CalendarCheck className="h-3 w-3" /> Minha Disponibilidade
                   </label>
-                  <p className="text-xs text-muted-foreground">
-                    Clique nos dias em que você está disponível para a escala.
-                  </p>
-                  <div className="flex justify-center">
-                    <Calendar
-                      mode="multiple"
-                      selected={myAvailability}
-                      onSelect={(dates) => {
-                        if (!dates) return;
-                        const currentSet = new Set(myAvailability.map(d => d.toISOString().split("T")[0]));
-                        const newSet = new Set((dates as Date[]).map(d => d.toISOString().split("T")[0]));
-                        for (const d of newSet) {
-                          if (!currentSet.has(d)) {
-                            handleToggleAvailability(new Date(d + "T00:00:00"));
-                            return;
-                          }
-                        }
-                        for (const d of currentSet) {
-                          if (!newSet.has(d)) {
-                            handleToggleAvailability(new Date(d + "T00:00:00"));
-                            return;
-                          }
-                        }
-                      }}
-                      locale={ptBR}
-                      className={cn("p-3 pointer-events-auto")}
-                    />
-                  </div>
+                  <MyAvailabilityCalendar teamMemberId={myMember.id} myInstruments={myInstruments} />
                 </GlassCard>
               )}
             </div>

@@ -263,11 +263,14 @@ function TimestampEditor({
   );
 }
 
-export default function Presentation() {
+export default function Presentation({ source = "culto" }: { source?: "culto" | "repertorio" }) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Where the back button / Escape returns to, depending on the source list
+  const backPath = source === "repertorio" ? `/app/repertorios/${id}` : `/app/cultos/${id}`;
 
   const [prefs, setPrefs] = useState<PresentationPrefs>(loadPrefs);
   const [songIdx, setSongIdx] = useState(0);
@@ -345,10 +348,18 @@ export default function Presentation() {
     updatePrefs({ fontSize: FONT_SIZES[nextIdx].scale });
   }, [fontSizeIndex]);
 
-  // Fetch culto songs
+  // Fetch songs — from the culto lineup or from the repertório, depending on source
   const { data: songs = [], isLoading } = useQuery({
-    queryKey: ["presentation-songs", id],
+    queryKey: ["presentation-songs", source, id],
     queryFn: async () => {
+      if (source === "repertorio") {
+        const { data } = await supabase
+          .from("repertorio_songs")
+          .select("sort_order, songs(*)")
+          .eq("repertorio_id", id!)
+          .order("sort_order");
+        return (data || []).map((rs: any) => rs.songs).filter(Boolean);
+      }
       const { data } = await supabase
         .from("culto_songs")
         .select("sort_order, songs(*)")
@@ -838,7 +849,7 @@ export default function Presentation() {
     } else {
       const label = timestampKey === "voz" ? "voz" : "instrumentos";
       toast({ title: "Gravação salva!", description: `${timestamps.length} segmentos de ${label} sincronizados` });
-      queryClient.invalidateQueries({ queryKey: ["presentation-songs", id] });
+      queryClient.invalidateQueries({ queryKey: ["presentation-songs", source, id] });
     }
   }, [currentSong?.id, id, toast, queryClient, timestampKey, rawTimestamps]);
 
@@ -882,7 +893,7 @@ export default function Presentation() {
       toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
     } else {
       toast({ title: "Timestamps atualizados!" });
-      queryClient.invalidateQueries({ queryKey: ["presentation-songs", id] });
+      queryClient.invalidateQueries({ queryKey: ["presentation-songs", source, id] });
     }
   }, [currentSong?.id, id, toast, queryClient, timestampKey, rawTimestamps]);
 
@@ -895,13 +906,13 @@ export default function Presentation() {
         if (e.key === "ArrowLeft") goPrevSegment();
       }
       if (e.key.toLowerCase() === "n") goNextSong();
-      if (e.key === "Escape") navigate(`/app/cultos/${id}`);
+      if (e.key === "Escape") navigate(backPath);
       if (e.key === "+" || e.key === "=") increaseFontSize();
       if (e.key === "-") decreaseFontSize();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [togglePlay, goNextSegment, goPrevSegment, goNextSong, navigate, isRecording, recordTimestamp, cancelRecording, increaseFontSize, decreaseFontSize, isTransicao]);
+  }, [togglePlay, goNextSegment, goPrevSegment, goNextSong, navigate, backPath, isRecording, recordTimestamp, cancelRecording, increaseFontSize, decreaseFontSize, isTransicao]);
 
   useEffect(() => {
     setControlsVisible(true);
@@ -928,7 +939,7 @@ export default function Presentation() {
   if (!songs.length) {
     return (
       <div className="fixed inset-0 bg-black flex flex-col items-center justify-center gap-4">
-        <p className="text-white/60">Nenhuma música neste repertório.</p>
+        <p className="text-white/60">Nenhuma música neste {source === "repertorio" ? "repertório" : "culto"}.</p>
         <Button variant="outline" onClick={() => navigate(-1)}>Voltar</Button>
       </div>
     );
@@ -962,7 +973,7 @@ export default function Presentation() {
         {/* Top bar */}
         <div className="absolute top-0 left-0 right-0 z-30 flex flex-col">
           <div className="flex items-center gap-1.5 px-3 py-3">
-            <button onClick={() => navigate(`/app/cultos/${id}`)} className={`p-2 rounded-xl ${accentBg} backdrop-blur-sm ${hoverBg} transition-colors`}>
+            <button onClick={() => navigate(backPath)} className={`p-2 rounded-xl ${accentBg} backdrop-blur-sm ${hoverBg} transition-colors`}>
               <ArrowLeft className="h-4 w-4" />
             </button>
             <button

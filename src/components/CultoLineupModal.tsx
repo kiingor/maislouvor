@@ -60,7 +60,8 @@ export function CultoLineupModal({ open, onOpenChange, cultoId, cultoDate }: Cul
       const { data } = await supabase
         .from("member_availability")
         .select("team_member_id")
-        .eq("available_date", cultoDate);
+        .eq("available_date", cultoDate)
+        .eq("status", "available");
       return (data ?? []).map((d: any) => d.team_member_id as string);
     },
     enabled: !!cultoDate && open,
