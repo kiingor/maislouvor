@@ -80,12 +80,12 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: AddSongModalP
   };
 
   const handleImport = async () => {
-    if (!url.trim()) return;
+    if (!url.trim() || !currentTeam) return;
     setLoading(true);
 
     try {
       const { data, error } = await supabase.functions.invoke("import-cifra", {
-        body: { url: url.trim() },
+        body: { url: url.trim(), team_id: currentTeam?.id },
       });
 
       if (error) throw error;

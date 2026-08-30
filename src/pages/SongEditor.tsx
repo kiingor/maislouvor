@@ -20,6 +20,7 @@ import { CHROMATIC_KEYS } from "@/data/chordDictionary";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { getYouTubeVideoId, normalizeMediaUrl } from "@/lib/mediaUrl";
 
 export default function SongEditor() {
   const { id } = useParams<{ id: string }>();
@@ -152,6 +153,15 @@ export default function SongEditor() {
 
   const handleSave = async () => {
     if (!id || !title.trim()) return;
+    const normalizedMediaUrl = mediaUrl.trim() ? normalizeMediaUrl(mediaUrl) : null;
+    if (mediaUrl.trim() && !normalizedMediaUrl) {
+      toast({
+        title: "Link de mídia inválido",
+        description: "Use uma URL HTTPS do YouTube, Spotify, Apple Music, Deezer, SoundCloud ou Vimeo.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
     const { error } = await supabase
       .from("songs")
@@ -160,7 +170,7 @@ export default function SongEditor() {
         artist: artist.trim() || null,
         key_original: keyOriginal.trim() || null,
         key_current: keyCurrent.trim() || null,
-        media_url: mediaUrl.trim() || null,
+        media_url: normalizedMediaUrl,
         cifra_text: cifraText || null,
         lyrics_text: lyricsText || null,
         cover_path: coverPath,
@@ -183,11 +193,11 @@ export default function SongEditor() {
   const readOnly = !canEdit;
 
   const handleTransposeTo = async (newKey: string) => {
-    if (!cifraText || !keyCurrent || newKey === keyCurrent) return;
+    if (!id || !cifraText || !keyCurrent || newKey === keyCurrent) return;
     setTransposing(true);
     try {
       const { data, error } = await supabase.functions.invoke("transpose", {
-        body: { cifra_text: cifraText, from_key: keyCurrent, to_key: newKey },
+        body: { song_id: id, cifra_text: cifraText, from_key: keyCurrent, to_key: newKey },
       });
       if (error) throw error;
       if (data?.cifra_text) {
@@ -203,6 +213,7 @@ export default function SongEditor() {
   };
 
   const handleImportMoises = async () => {
+    if (!id) return;
     const trimmed = moisesText.trim();
     if (!trimmed) return;
 
@@ -218,7 +229,7 @@ export default function SongEditor() {
     setImportingMoises(true);
     try {
       const { data, error } = await supabase.functions.invoke("import-moises", {
-        body: { text: trimmed },
+        body: { song_id: id, text: trimmed },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || "Erro desconhecido");
@@ -249,7 +260,7 @@ export default function SongEditor() {
   ];
 
   // YouTube embed helper
-  const youtubeId = mediaUrl.match(/(?:youtu\.be\/|v=)([\w-]{11})/)?.[1];
+  const youtubeId = getYouTubeVideoId(mediaUrl);
 
   if (isLoading) {
     return (

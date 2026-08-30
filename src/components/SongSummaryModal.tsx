@@ -8,6 +8,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { SongContentModal } from "@/components/SongContentModal";
 import { Music, FileText, Youtube, Volume2, ChevronRight, MessageSquare } from "lucide-react";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+import { getYouTubeVideoId } from "@/lib/mediaUrl";
 
 interface SongSummaryModalProps {
   open: boolean;
@@ -62,7 +63,7 @@ export function SongSummaryModal({ open, onOpenChange, songId, cultoNotes, culto
     enabled: !!song?.audio_path,
   });
 
-  const youtubeId = song?.media_url?.match(/(?:youtu\.be\/|v=)([\w-]{11})/)?.[1];
+  const youtubeId = getYouTubeVideoId(song?.media_url);
 
   if (!song) return null;
 

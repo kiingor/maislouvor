@@ -1,111 +1,169 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  corsHeaders,
+  enforceRateLimit,
+  errorResponse,
+  HttpError,
+  isUuid,
+  json,
+  readJsonBody,
+  requireAuthenticated,
+  requiredEnv,
+  requirePost,
+  requireSongEditor,
+  requireString,
+  type SecurityContext,
+} from "../_shared/security.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+const isSongAudioPath = (path: string, teamId: string, songId: string) => {
+  const prefix = `${teamId}/${songId}`;
+  return path.startsWith(`${prefix}.`) || path.startsWith(`${prefix}/`);
 };
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+const requireStrongSecret = (name: string) => {
+  const secret = requiredEnv(name);
+  if (secret.length < 32) {
+    throw new HttpError(503, `${name} precisa ter pelo menos 32 caracteres`);
+  }
+  return secret;
+};
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  let context: SecurityContext | null = null;
+  let reservedSongId: string | null = null;
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
+    requirePost(req);
+    context = await requireAuthenticated(req);
+    const body = await readJsonBody(req, 8_192);
+    const song = await requireSongEditor(context, body.song_id);
+    await enforceRateLimit(context, "separate-stems", song.team_id, 3, 1_800);
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const workerUrl = (Deno.env.get("WORKER_URL") ?? "https://demucs.maislouvor.com").replace(/\/$/, "");
-    const workerToken = Deno.env.get("WORKER_TOKEN")!;
-    const callbackToken = Deno.env.get("STEMS_CALLBACK_TOKEN")!;
-    if (!workerToken || !callbackToken) return json({ error: "Worker not configured" }, 500);
-
-    // Verify the calling user
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
+    const audioPath = requireString(body.audio_path, "audio_path", {
+      max: 1_024,
     });
-    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(
-      authHeader.replace("Bearer ", ""),
-    );
-    if (claimsError || !claimsData?.claims) return json({ error: "Unauthorized" }, 401);
-    const callerUserId = claimsData.claims.sub as string;
-
-    const { song_id, audio_path } = await req.json();
-    if (!song_id || !audio_path) return json({ error: "song_id and audio_path are required" }, 400);
-
-    const admin = createClient(supabaseUrl, serviceKey);
-
-    // Load the song and confirm the caller belongs to its team
-    const { data: song } = await admin
-      .from("songs")
-      .select("id, team_id, audio_path")
-      .eq("id", song_id)
-      .single();
-    if (!song) return json({ error: "Song not found" }, 404);
-
-    const { data: callerProfile } = await admin
-      .from("profiles")
-      .select("id")
-      .eq("user_id", callerUserId)
-      .single();
-    if (!callerProfile) return json({ error: "Forbidden" }, 403);
-
-    const { data: membership } = await admin
-      .from("team_members")
-      .select("id")
-      .eq("team_id", song.team_id)
-      .eq("profile_id", callerProfile.id)
-      .maybeSingle();
-    if (!membership) return json({ error: "Forbidden" }, 403);
-
-    // The audio must belong to THIS song's storage namespace (not just the team)
-    if (!String(audio_path).startsWith(`${song.team_id}/${song.id}`)) {
-      return json({ error: "audio_path does not belong to this song" }, 400);
+    if (
+      audioPath !== song.audio_path ||
+      !isSongAudioPath(audioPath, song.team_id, song.id)
+    ) {
+      throw new HttpError(
+        400,
+        "audio_path não corresponde ao áudio atual da música",
+      );
+    }
+    if (song.stems_status === "processing") {
+      throw new HttpError(409, "A separação desta música já está em andamento");
     }
 
-    // Signed URL so the worker can fetch the audio (6h covers a busy queue)
-    const { data: signed, error: signErr } = await admin.storage
-      .from("audio")
-      .createSignedUrl(audio_path, 21600);
-    if (signErr || !signed?.signedUrl) return json({ error: "Could not sign audio URL" }, 500);
+    const supabaseUrl = requiredEnv("SUPABASE_URL");
+    const workerToken = requireStrongSecret("WORKER_TOKEN");
+    const callbackToken = requireStrongSecret("STEMS_CALLBACK_TOKEN");
+    const workerUrl =
+      (Deno.env.get("WORKER_URL")?.trim() || "https://demucs.maislouvor.com")
+        .replace(/\/$/, "");
 
-    // Kick off the separation job on the worker
-    const workerRes = await fetch(`${workerUrl}/jobs`, {
+    let parsedWorkerUrl: URL;
+    try {
+      parsedWorkerUrl = new URL(workerUrl);
+    } catch {
+      throw new HttpError(503, "WORKER_URL inválida");
+    }
+    if (
+      parsedWorkerUrl.protocol !== "https:" &&
+      parsedWorkerUrl.hostname !== "localhost"
+    ) {
+      throw new HttpError(503, "WORKER_URL deve usar HTTPS");
+    }
+
+    const { data: reserved, error: reserveError } = await context.admin
+      .from("songs")
+      .update({
+        stems_status: "processing",
+        stems_job_id: null,
+        stems_error: null,
+      })
+      .eq("id", song.id)
+      .or("stems_status.is.null,stems_status.neq.processing")
+      .select("id")
+      .maybeSingle();
+
+    if (reserveError) {
+      throw new HttpError(503, "Não foi possível reservar o processamento");
+    }
+    if (!reserved) {
+      throw new HttpError(409, "A separação desta música já está em andamento");
+    }
+    reservedSongId = song.id;
+
+    const { data: signed, error: signError } = await context.admin.storage
+      .from("audio")
+      .createSignedUrl(song.audio_path, 21_600);
+    if (signError || !signed?.signedUrl) {
+      throw new HttpError(503, "Não foi possível assinar o áudio");
+    }
+
+    const workerResponse = await fetch(`${workerUrl}/jobs`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${workerToken}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${workerToken}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         audio_url: signed.signedUrl,
         callback_url: `${supabaseUrl}/functions/v1/stems-callback`,
         callback_token: callbackToken,
         meta: { song_id: song.id, team_id: song.team_id },
       }),
+      signal: AbortSignal.timeout(20_000),
     });
-    if (!workerRes.ok) {
-      const text = await workerRes.text();
-      console.error("worker error", workerRes.status, text);
-      return json({ error: "Worker rejected the job" }, 502);
-    }
-    const { job_id } = await workerRes.json();
-    if (!job_id) {
-      console.error("worker returned no job_id");
-      return json({ error: "Worker did not return a job id" }, 502);
+
+    if (!workerResponse.ok) {
+      const responseText = (await workerResponse.text()).slice(0, 1_000);
+      console.error("worker rejected job", workerResponse.status, responseText);
+      throw new HttpError(502, "O worker rejeitou o processamento");
     }
 
-    await admin
+    const workerBody = await workerResponse.json();
+    const jobId = workerBody?.job_id;
+    if (!isUuid(jobId)) {
+      throw new HttpError(502, "O worker retornou um job inválido");
+    }
+
+    const { data: linked, error: linkError } = await context.admin
       .from("songs")
-      .update({ stems_status: "processing", stems_job_id: job_id, stems_error: null } as any)
-      .eq("id", song.id);
+      .update({ stems_job_id: jobId })
+      .eq("id", song.id)
+      .eq("team_id", song.team_id)
+      .eq("stems_status", "processing")
+      .is("stems_job_id", null)
+      .select("id")
+      .maybeSingle();
 
-    return json({ success: true, job_id });
-  } catch (err) {
-    console.error("separate-stems error", err);
-    return json({ error: (err as Error).message }, 500);
+    if (linkError || !linked) {
+      throw new HttpError(409, "O job não pôde ser vinculado à música");
+    }
+    reservedSongId = null;
+    return json({ success: true, job_id: jobId });
+  } catch (error) {
+    console.error("separate-stems error", error);
+    if (context && reservedSongId) {
+      const message = error instanceof HttpError
+        ? error.message
+        : "Falha ao iniciar separação";
+      await context.admin
+        .from("songs")
+        .update({
+          stems_status: "error",
+          stems_job_id: null,
+          stems_error: message.slice(0, 500),
+        })
+        .eq("id", reservedSongId)
+        .eq("stems_status", "processing")
+        .is("stems_job_id", null);
+    }
+    return errorResponse(error);
   }
 });

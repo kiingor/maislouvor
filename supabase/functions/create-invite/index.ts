@@ -1,10 +1,18 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  corsHeaders,
+  enforceRateLimit,
+  errorResponse,
+  HttpError,
+  isUuid,
+  json,
+  readJsonBody,
+  requireAuthenticated,
+  requirePost,
+  requireString,
+} from "../_shared/security.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ROLES = new Set(["admin", "editor", "viewer"]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -12,175 +20,79 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    requirePost(req);
+    const context = await requireAuthenticated(req);
+    const body = await readJsonBody(req, 8_192);
+
+    const email = requireString(body.email, "email", { max: 254 })
+      .toLowerCase();
+    const teamId = body.team_id;
+    const role = body.role;
+
+    if (!EMAIL_PATTERN.test(email)) throw new HttpError(400, "E-mail inválido");
+    if (!isUuid(teamId)) throw new HttpError(400, "team_id inválido");
+    if (typeof role !== "string" || !ROLES.has(role)) {
+      throw new HttpError(400, "Função inválida");
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-
-    // Verify calling user
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const { email, team_id, role, password, full_name } = await req.json();
-    if (!email || !team_id || !role) {
-      return new Response(JSON.stringify({ error: "email, team_id and role are required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const admin = createClient(supabaseUrl, supabaseServiceKey);
-    const normalizedEmail = email.trim().toLowerCase();
-
-    // Check if calling user is admin of this team
-    const callerUserId = claimsData.claims.sub as string;
-    const { data: callerProfile } = await admin
-      .from("profiles")
-      .select("id")
-      .eq("user_id", callerUserId)
-      .single();
-
-    if (!callerProfile) {
-      return new Response(JSON.stringify({ error: "Profile not found" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const { data: callerMember } = await admin
+    const { data: callerMember, error: memberError } = await context.admin
       .from("team_members")
       .select("role")
-      .eq("team_id", team_id)
-      .eq("profile_id", callerProfile.id)
-      .single();
-
-    if (!callerMember || callerMember.role !== "admin") {
-      return new Response(JSON.stringify({ error: "Only admins can invite" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Try to find existing user by email
-    const { data: existingUsers } = await admin.auth.admin.listUsers();
-    const existingUser = existingUsers?.users?.find(
-      (u) => u.email?.toLowerCase() === normalizedEmail
-    );
-
-    let userId: string;
-
-    if (existingUser) {
-      userId = existingUser.id;
-    } else {
-      // Create user with the password provided by the admin
-      const userPassword = password && password.length >= 6 ? password : crypto.randomUUID() + "Aa1!";
-      const userName = full_name || normalizedEmail.split("@")[0];
-      const { data: newUser, error: createError } = await admin.auth.admin.createUser({
-        email: normalizedEmail,
-        password: userPassword,
-        email_confirm: true,
-        user_metadata: { full_name: userName },
-      });
-
-      if (createError || !newUser?.user) {
-        return new Response(
-          JSON.stringify({ error: createError?.message || "Failed to create user" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      userId = newUser.user.id;
-    }
-
-    // Get or wait for profile (trigger creates it)
-    let profile: { id: string } | null = null;
-    for (let i = 0; i < 5; i++) {
-      const { data } = await admin
-        .from("profiles")
-        .select("id")
-        .eq("user_id", userId)
-        .single();
-      if (data) {
-        profile = data;
-        break;
-      }
-      await new Promise((r) => setTimeout(r, 300));
-    }
-
-    if (!profile) {
-      return new Response(JSON.stringify({ error: "Profile not created" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Update full_name on profile if provided
-    if (full_name) {
-      await admin.from("profiles").update({ full_name }).eq("id", profile.id);
-    }
-
-    // Check if already a member
-    const { data: existingMember } = await admin
-      .from("team_members")
-      .select("id")
-      .eq("team_id", team_id)
-      .eq("profile_id", profile.id)
-      .single();
-
-    if (existingMember) {
-      return new Response(
-        JSON.stringify({ success: true, already_member: true }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Add as team member directly
-    const { error: memberError } = await admin
-      .from("team_members")
-      .insert({ team_id, profile_id: profile.id, role });
+      .eq("team_id", teamId)
+      .eq("profile_id", context.profileId)
+      .maybeSingle();
 
     if (memberError) {
-      return new Response(JSON.stringify({ error: memberError.message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      throw new HttpError(503, "Não foi possível validar a permissão");
+    }
+    if (callerMember?.role !== "admin") {
+      throw new HttpError(403, "Somente líderes podem convidar");
     }
 
-    // Create invite record as accepted
-    await admin.from("team_invites").insert({
-      team_id,
-      email: normalizedEmail,
-      role,
-      accepted: true,
-    });
+    await enforceRateLimit(context, "create-invite", teamId, 30, 3_600);
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        already_member: false,
-        is_new_user: !existingUser,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (err) {
-    return new Response(JSON.stringify({ error: (err as Error).message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const token = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000)
+      .toISOString();
+
+    const { data: pendingInvite, error: pendingError } = await context.admin
+      .from("team_invites")
+      .select("id")
+      .eq("team_id", teamId)
+      .eq("email", email)
+      .eq("accepted", false)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (pendingError) {
+      throw new HttpError(503, "Não foi possível consultar os convites");
+    }
+
+    const inviteMutation = pendingInvite
+      ? context.admin
+        .from("team_invites")
+        .update({ role, token, expires_at: expiresAt })
+        .eq("id", pendingInvite.id)
+        .eq("accepted", false)
+      : context.admin.from("team_invites").insert({
+        team_id: teamId,
+        email,
+        role,
+        token,
+        accepted: false,
+        expires_at: expiresAt,
+      });
+
+    const { error: inviteError } = await inviteMutation;
+    if (inviteError) {
+      console.error("create-invite mutation failed", inviteError.message);
+      throw new HttpError(503, "Não foi possível criar o convite");
+    }
+
+    return json({ success: true, token, expires_at: expiresAt });
+  } catch (error) {
+    console.error("create-invite error", error);
+    return errorResponse(error);
   }
 });

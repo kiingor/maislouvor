@@ -1,10 +1,14 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import {
+  corsHeaders,
+  enforceRateLimit,
+  errorResponse,
+  HttpError,
+  isUuid,
+  json,
+  readJsonBody,
+  requireAuthenticated,
+  requirePost,
+} from "../_shared/security.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -12,111 +16,60 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    requirePost(req);
+    const context = await requireAuthenticated(req);
+
+    const { data: authUserData, error: authUserError } = await context.admin
+      .auth.admin.getUserById(context.userId);
+    const authUser = authUserData?.user;
+    if (authUserError || !authUser?.email || !authUser.email_confirmed_at) {
+      throw new HttpError(
+        403,
+        "A conta autenticada não possui e-mail verificado",
+      );
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const body = await readJsonBody(req, 4_096);
+    const inviteToken = body.token;
+    if (!isUuid(inviteToken)) throw new HttpError(400, "Token inválido");
 
-    // Verify user
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    await enforceRateLimit(context, "accept-invite", context.userId, 20, 3_600);
 
-    const userId = claimsData.claims.sub;
-    const userEmail = claimsData.claims.email;
-
-    const { token: inviteToken } = await req.json();
-    if (!inviteToken) {
-      return new Response(JSON.stringify({ error: "Token is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Use service role for cross-table ops
-    const admin = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Find invite
-    const { data: invite, error: inviteError } = await admin
+    const { data: invite, error: inviteError } = await context.admin
       .from("team_invites")
-      .select("*")
+      .select("id, team_id, email, role, expires_at")
       .eq("token", inviteToken)
       .eq("accepted", false)
-      .single();
+      .gt("expires_at", new Date().toISOString())
+      .maybeSingle();
 
-    if (inviteError || !invite) {
-      return new Response(
-        JSON.stringify({ error: "Invalid or already used invite" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (inviteError) {
+      throw new HttpError(503, "Não foi possível consultar o convite");
+    }
+    if (!invite) {
+      throw new HttpError(404, "Convite inválido, expirado ou já utilizado");
+    }
+    if (
+      invite.email.trim().toLowerCase() !== authUser.email.trim().toLowerCase()
+    ) {
+      throw new HttpError(403, "O convite pertence a outro e-mail");
     }
 
-    // Verify email matches
-    if (invite.email.toLowerCase() !== (userEmail as string).toLowerCase()) {
-      return new Response(
-        JSON.stringify({ error: "Email does not match invite" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Get profile
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("id")
-      .eq("user_id", userId)
-      .single();
-
-    if (!profile) {
-      return new Response(JSON.stringify({ error: "Profile not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const { data: acceptedTeamId, error: acceptError } = await context.admin
+      .rpc("accept_team_invite", {
+        _invite_id: invite.id,
+        _profile_id: context.profileId,
+        _email: authUser.email,
       });
+
+    if (acceptError || acceptedTeamId !== invite.team_id) {
+      console.error("accept-invite transaction failed", acceptError?.message);
+      throw new HttpError(409, "O convite expirou ou já foi utilizado");
     }
 
-    // Insert team member
-    const { error: memberError } = await admin
-      .from("team_members")
-      .upsert(
-        { team_id: invite.team_id, profile_id: profile.id, role: invite.role },
-        { onConflict: "team_id,profile_id" }
-      );
-
-    if (memberError) {
-      return new Response(JSON.stringify({ error: memberError.message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Mark accepted
-    await admin
-      .from("team_invites")
-      .update({ accepted: true })
-      .eq("id", invite.id);
-
-    return new Response(
-      JSON.stringify({ success: true, team_id: invite.team_id }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (err) {
-    return new Response(JSON.stringify({ error: (err as Error).message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ success: true, team_id: acceptedTeamId });
+  } catch (error) {
+    console.error("accept-invite error", error);
+    return errorResponse(error);
   }
 });

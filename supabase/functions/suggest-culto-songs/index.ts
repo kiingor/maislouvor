@@ -1,31 +1,101 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import {
+  corsHeaders,
+  enforceRateLimit,
+  errorResponse,
+  HttpError,
+  json,
+  readJsonBody,
+  requireAuthenticated,
+  requireCultoEditor,
+  requiredEnv,
+  requirePost,
+  requireString,
+} from "../_shared/security.ts";
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
 
   try {
-    const { liturgy, songCount, songs } = await req.json();
+    requirePost(req);
+    const context = await requireAuthenticated(req);
+    const body = await readJsonBody(req, 16_384);
+    const culto = await requireCultoEditor(context, body.culto_id);
+    await enforceRateLimit(
+      context,
+      "suggest-culto-songs",
+      culto.team_id,
+      10,
+      600,
+    );
 
-    if (!liturgy || !songCount || !songs?.length) {
-      return new Response(JSON.stringify({ error: "Missing required fields" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const liturgy = requireString(body.liturgy, "liturgy", { max: 500 });
+    const songCount = body.songCount;
+    if (
+      typeof songCount !== "number" || !Number.isInteger(songCount) ||
+      songCount < 1 || songCount > 20
+    ) {
+      throw new HttpError(400, "songCount deve ser um inteiro entre 1 e 20");
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const { data: repertorios, error: repertorioError } = await context.admin
+      .from("repertorios")
+      .select("id")
+      .eq("team_id", culto.team_id);
+    if (repertorioError) {
+      throw new HttpError(503, "Não foi possível carregar os repertórios");
+    }
 
-    const songList = songs.map((s: any, i: number) =>
-      `${i + 1}. ID: ${s.id} | "${s.title}" - ${s.artist || "Desconhecido"} | Tom: ${s.key || "?"} | Tema: ${s.theme || "?"} | Tags: ${(s.tags || []).join(", ") || "nenhuma"}\nLetra completa:\n${s.lyrics || "(sem letra)"}\n---`
-    ).join("\n");
+    const repertorioIds = (repertorios ?? []).map((item: { id: string }) =>
+      item.id
+    );
+    if (repertorioIds.length === 0) return json({ suggestions: [] });
 
-    const systemPrompt = `Você é um diretor de louvor experiente. Sua tarefa é analisar uma lista de músicas disponíveis e sugerir a melhor sequência para um culto/evento com o tema litúrgico informado.
+    const { data: repertorioSongs, error: relationError } = await context.admin
+      .from("repertorio_songs")
+      .select("song_id")
+      .in("repertorio_id", repertorioIds);
+    if (relationError) {
+      throw new HttpError(503, "Não foi possível carregar as músicas");
+    }
+
+    const songIds = [
+      ...new Set(
+        (repertorioSongs ?? []).map((item: { song_id: string }) =>
+          item.song_id
+        ),
+      ),
+    ].slice(0, 100);
+    if (songIds.length === 0) return json({ suggestions: [] });
+
+    const { data: songs, error: songsError } = await context.admin
+      .from("songs")
+      .select("id, title, artist, key_current, theme, tags, lyrics_text")
+      .eq("team_id", culto.team_id)
+      .in("id", songIds)
+      .limit(100);
+    if (songsError) {
+      throw new HttpError(503, "Não foi possível carregar as músicas");
+    }
+    if (!songs?.length) return json({ suggestions: [] });
+
+    const LOVABLE_API_KEY = requiredEnv("LOVABLE_API_KEY");
+
+    const songList = songs.map((s: any, i: number) => {
+      const lyrics = typeof s.lyrics_text === "string"
+        ? s.lyrics_text.slice(0, 6_000)
+        : "(sem letra)";
+      return `${i + 1}. ID: ${s.id} | "${s.title}" - ${
+        s.artist || "Desconhecido"
+      } | Tom: ${s.key_current || "?"} | Tema: ${s.theme || "?"} | Tags: ${
+        (s.tags || []).join(", ") || "nenhuma"
+      }\nLetra completa:\n${lyrics}\n---`;
+    }).join("\n").slice(0, 150_000);
+
+    const systemPrompt =
+      `Você é um diretor de louvor experiente. Sua tarefa é analisar uma lista de músicas disponíveis e sugerir a melhor sequência para um culto/evento com o tema litúrgico informado.
 
 REGRAS CRÍTICAS:
 1. ANALISE A LETRA COMPLETA de cada música para entender o conteúdo e mensagem
@@ -50,66 +120,92 @@ IMPORTANTE: Analise a LETRA de cada música abaixo e selecione APENAS as que se 
 Músicas disponíveis:
 ${songList}`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        temperature: 0.9,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "suggest_songs",
-              description: "Return an ordered list of suggested songs for the culto.",
-              parameters: {
-                type: "object",
-                properties: {
-                  suggestions: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        songId: { type: "string", description: "The ID of the song from the list" },
-                        reason: { type: "string", description: "Brief reason why this song fits at this position (in Portuguese)" },
+    const response = await fetch(
+      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          temperature: 0.9,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "suggest_songs",
+                description:
+                  "Return an ordered list of suggested songs for the culto.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    suggestions: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          songId: {
+                            type: "string",
+                            description: "The ID of the song from the list",
+                          },
+                          reason: {
+                            type: "string",
+                            description:
+                              "Brief reason why this song fits at this position (in Portuguese)",
+                          },
+                        },
+                        required: ["songId", "reason"],
+                        additionalProperties: false,
                       },
-                      required: ["songId", "reason"],
-                      additionalProperties: false,
                     },
                   },
+                  required: ["suggestions"],
+                  additionalProperties: false,
                 },
-                required: ["suggestions"],
-                additionalProperties: false,
               },
             },
+          ],
+          tool_choice: {
+            type: "function",
+            function: { name: "suggest_songs" },
           },
-        ],
-        tool_choice: { type: "function", function: { name: "suggest_songs" } },
-      }),
-    });
+        }),
+      },
+    );
 
     if (!response.ok) {
       if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Limite de requisições excedido. Tente novamente em alguns instantes." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({
+            error:
+              "Limite de requisições excedido. Tente novamente em alguns instantes.",
+          }),
+          {
+            status: 429,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
       }
       if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Créditos de IA esgotados." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ error: "Créditos de IA esgotados." }),
+          {
+            status: 402,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
       }
       const t = await response.text();
       console.error("AI gateway error:", response.status, t);
       return new Response(JSON.stringify({ error: "Erro ao consultar IA" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -118,15 +214,21 @@ ${songList}`;
 
     if (!toolCall?.function?.arguments) {
       console.error("No tool call in response:", JSON.stringify(result));
-      return new Response(JSON.stringify({ error: "IA não retornou sugestões válidas" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "IA não retornou sugestões válidas" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     const parsed = JSON.parse(toolCall.function.arguments);
 
     // Enrich suggestions with song metadata
-    const songMap = new Map(songs.map((s: any) => [s.id, s]));
+    const songMap = new Map<string, any>(
+      songs.map((song: any) => [song.id, song]),
+    );
     const seenIds = new Set<string>();
     const enriched = parsed.suggestions
       .filter((s: any) => {
@@ -140,20 +242,16 @@ ${songList}`;
           songId: s.songId,
           title: song.title,
           artist: song.artist,
-          key: song.key,
+          key: song.key_current,
           theme: song.theme,
           tags: song.tags,
           reason: s.reason,
         };
       });
 
-    return new Response(JSON.stringify({ suggestions: enriched }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ suggestions: enriched });
   } catch (e) {
     console.error("suggest-culto-songs error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Erro desconhecido" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return errorResponse(e);
   }
 });

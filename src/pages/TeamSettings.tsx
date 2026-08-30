@@ -362,7 +362,6 @@ export default function TeamSettings() {
         onOpenChange={(o) => { if (!o) setEditMember(null); }}
         profile={editMember}
         onSaved={() => qc.invalidateQueries({ queryKey: ["team-members"] })}
-        isAdmin={isAdmin}
       />
 
       {selfCropSrc && (
@@ -407,7 +406,7 @@ function MemberCard({
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const canManage = isAdmin && !isSelf;
   const canEditInstruments = isAdmin || canEditSelf;
-  const canEditAvatar = isAdmin || canEditSelf;
+  const canEditAvatar = canEditSelf;
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -482,7 +481,7 @@ function MemberCard({
               {expanded ? "Fechar" : "Instrumentos"}
             </Button>
           )}
-          {(isAdmin || isSelf) && (
+          {isSelf && (
             <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg" onClick={onEdit}>
               <Pencil className="h-3.5 w-3.5" />
             </Button>

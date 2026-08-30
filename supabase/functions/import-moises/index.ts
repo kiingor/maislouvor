@@ -1,12 +1,21 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  corsHeaders,
+  enforceRateLimit,
+  errorResponse,
+  json,
+  readJsonBody,
+  requireAuthenticated,
+  requiredEnv,
+  requirePost,
+  requireSongEditor,
+} from "../_shared/security.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
-const MOISES_HOSTS = new Set(["extensions-prod.moises.ai", "moises.ai", "www.moises.ai"]);
+const MOISES_HOSTS = new Set([
+  "extensions-prod.moises.ai",
+  "moises.ai",
+  "www.moises.ai",
+]);
 
 const SECTION_HEADER_REGEX =
   /^\[(intro|verse|chorus|bridge|outro|verso|refr[aã]o|ponte|pre[- ]?chorus|pr[eé][- ]?refr[aã]o)\]$/i;
@@ -32,9 +41,10 @@ const decodeHtmlEntities = (text: string) =>
     .replace(/&gt;/g, ">");
 
 const isUiLine = (line: string) =>
-  /^(copy link|print\s*\/\s*pdf|print|pdf|transpose[−\-+0-9\s]*|key\s*[A-G]|bpm\s*\d+|time\s*\d+\/\d+)$/i.test(
-    line.trim(),
-  );
+  /^(copy link|print\s*\/\s*pdf|print|pdf|transpose[−\-+0-9\s]*|key\s*[A-G]|bpm\s*\d+|time\s*\d+\/\d+)$/i
+    .test(
+      line.trim(),
+    );
 
 const normalizeKey = (raw: unknown): string | null => {
   if (typeof raw !== "string") return null;
@@ -47,7 +57,9 @@ const normalizeKey = (raw: unknown): string | null => {
     .replace(/[♭]/g, "b")
     .replace(/[♯]/g, "#");
 
-  const majorMinor = normalized.match(/^([A-G](?:#|b)?)(?:\s+|\-)?(major|maj|min|minor|m)$/i);
+  const majorMinor = normalized.match(
+    /^([A-G](?:#|b)?)(?:\s+|\-)?(major|maj|min|minor|m)$/i,
+  );
   if (majorMinor) {
     const note = majorMinor[1].toUpperCase();
     const quality = majorMinor[2].toLowerCase();
@@ -89,7 +101,10 @@ const extractReadableTextFromHtml = (html: string) => {
 const splitCleanLines = (text: string) =>
   text
     .split("\n")
-    .map((line) => line.replace(/\\\[/g, "[").replace(/\\\]/g, "]").replace(/\u00A0/g, " ").trim())
+    .map((line) =>
+      line.replace(/\\\[/g, "[").replace(/\\\]/g, "]").replace(/\u00A0/g, " ")
+        .trim()
+    )
     .filter((line) => !isUiLine(line));
 
 const isChordLine = (line: string) => {
@@ -116,7 +131,9 @@ const focusChartText = (rawText: string) => {
   const lines = splitCleanLines(rawText);
   if (lines.length === 0) return rawText;
 
-  const firstSectionIndex = lines.findIndex((line) => SECTION_HEADER_REGEX.test(line));
+  const firstSectionIndex = lines.findIndex((line) =>
+    SECTION_HEADER_REGEX.test(line)
+  );
   const start = firstSectionIndex >= 0 ? Math.max(0, firstSectionIndex - 8) : 0;
   const focused = lines.slice(start, start + 500);
 
@@ -125,21 +142,24 @@ const focusChartText = (rawText: string) => {
 
 const extractDeterministicMoisesData = (rawText: string) => {
   const lines = splitCleanLines(rawText);
-  const firstSectionIndex = lines.findIndex((line) => SECTION_HEADER_REGEX.test(line));
+  const firstSectionIndex = lines.findIndex((line) =>
+    SECTION_HEADER_REGEX.test(line)
+  );
   const start = firstSectionIndex >= 0 ? firstSectionIndex : 0;
 
-  const title =
-    lines.find(
-      (line, index) =>
-        index < 12 &&
-        line.length >= 2 &&
-        line.length <= 90 &&
-        !SECTION_HEADER_REGEX.test(line) &&
-        !isChordLine(line) &&
-        !/^key\b|^bpm\b|^time\b/i.test(line),
-    ) ?? "Música importada";
+  const title = lines.find(
+    (line, index) =>
+      index < 12 &&
+      line.length >= 2 &&
+      line.length <= 90 &&
+      !SECTION_HEADER_REGEX.test(line) &&
+      !isChordLine(line) &&
+      !/^key\b|^bpm\b|^time\b/i.test(line),
+  ) ?? "Música importada";
 
-  const keyMatch = rawText.match(/\bKey\s*([A-G](?:#|b)?(?:\s*(?:major|minor|maj|min|m))?)/i);
+  const keyMatch = rawText.match(
+    /\bKey\s*([A-G](?:#|b)?(?:\s*(?:major|minor|maj|min|m))?)/i,
+  );
   const bpmMatch = rawText.match(/\bBPM\s*(\d{2,3})/i);
 
   const chartLines = collapseBlankLines(lines.slice(start, start + 500));
@@ -165,7 +185,10 @@ const extractDeterministicMoisesData = (rawText: string) => {
 
     if (isChordLine(line)) continue;
 
-    const withoutInlineChords = line.replace(INLINE_CHORD_REGEX, " ").replace(/[ \t]{2,}/g, " ").trim();
+    const withoutInlineChords = line.replace(INLINE_CHORD_REGEX, " ").replace(
+      /[ \t]{2,}/g,
+      " ",
+    ).trim();
     if (!withoutInlineChords) continue;
 
     lyricsLines.push(withoutInlineChords);
@@ -204,32 +227,42 @@ const resolveInputText = async (input: string): Promise<ResolvedInput> => {
   });
 
   if (!response.ok) {
-    throw new Error("Não foi possível abrir o link do Moises. Tente colar o conteúdo da página.");
+    throw new Error(
+      "Não foi possível abrir o link do Moises. Tente colar o conteúdo da página.",
+    );
   }
 
   const html = await response.text();
   const readable = extractReadableTextFromHtml(html);
 
   if (readable.length < 80) {
-    throw new Error("O link do Moises não retornou conteúdo legível. Cole o texto da página para importar.");
+    throw new Error(
+      "O link do Moises não retornou conteúdo legível. Cole o texto da página para importar.",
+    );
   }
 
   return { text: readable, fromMoisesUrl: true };
 };
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
 
   try {
-    const body = await req.json();
-    const input =
-      typeof body?.text === "string"
-        ? body.text
-        : typeof body?.url === "string"
-          ? body.url
-          : typeof body?.input === "string"
-            ? body.input
-            : "";
+    requirePost(req);
+    const context = await requireAuthenticated(req);
+    const body = await readJsonBody(req, 140_000);
+    const song = await requireSongEditor(context, body.song_id);
+    await enforceRateLimit(context, "import-moises", song.team_id, 10, 600);
+
+    const input = typeof body?.text === "string"
+      ? body.text
+      : typeof body?.url === "string"
+      ? body.url
+      : typeof body?.input === "string"
+      ? body.input
+      : "";
 
     const trimmedInput = input.trim();
 
@@ -248,7 +281,8 @@ serve(async (req) => {
     if (/^https?:\/\/\S+$/i.test(trimmedInput)) {
       return new Response(
         JSON.stringify({
-          error: "O link sozinho do Moises pode trazer dados incorretos. Abra o link, copie todo o conteúdo (Ctrl+A / Ctrl+C) e cole aqui.",
+          error:
+            "O link sozinho do Moises pode trazer dados incorretos. Abra o link, copie todo o conteúdo (Ctrl+A / Ctrl+C) e cole aqui.",
         }),
         {
           status: 422,
@@ -262,7 +296,8 @@ serve(async (req) => {
     if (!resolved.text || resolved.text.trim().length < 20) {
       return new Response(
         JSON.stringify({
-          error: "Não foi possível ler dados suficientes. Tente colar o conteúdo inteiro da página.",
+          error:
+            "Não foi possível ler dados suficientes. Tente colar o conteúdo inteiro da página.",
         }),
         {
           status: 400,
@@ -274,31 +309,36 @@ serve(async (req) => {
     if (resolved.fromMoisesUrl) {
       const deterministic = extractDeterministicMoisesData(resolved.text);
       if (deterministic.cifra_text && deterministic.cifra_text.length >= 20) {
-        return new Response(JSON.stringify({ success: true, data: deterministic }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ success: true, data: deterministic }),
+          {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
       }
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const LOVABLE_API_KEY = requiredEnv("LOVABLE_API_KEY");
 
     const focusedText = focusChartText(resolved.text);
     const truncatedText = focusedText.substring(0, 30000);
 
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        temperature: 0,
-        messages: [
-          {
-            role: "system",
-            content: `You are a music data extractor. You will receive text from a single chord chart. The text may contain chord names mixed inline with lyrics (e.g. "Nada vai me FsepaCrar" means chord F appears before "sepa" and chord C appears before "rar").
+    const aiRes = await fetch(
+      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          temperature: 0,
+          messages: [
+            {
+              role: "system",
+              content:
+                `You are a music data extractor. You will receive text from a single chord chart. The text may contain chord names mixed inline with lyrics (e.g. "Nada vai me FsepaCrar" means chord F appears before "sepa" and chord C appears before "rar").
 
 Extract:
 - title: song title
@@ -314,74 +354,104 @@ CRITICAL RULES:
 3. Use only the single song represented in the input text.
 
 Return ONLY valid JSON.`,
-          },
-          {
-            role: "user",
-            content: truncatedText,
-          },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "extract_moises_data",
-              description: "Extract song data from chord chart text",
-              parameters: {
-                type: "object",
-                properties: {
-                  title: { type: "string", description: "Song title" },
-                  artist: { type: "string", description: "Artist name" },
-                  key_original: { type: "string", description: "Original key/tom" },
-                  bpm: { type: "number", description: "BPM tempo" },
-                  cifra_text: { type: "string", description: "Full cifra with chords above lyrics" },
-                  lyrics_text: { type: "string", description: "Lyrics only, with section headers" },
+            },
+            {
+              role: "user",
+              content: truncatedText,
+            },
+          ],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "extract_moises_data",
+                description: "Extract song data from chord chart text",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string", description: "Song title" },
+                    artist: { type: "string", description: "Artist name" },
+                    key_original: {
+                      type: "string",
+                      description: "Original key/tom",
+                    },
+                    bpm: { type: "number", description: "BPM tempo" },
+                    cifra_text: {
+                      type: "string",
+                      description: "Full cifra with chords above lyrics",
+                    },
+                    lyrics_text: {
+                      type: "string",
+                      description: "Lyrics only, with section headers",
+                    },
+                  },
+                  required: ["title", "cifra_text"],
+                  additionalProperties: false,
                 },
-                required: ["title", "cifra_text"],
-                additionalProperties: false,
               },
             },
+          ],
+          tool_choice: {
+            type: "function",
+            function: { name: "extract_moises_data" },
           },
-        ],
-        tool_choice: { type: "function", function: { name: "extract_moises_data" } },
-      }),
-    });
+        }),
+      },
+    );
 
     if (!aiRes.ok) {
       if (aiRes.status === 429) {
-        return new Response(JSON.stringify({ error: "Limite de requisições excedido. Tente novamente." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({
+            error: "Limite de requisições excedido. Tente novamente.",
+          }),
+          {
+            status: 429,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
       }
       if (aiRes.status === 402) {
-        return new Response(JSON.stringify({ error: "Créditos insuficientes." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ error: "Créditos insuficientes." }),
+          {
+            status: 402,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
       }
       const text = await aiRes.text();
       console.error("AI gateway error:", aiRes.status, text);
-      return new Response(JSON.stringify({ error: "Erro ao processar os dados" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Erro ao processar os dados" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     const aiData = await aiRes.json();
     const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
 
     if (!toolCall) {
-      return new Response(JSON.stringify({ error: "Não foi possível extrair os dados" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Não foi possível extrair os dados" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     const extracted = JSON.parse(toolCall.function.arguments ?? "{}");
 
     if (!extracted?.cifra_text?.trim()) {
       return new Response(
-        JSON.stringify({ error: "Não foi possível extrair a cifra deste conteúdo. Tente colar o texto completo da página." }),
+        JSON.stringify({
+          error:
+            "Não foi possível extrair a cifra deste conteúdo. Tente colar o texto completo da página.",
+        }),
         {
           status: 422,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -394,14 +464,9 @@ Return ONLY valid JSON.`,
       key_original: normalizeKey(extracted.key_original),
     };
 
-    return new Response(JSON.stringify({ success: true, data: normalized }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ success: true, data: normalized });
   } catch (e) {
     console.error("import-moises error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Erro desconhecido" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return errorResponse(e);
   }
 });

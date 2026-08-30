@@ -31,6 +31,7 @@ import {
   Moon,
 } from "lucide-react";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
+import { getYouTubeVideoId } from "@/lib/mediaUrl";
 
 interface PlaylistSong {
   id: string;
@@ -46,13 +47,6 @@ interface PlaylistSong {
 interface PlaylistData {
   name: string;
   songs: PlaylistSong[];
-}
-
-function extractYouTubeId(url: string): string | null {
-  const match = url.match(
-    /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([a-zA-Z0-9_-]{11})/
-  );
-  return match ? match[1] : null;
 }
 
 export default function PublicPlaylist() {
@@ -102,7 +96,7 @@ export default function PublicPlaylist() {
   }, [data, searchQuery]);
 
   const videoId = currentSong?.media_url
-    ? extractYouTubeId(currentSong.media_url)
+    ? getYouTubeVideoId(currentSong.media_url)
     : null;
   const hasVideoOption = !!videoId;
   const hasAudioOption = !!currentSong?.audio_url;

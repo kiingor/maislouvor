@@ -95,10 +95,10 @@ export default function Home() {
   }, [teamLoading, profileId, currentTeam]);
 
   const updateLineupStatus = async (lineupId: string, status: "accepted" | "declined") => {
-    const { error } = await supabase
-      .from("culto_lineup")
-      .update({ status } as any)
-      .eq("id", lineupId);
+    const { error } = await supabase.rpc("set_own_lineup_status", {
+      _lineup_id: lineupId,
+      _status: status,
+    });
     if (error) {
       toast({ title: "Erro", description: error.message, variant: "destructive" });
     } else {

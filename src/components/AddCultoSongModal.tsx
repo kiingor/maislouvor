@@ -136,18 +136,8 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
     setSelected(new Set());
 
     try {
-      const songsPayload = allSongs.map((s: any) => ({
-        id: s.id,
-        title: s.title,
-        artist: s.artist,
-        key: s.key_current,
-        theme: s.theme,
-        tags: s.tags,
-        lyrics: s.lyrics_text || "",
-      }));
-
       const { data, error } = await supabase.functions.invoke("suggest-culto-songs", {
-        body: { liturgy, songCount, songs: songsPayload },
+        body: { culto_id: cultoId, liturgy, songCount },
       });
 
       if (error) throw error;

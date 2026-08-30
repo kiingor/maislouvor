@@ -1,9 +1,42 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  corsHeaders,
+  errorResponse,
+  HttpError,
+  isUuid,
+  json,
+  requiredEnv,
+} from "../_shared/security.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+const isSongStoragePath = (path: unknown, teamId: string, songId: string) => {
+  if (typeof path !== "string") return false;
+  const prefix = `${teamId}/${songId}`;
+  return path.startsWith(`${prefix}.`) || path.startsWith(`${prefix}/`);
+};
+
+const safeMediaUrl = (value: unknown) => {
+  if (typeof value !== "string" || value.length > 2_048) return null;
+  try {
+    const parsed = new URL(value);
+    const allowedHosts = [
+      "youtube.com",
+      "youtu.be",
+      "spotify.com",
+      "music.apple.com",
+      "deezer.com",
+      "soundcloud.com",
+      "vimeo.com",
+    ];
+    const allowedHost = allowedHosts.some((host) =>
+      parsed.hostname === host || parsed.hostname.endsWith(`.${host}`)
+    );
+    return parsed.protocol === "https:" && !parsed.username &&
+        !parsed.password && allowedHost
+      ? parsed.toString()
+      : null;
+  } catch {
+    return null;
+  }
 };
 
 Deno.serve(async (req) => {
@@ -12,25 +45,22 @@ Deno.serve(async (req) => {
   }
 
   try {
+    if (req.method !== "GET") throw new HttpError(405, "Método não permitido");
     const url = new URL(req.url);
     const token = url.searchParams.get("token");
 
-    if (!token) {
-      return new Response(JSON.stringify({ error: "Token is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!isUuid(token)) throw new HttpError(400, "Token inválido");
 
     const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      requiredEnv("SUPABASE_URL"),
+      requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
+      { auth: { persistSession: false, autoRefreshToken: false } },
     );
 
     // Fetch repertorio
     const { data: repertorio, error: repError } = await supabase
       .from("repertorios")
-      .select("id, name")
+      .select("id, name, team_id")
       .eq("public_token", token)
       .eq("is_public", true)
       .single();
@@ -41,18 +71,22 @@ Deno.serve(async (req) => {
         {
           status: 404,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
     // Fetch songs via repertorio_songs
     const { data: repSongs } = await supabase
       .from("repertorio_songs")
-      .select("sort_order, song_id, songs(id, title, artist, cover_path, audio_path, media_url, lyrics_text, key_current)")
+      .select(
+        "sort_order, song_id, songs(id, team_id, title, artist, cover_path, audio_path, media_url, lyrics_text, key_current)",
+      )
       .eq("repertorio_id", repertorio.id)
       .order("sort_order", { ascending: true });
 
-    const songs = (repSongs || []).map((rs: any) => rs.songs).filter(Boolean);
+    const songs = (repSongs || [])
+      .map((relation: any) => relation.songs)
+      .filter((song: any) => song && song.team_id === repertorio.team_id);
 
     // Generate signed URLs for cover and audio
     const enrichedSongs = await Promise.all(
@@ -60,14 +94,14 @@ Deno.serve(async (req) => {
         let cover_url: string | null = null;
         let audio_url: string | null = null;
 
-        if (song.cover_path) {
+        if (isSongStoragePath(song.cover_path, repertorio.team_id, song.id)) {
           const { data } = await supabase.storage
             .from("covers")
             .createSignedUrl(song.cover_path, 3600);
           cover_url = data?.signedUrl ?? null;
         }
 
-        if (song.audio_path) {
+        if (isSongStoragePath(song.audio_path, repertorio.team_id, song.id)) {
           const { data } = await supabase.storage
             .from("audio")
             .createSignedUrl(song.audio_path, 3600);
@@ -80,26 +114,16 @@ Deno.serve(async (req) => {
           artist: song.artist,
           cover_url,
           audio_url,
-          media_url: song.media_url,
+          media_url: safeMediaUrl(song.media_url),
           lyrics_text: song.lyrics_text,
           key_current: song.key_current,
         };
-      })
+      }),
     );
 
-    return new Response(
-      JSON.stringify({
-        name: repertorio.name,
-        songs: enrichedSongs,
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    return json({ name: repertorio.name, songs: enrichedSongs });
   } catch (err) {
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error("public-playlist error", err);
+    return errorResponse(err);
   }
 });

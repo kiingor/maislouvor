@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { GlassCard } from "@/components/GlassCard";
 import { GlassInput } from "@/components/GlassInput";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { InstallPWABanner } from "@/components/InstallPWABanner";
 import { Music, ListMusic, Users, Mic2, MonitorSmartphone, Layers } from "lucide-react";
+import { safeInternalRedirect } from "@/lib/safeRedirect";
 
 const features = [
   { icon: ListMusic, title: "Repertórios", desc: "Organize músicas em listas para cada culto" },
@@ -22,14 +23,16 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectTo = safeInternalRedirect(searchParams.get("redirect"));
   const { toast } = useToast();
 
   // Redirect if already logged in
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) navigate("/app/home", { replace: true });
+      if (session) navigate(redirectTo, { replace: true });
     });
-  }, [navigate]);
+  }, [navigate, redirectTo]);
 
   const [forgotLoading, setForgotLoading] = useState(false);
 
@@ -63,7 +66,7 @@ export default function Login() {
         variant: "destructive",
       });
     } else {
-      navigate("/app/home");
+      navigate(redirectTo);
     }
     setLoading(false);
   };
@@ -192,7 +195,7 @@ export default function Login() {
 
                 <p className="text-center text-sm text-muted-foreground">
                   Não tem conta?{" "}
-                  <Link to="/signup" className="text-foreground font-medium hover:underline underline-offset-4">
+                  <Link to={`/signup?redirect=${encodeURIComponent(redirectTo)}`} className="text-foreground font-medium hover:underline underline-offset-4">
                     Criar conta
                   </Link>
                 </p>

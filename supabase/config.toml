@@ -1,34 +1,37 @@
 project_id = "hhqzapwtuyzchismcuie"
 
 [functions.accept-invite]
-verify_jwt = false
+verify_jwt = true
 
 [functions.import-cifra]
-verify_jwt = false
+verify_jwt = true
 
 [functions.transpose]
-verify_jwt = false
+verify_jwt = true
 
 [functions.sync-lyrics]
-verify_jwt = false
+verify_jwt = true
 
 [functions.import-moises]
-verify_jwt = false
+verify_jwt = true
 
 [functions.transcribe-sync]
-verify_jwt = false
+verify_jwt = true
 
 [functions.public-playlist]
 verify_jwt = false
 
 [functions.create-invite]
-verify_jwt = false
+verify_jwt = true
+
+[functions.admin-update-user]
+verify_jwt = true
 
 [functions.suggest-culto-songs]
-verify_jwt = false
+verify_jwt = true
 
 [functions.separate-stems]
-verify_jwt = false
+verify_jwt = true
 
 [functions.stems-callback]
 verify_jwt = false

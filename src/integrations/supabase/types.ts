@@ -599,6 +599,7 @@ export type Database = {
           accepted: boolean
           created_at: string
           email: string
+          expires_at: string
           id: string
           role: Database["public"]["Enums"]["team_role"]
           team_id: string
@@ -608,6 +609,7 @@ export type Database = {
           accepted?: boolean
           created_at?: string
           email: string
+          expires_at?: string
           id?: string
           role?: Database["public"]["Enums"]["team_role"]
           team_id: string
@@ -617,6 +619,7 @@ export type Database = {
           accepted?: boolean
           created_at?: string
           email?: string
+          expires_at?: string
           id?: string
           role?: Database["public"]["Enums"]["team_role"]
           team_id?: string
@@ -708,6 +711,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_team_invite: {
+        Args: { _email: string; _invite_id: string; _profile_id: string }
+        Returns: string
+      }
       can_edit_team: {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean
@@ -724,6 +731,13 @@ export type Database = {
       is_team_member: {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean
+      }
+      set_own_lineup_status: {
+        Args: {
+          _lineup_id: string
+          _status: Database["public"]["Enums"]["lineup_status"]
+        }
+        Returns: undefined
       }
     }
     Enums: {

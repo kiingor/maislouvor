@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { getYouTubeVideoId, normalizeMediaUrl, openExternalMedia } from "@/lib/mediaUrl";
 import {
   ArrowLeft,
   ChevronDown,
@@ -79,11 +80,6 @@ function loadPrefs(): PresentationPrefs {
 
 function savePrefs(p: PresentationPrefs) {
   localStorage.setItem("louvor-presentation-prefs", JSON.stringify(p));
-}
-
-function getYouTubeId(url: string): string | null {
-  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([^&\s]+)/);
-  return match ? match[1] : null;
 }
 
 function formatTime(s: number): string {
@@ -532,8 +528,8 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
   const isLastSegment = segIdx >= segments.length - 1;
   const isLastSong = songIdx >= songs.length - 1;
 
-  const mediaUrl = currentSong?.media_url || "";
-  const youtubeId = mediaUrl ? getYouTubeId(mediaUrl) : null;
+  const mediaUrl = normalizeMediaUrl(currentSong?.media_url);
+  const youtubeId = getYouTubeVideoId(mediaUrl);
   const hasMedia = !!mediaUrl;
 
   const hasAudioFile = !!currentSong?.audio_path;
@@ -1483,7 +1479,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
               if (youtubeId) {
                 setShowMediaPlayer((v) => !v);
               } else {
-                window.open(mediaUrl, "_blank");
+                openExternalMedia(mediaUrl);
               }
             }}
             title="Tocar música"

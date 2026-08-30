@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { GlassCard } from "@/components/GlassCard";
 import { GlassInput } from "@/components/GlassInput";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { InstallPWABanner } from "@/components/InstallPWABanner";
 import { Music, ListMusic, Users, Mic2, MonitorSmartphone, Layers } from "lucide-react";
+import { safeInternalRedirect } from "@/lib/safeRedirect";
 
 const features = [
   { icon: ListMusic, title: "Repertórios", desc: "Organize músicas em listas para cada culto" },
@@ -23,6 +24,8 @@ export default function SignUp() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [searchParams] = useSearchParams();
+  const redirectTo = safeInternalRedirect(searchParams.get("redirect"));
   const { toast } = useToast();
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -34,7 +37,7 @@ export default function SignUp() {
       password,
       options: {
         data: { full_name: fullName },
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: `${window.location.origin}${redirectTo}`,
       },
     });
 
@@ -66,7 +69,7 @@ export default function SignUp() {
           <p className="text-muted-foreground text-sm mb-6">
             Enviamos um link de confirmação para <strong>{email}</strong>.
           </p>
-          <Link to="/login" className="text-foreground font-medium text-sm hover:underline underline-offset-4">
+          <Link to={`/login?redirect=${encodeURIComponent(redirectTo)}`} className="text-foreground font-medium text-sm hover:underline underline-offset-4">
             Voltar ao login
           </Link>
         </div>
@@ -198,7 +201,7 @@ export default function SignUp() {
 
                 <p className="text-center text-sm text-muted-foreground">
                   Já tem conta?{" "}
-                  <Link to="/login" className="text-foreground font-medium hover:underline underline-offset-4">
+                  <Link to={`/login?redirect=${encodeURIComponent(redirectTo)}`} className="text-foreground font-medium hover:underline underline-offset-4">
                     Entrar
                   </Link>
                 </p>

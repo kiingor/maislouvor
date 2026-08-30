@@ -1,140 +1,231 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  corsHeaders,
+  errorResponse,
+  HttpError,
+  isUuid,
+  json,
+  readJsonBody,
+  requiredEnv,
+  requirePost,
+} from "../_shared/security.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
-};
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-
-// Demucs stem key -> label + display order, mirrors the worker
-const STEMS: { key: string; label: string }[] = [
+const STEMS = [
   { key: "vocals", label: "Vocais" },
   { key: "drums", label: "Bateria" },
   { key: "bass", label: "Baixo" },
   { key: "guitar", label: "Guitarra" },
   { key: "piano", label: "Teclado" },
   { key: "other", label: "Outros" },
-];
+] as const;
 
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
+const safeEqual = (left: string, right: string) => {
+  if (left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index++) {
+    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+  return difference === 0;
+};
+
+const requireStrongSecret = (name: string) => {
+  const value = requiredEnv(name);
+  if (value.length < 32) {
+    throw new HttpError(503, `${name} precisa ter pelo menos 32 caracteres`);
+  }
+  return value;
+};
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const workerUrl = (Deno.env.get("WORKER_URL") ?? "https://demucs.maislouvor.com").replace(/\/$/, "");
-    const workerToken = Deno.env.get("WORKER_TOKEN")!;
-    const callbackToken = Deno.env.get("STEMS_CALLBACK_TOKEN")!;
+    requirePost(req);
 
-    // Authenticate the worker's callback
-    const auth = req.headers.get("Authorization") ?? "";
-    if (!safeEqual(auth, `Bearer ${callbackToken}`)) return json({ error: "Unauthorized" }, 401);
+    // Validate every secret before constructing an expected Authorization value
+    // or creating a service-role client. Missing configuration fails closed.
+    const supabaseUrl = requiredEnv("SUPABASE_URL");
+    const serviceKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+    const callbackToken = requireStrongSecret("STEMS_CALLBACK_TOKEN");
+    const workerToken = requireStrongSecret("WORKER_TOKEN");
+    const workerUrl =
+      (Deno.env.get("WORKER_URL")?.trim() || "https://demucs.maislouvor.com")
+        .replace(/\/$/, "");
 
-    const { job_id, status, stems, meta } = await req.json();
-    const songId = meta?.song_id;
-    const teamId = meta?.team_id;
-    if (!songId || !teamId) return json({ error: "missing meta" }, 400);
+    const authorization = req.headers.get("Authorization") ?? "";
+    if (!safeEqual(authorization, `Bearer ${callbackToken}`)) {
+      throw new HttpError(401, "Não autorizado");
+    }
 
-    const admin = createClient(supabaseUrl, serviceKey);
+    const body = await readJsonBody(req, 16_384);
+    const jobId = body.job_id;
+    const status = body.status;
+    const meta = body.meta;
+    if (!isUuid(jobId)) throw new HttpError(400, "job_id inválido");
+    if (status !== "done" && status !== "error" && status !== "failed") {
+      throw new HttpError(400, "status inválido");
+    }
+    if (!meta || typeof meta !== "object" || Array.isArray(meta)) {
+      throw new HttpError(400, "meta inválido");
+    }
+
+    const songId = (meta as Record<string, unknown>).song_id;
+    const teamId = (meta as Record<string, unknown>).team_id;
+    if (!isUuid(songId) || !isUuid(teamId)) {
+      throw new HttpError(400, "meta inválido");
+    }
+
+    const admin = createClient(supabaseUrl, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data: song, error: songError } = await admin
+      .from("songs")
+      .select("id, team_id, stems_job_id, stems_status")
+      .eq("id", songId)
+      .maybeSingle();
+
+    if (songError) throw new HttpError(503, "Não foi possível validar o job");
+    if (
+      !song ||
+      song.team_id !== teamId ||
+      song.stems_job_id !== jobId ||
+      song.stems_status !== "processing"
+    ) {
+      throw new HttpError(
+        409,
+        "Callback não corresponde ao job ativo da música",
+      );
+    }
+
+    const updateActiveSong = (values: Record<string, unknown>) =>
+      admin
+        .from("songs")
+        .update(values)
+        .eq("id", song.id)
+        .eq("team_id", song.team_id)
+        .eq("stems_job_id", jobId)
+        .eq("stems_status", "processing");
 
     if (status !== "done") {
-      await admin
-        .from("songs")
-        .update({ stems_status: "error", stems_error: "worker reported failure" } as any)
-        .eq("id", songId);
+      const workerError = typeof body.error === "string"
+        ? body.error.slice(0, 300)
+        : "worker reported failure";
+      await updateActiveSong({
+        stems_status: "error",
+        stems_error: workerError,
+      });
       return json({ ok: true });
     }
 
-    if (!Array.isArray(stems) || stems.length === 0) {
-      await admin
-        .from("songs")
-        .update({ stems_status: "error", stems_error: "Nenhuma faixa retornada" } as any)
-        .eq("id", songId);
-      return json({ ok: false, error: "no stems" }, 400);
+    const stems = body.stems;
+    const allowedStemKeys = new Set(STEMS.map((stem) => stem.key));
+    if (
+      !Array.isArray(stems) ||
+      stems.length < 1 ||
+      stems.length > STEMS.length ||
+      stems.some((stem) =>
+        typeof stem !== "string" ||
+        !allowedStemKeys.has(stem as typeof STEMS[number]["key"])
+      )
+    ) {
+      await updateActiveSong({
+        stems_status: "error",
+        stems_error: "Lista de faixas inválida",
+      });
+      throw new HttpError(400, "stems inválido");
     }
 
-    const available = new Set<string>(stems);
-    const prefix = `${teamId}/${songId}/stems`;
+    const available = new Set(stems as string[]);
+    const prefix = `${song.team_id}/${song.id}/stems`;
 
-    // Replace any previous auto-generated stems for this song (keep manual tracks)
-    await admin.from("song_tracks").delete().eq("song_id", songId).like("audio_path", `${prefix}/%`);
+    const { error: deleteError } = await admin
+      .from("song_tracks")
+      .delete()
+      .eq("song_id", song.id)
+      .like("audio_path", `${prefix}/%`);
+    if (deleteError) {
+      throw new HttpError(503, "Não foi possível preparar as faixas");
+    }
 
     let stored = 0;
-    let authFailed = false;
+    let workerAuthFailed = false;
     const failed: string[] = [];
+
     for (const { key, label } of STEMS) {
       if (!available.has(key)) continue;
-      const res = await fetch(`${workerUrl}/jobs/${job_id}/stems/${key}`, {
+
+      const response = await fetch(`${workerUrl}/jobs/${jobId}/stems/${key}`, {
         headers: { Authorization: `Bearer ${workerToken}` },
+        signal: AbortSignal.timeout(60_000),
       });
-      if (res.status === 401 || res.status === 403) {
-        authFailed = true;
+      if (response.status === 401 || response.status === 403) {
+        workerAuthFailed = true;
         break;
       }
-      if (!res.ok) {
-        console.error("fetch stem failed", key, res.status);
+      if (!response.ok) {
         failed.push(key);
         continue;
       }
-      const bytes = new Uint8Array(await res.arrayBuffer());
+
+      const declaredSize = Number(
+        response.headers.get("Content-Length") ?? "0",
+      );
+      if (Number.isFinite(declaredSize) && declaredSize > 250_000_000) {
+        failed.push(key);
+        continue;
+      }
+
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength === 0 || bytes.byteLength > 250_000_000) {
+        failed.push(key);
+        continue;
+      }
+
       const path = `${prefix}/${key}.mp3`;
-      const { error: upErr } = await admin.storage
+      const { error: uploadError } = await admin.storage
         .from("audio")
         .upload(path, bytes, { contentType: "audio/mpeg", upsert: true });
-      if (upErr) {
-        console.error("upload failed", key, upErr.message);
+      if (uploadError) {
         failed.push(key);
         continue;
       }
-      const { error: insErr } = await admin.from("song_tracks").insert({
-        song_id: songId,
+
+      const { error: insertError } = await admin.from("song_tracks").insert({
+        song_id: song.id,
         track_name: label,
         audio_path: path,
         sort_order: stored,
-      } as any);
-      if (insErr) {
-        console.error("insert track failed", key, insErr.message);
+      });
+      if (insertError) {
         failed.push(key);
         continue;
       }
       stored++;
     }
 
-    // Never report success if nothing actually got stored
-    if (authFailed || stored === 0) {
-      await admin
-        .from("songs")
-        .update({
-          stems_status: "error",
-          stems_error: authFailed ? "Falha de autenticação com o worker" : "Não foi possível salvar as faixas",
-        } as any)
-        .eq("id", songId);
-      return json({ ok: false, error: authFailed ? "worker auth failed" : "no stems stored" }, 502);
+    if (workerAuthFailed || stored === 0) {
+      const message = workerAuthFailed
+        ? "Falha de autenticação com o worker"
+        : "Não foi possível salvar as faixas";
+      await updateActiveSong({ stems_status: "error", stems_error: message });
+      throw new HttpError(502, message);
     }
 
-    await admin
-      .from("songs")
-      .update({
-        stems_status: "done",
-        stems_error: failed.length ? `Algumas faixas falharam: ${failed.join(", ")}` : null,
-      } as any)
-      .eq("id", songId);
+    const { data: completed, error: completeError } = await updateActiveSong({
+      stems_status: "done",
+      stems_error: failed.length
+        ? `Algumas faixas falharam: ${failed.join(", ")}`
+        : null,
+    }).select("id").maybeSingle();
 
+    if (completeError || !completed) {
+      throw new HttpError(409, "O job deixou de ser o processamento ativo");
+    }
     return json({ ok: true, tracks: stored, failed });
-  } catch (err) {
-    console.error("stems-callback error", err);
-    return json({ error: (err as Error).message }, 500);
+  } catch (error) {
+    console.error("stems-callback error", error);
+    return errorResponse(error);
   }
 });
