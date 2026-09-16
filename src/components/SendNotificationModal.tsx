@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { firePush } from "@/lib/push";
 import { useTeam } from "@/contexts/TeamContext";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -49,6 +50,12 @@ export function SendNotificationModal({ open, onOpenChange }: SendNotificationMo
       const { error } = await supabase.from("notifications").insert(notifications as any);
 
       if (error) throw error;
+
+      // Push (Web Push) — opcional, não bloqueia o aviso in-app
+      await firePush(
+        currentTeam.id,
+        notifications.map((n) => ({ profile_id: n.profile_id, title: n.title, body: n.body, link: null })),
+      );
 
       toast({ title: "Aviso enviado!", description: `Enviado para ${members.length} membro(s)` });
       setTitle("");

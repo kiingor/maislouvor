@@ -1,13 +1,19 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { INSTRUMENT_ICONS } from "@/data/instruments";
+import { instrumentIcon } from "@/data/instruments";
 import { Check, CheckCircle2, XCircle, Loader2, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import {
+  DEFAULT_AVAILABILITY_MODE,
+  defaultAvailabilityStatus,
+  isAvailabilityStatusAllowed,
+  type AvailabilityMode,
+} from "@/lib/availability";
 
 export interface MyAvailabilityEntry {
   status: "available" | "unavailable";
@@ -21,6 +27,7 @@ interface AvailabilityDayModalProps {
   date: Date | null;
   teamMemberId: string | null;
   myInstruments: string[];
+  availabilityMode?: AvailabilityMode;
   existing: MyAvailabilityEntry | null;
   onSaved: () => void;
 }
@@ -31,6 +38,7 @@ export function AvailabilityDayModal({
   date,
   teamMemberId,
   myInstruments,
+  availabilityMode = DEFAULT_AVAILABILITY_MODE,
   existing,
   onSaved,
 }: AvailabilityDayModalProps) {
@@ -44,7 +52,11 @@ export function AvailabilityDayModal({
   // Sync local state whenever the dialog opens for a given date
   useEffect(() => {
     if (!open) return;
-    setStatus(existing?.status ?? "available");
+    setStatus(
+      existing && isAvailabilityStatusAllowed(availabilityMode, existing.status)
+        ? existing.status
+        : defaultAvailabilityStatus(availabilityMode),
+    );
     setSelectedInstruments(
       existing?.instruments?.length
         ? existing.instruments
@@ -53,7 +65,7 @@ export function AvailabilityDayModal({
         : []
     );
     setReason(existing?.reason ?? "");
-  }, [open, existing, myInstruments]);
+  }, [open, existing, myInstruments, availabilityMode]);
 
   if (!date) return null;
 
@@ -69,12 +81,15 @@ export function AvailabilityDayModal({
   const handleSave = async () => {
     if (!teamMemberId) return;
     setSaving(true);
+    const statusToSave = isAvailabilityStatusAllowed(availabilityMode, status)
+      ? status
+      : defaultAvailabilityStatus(availabilityMode);
     const payload = {
       team_member_id: teamMemberId,
       available_date: dateStr,
-      status,
-      instruments: status === "available" ? selectedInstruments : [],
-      reason: status === "unavailable" ? reason.trim() || null : null,
+      status: statusToSave,
+      instruments: statusToSave === "available" ? selectedInstruments : [],
+      reason: statusToSave === "unavailable" ? reason.trim() || null : null,
     };
     const { error } = await supabase
       .from("member_availability")
@@ -85,7 +100,7 @@ export function AvailabilityDayModal({
       return;
     }
     toast({
-      title: status === "available" ? "Disponibilidade confirmada!" : "Indisponibilidade registrada",
+      title: statusToSave === "available" ? "Disponibilidade confirmada!" : "Indisponibilidade registrada",
       description: format(date, "dd 'de' MMMM", { locale: ptBR }),
     });
     onSaved();
@@ -117,32 +132,67 @@ export function AvailabilityDayModal({
           <DialogTitle className="capitalize">
             {format(date, "EEEE, dd 'de' MMMM", { locale: ptBR })}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Informe sua disponibilidade para esta data.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5 pt-1">
           {/* Status toggle */}
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => setStatus("available")}
-              className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-medium transition-colors ${
-                status === "available"
-                  ? "bg-green-500/15 border-green-500/50 text-green-600 dark:text-green-400"
-                  : "bg-accent/40 border-border text-muted-foreground hover:border-green-500/40"
+          {availabilityMode === "both" ? (
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Situação no dia">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={status === "available"}
+                onClick={() => setStatus("available")}
+                className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-medium transition-colors ${
+                  status === "available"
+                    ? "bg-green-500/15 border-green-500/50 text-green-600 dark:text-green-400"
+                    : "bg-accent/40 border-border text-muted-foreground hover:border-green-500/40"
+                }`}
+              >
+                <CheckCircle2 className="h-4 w-4" /> Disponível
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={status === "unavailable"}
+                onClick={() => setStatus("unavailable")}
+                className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-medium transition-colors ${
+                  status === "unavailable"
+                    ? "bg-red-500/15 border-red-500/50 text-red-600 dark:text-red-400"
+                    : "bg-accent/40 border-border text-muted-foreground hover:border-red-500/40"
+                }`}
+              >
+                <XCircle className="h-4 w-4" /> Indisponível
+              </button>
+            </div>
+          ) : (
+            <div
+              className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${
+                availabilityMode === "available_only"
+                  ? "border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-400"
+                  : "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-400"
               }`}
             >
-              <CheckCircle2 className="h-4 w-4" /> Disponível
-            </button>
-            <button
-              onClick={() => setStatus("unavailable")}
-              className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-medium transition-colors ${
-                status === "unavailable"
-                  ? "bg-red-500/15 border-red-500/50 text-red-600 dark:text-red-400"
-                  : "bg-accent/40 border-border text-muted-foreground hover:border-red-500/40"
-              }`}
-            >
-              <XCircle className="h-4 w-4" /> Indisponível
-            </button>
-          </div>
+              {availabilityMode === "available_only" ? (
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+              ) : (
+                <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              )}
+              <div>
+                <p className="text-sm font-medium">
+                  {availabilityMode === "available_only" ? "Disponível" : "Indisponível"}
+                </p>
+                <p className="mt-0.5 text-xs opacity-80">
+                  {availabilityMode === "available_only"
+                    ? "Confirme este dia somente se você puder servir."
+                    : "Registre este dia somente se você não puder servir."}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Available → instrument selection */}
           {status === "available" && (
@@ -155,12 +205,12 @@ export function AvailabilityDayModal({
                   <div className="flex flex-wrap gap-1.5">
                     {myInstruments.map((inst) => {
                       const active = selectedInstruments.includes(inst);
-                      const Icon = INSTRUMENT_ICONS[inst];
+                      const Icon = instrumentIcon(inst);
                       return (
                         <button
                           key={inst}
                           onClick={() => toggleInstrument(inst)}
-                          className={`text-xs px-2.5 py-1.5 rounded-full border transition-colors flex items-center gap-1.5 ${
+                          className={`text-xs px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-full border transition-colors flex items-center gap-1.5 ${
                             active
                               ? "bg-primary text-primary-foreground border-primary"
                               : "bg-accent/50 text-muted-foreground border-border hover:border-primary/50"
@@ -201,11 +251,11 @@ export function AvailabilityDayModal({
           )}
 
           {/* Actions */}
-          <div className="flex items-center justify-between gap-2 pt-1">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1">
             {existing ? (
               <Button
                 variant="ghost"
-                className="rounded-xl gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                className="rounded-xl gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10 w-full sm:w-auto"
                 onClick={handleRemove}
                 disabled={removing || saving}
               >
@@ -213,13 +263,13 @@ export function AvailabilityDayModal({
                 Remover
               </Button>
             ) : (
-              <span />
+              <span className="hidden sm:block" />
             )}
             <div className="flex gap-2">
-              <Button variant="outline" className="rounded-xl" onClick={() => onOpenChange(false)}>
+              <Button variant="outline" className="rounded-xl flex-1 sm:flex-none" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
-              <Button className="rounded-xl gap-1.5" onClick={handleSave} disabled={saving || removing}>
+              <Button className="rounded-xl gap-1.5 flex-1 sm:flex-none" onClick={handleSave} disabled={saving || removing}>
                 {saving && <Loader2 className="h-4 w-4 animate-spin" />}
                 Confirmar
               </Button>

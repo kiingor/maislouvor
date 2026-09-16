@@ -22,10 +22,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabase = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    // Signed URLs are built with the internal SUPABASE_URL host (e.g. http://kong:8000),
+    // which the browser can't reach — rewrite them to the public host.
+    const publicBase = (Deno.env.get("SUPABASE_PUBLIC_URL") ?? supabaseUrl).replace(/\/$/, "");
 
     // Fetch repertorio
     const { data: repertorio, error: repError } = await supabase
@@ -64,14 +65,14 @@ Deno.serve(async (req) => {
           const { data } = await supabase.storage
             .from("covers")
             .createSignedUrl(song.cover_path, 3600);
-          cover_url = data?.signedUrl ?? null;
+          cover_url = data?.signedUrl ? data.signedUrl.replace(supabaseUrl, publicBase) : null;
         }
 
         if (song.audio_path) {
           const { data } = await supabase.storage
             .from("audio")
             .createSignedUrl(song.audio_path, 3600);
-          audio_url = data?.signedUrl ?? null;
+          audio_url = data?.signedUrl ? data.signedUrl.replace(supabaseUrl, publicBase) : null;
         }
 
         return {

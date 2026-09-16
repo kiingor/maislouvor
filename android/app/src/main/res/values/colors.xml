@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Cor do ícone das notificações push (preto). -->
+    <color name="notif_color">#000000</color>
+
+    <!-- Referenciadas por styles.xml (AppTheme). Sem elas o aapt2 falha no link.
+         Espelham a identidade monocromática do app: a cor primária do index.css
+         (HSL 48 10% 10%) e o theme_color #000000 do manifest do PWA. -->
+    <color name="colorPrimary">#1C1A17</color>
+    <color name="colorPrimaryDark">#000000</color>
+    <color name="colorAccent">#1C1A17</color>
+</resources>

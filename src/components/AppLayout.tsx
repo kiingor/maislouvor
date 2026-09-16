@@ -1,29 +1,42 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Outlet } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { syncPushSubscription, registerNativePush } from "@/lib/push";
 import { useTeam } from "@/contexts/TeamContext";
-import { Home, Music, LogOut, Menu, X, User, CalendarDays, CalendarCheck, MessageCircle, Megaphone } from "lucide-react";
+import { Home, Music, LogOut, Menu, X, User, CalendarDays, CalendarCheck, MessageCircle, Megaphone, Sparkles, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NavLink } from "@/components/NavLink";
 import { TeamProvider } from "@/contexts/TeamContext";
 import { NotificationBell } from "@/components/NotificationBell";
 import { BottomNav } from "@/components/BottomNav";
 import { SendNotificationModal } from "@/components/SendNotificationModal";
+import { TeamSwitcher } from "@/components/TeamSwitcher";
+import { BrandMark } from "@/components/BrandMark";
 
 function AppLayoutInner() {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifModalOpen, setNotifModalOpen] = useState(false);
-  const { isAdmin, canEdit } = useTeam();
+  const { can } = useTeam();
+
+  // Push: web (sync da assinatura) + nativo Android (registro FCM).
+  useEffect(() => {
+    syncPushSubscription();
+    registerNativePush((link) => navigate(link));
+  }, [navigate]);
 
   const navItems = [
     { title: "Início", href: "/app/home", icon: Home },
-    { title: "Repertório", href: "/app/repertorios", icon: Music },
-    { title: "Cultos", href: "/app/cultos", icon: CalendarDays },
-    { title: "Chat", href: "/app/chat", icon: MessageCircle },
+    { title: "Repertório", href: "/app/repertorios", icon: Music, resource: "repertorios" as const },
+    { title: "Cultos", href: "/app/cultos", icon: CalendarDays, resource: "cultos" as const },
+    { title: "Chat", href: "/app/chat", icon: MessageCircle, resource: "chat" as const },
     { title: "Disponibilidades", href: "/app/disponibilidades", icon: CalendarCheck },
+    // Relatórios são de gestão da equipe → só para quem edita cultos.
+    { title: "Relatórios", href: "/app/relatorios", icon: BarChart3, resource: "cultos" as const, action: "editar" as const },
+    // OCULTO até a gamificação ser liberada:
+    // { title: "Jornada", href: "/app/gamificacao", icon: Sparkles },
     { title: "Usuário", href: "/app/settings", icon: User },
-  ];
+  ].filter((item) => !item.resource || can(item.resource, (item as any).action ?? "ver"));
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -56,7 +69,7 @@ function AppLayoutInner() {
           <div className="flex items-center justify-between p-5 pb-4">
             <div className="flex items-center gap-2.5">
               <div className="h-9 w-9 rounded-md bg-foreground flex items-center justify-center shadow-lg">
-                <span className="text-background text-xs font-bold">+L</span>
+                <BrandMark className="h-5 w-5 text-background" />
               </div>
               <div>
                 <span className="text-lg font-semibold tracking-tight leading-none">+Louvor</span>
@@ -69,6 +82,10 @@ function AppLayoutInner() {
             >
               <X className="h-5 w-5" />
             </button>
+          </div>
+
+          <div className="px-3 pb-3">
+            <TeamSwitcher />
           </div>
 
           <nav className="flex-1 px-3 space-y-0.5">
@@ -87,7 +104,7 @@ function AppLayoutInner() {
           </nav>
 
           <div className="p-3 border-t border-white/[0.08] space-y-0.5">
-            {canEdit && (
+            {can("avisos", "editar") && (
               <button
                 onClick={() => { setNotifModalOpen(true); setSidebarOpen(false); }}
                 className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-all duration-200"
@@ -111,20 +128,21 @@ function AppLayoutInner() {
       </aside>
 
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="shrink-0 z-30 flex items-center px-4 lg:hidden pt-[env(safe-area-inset-top)] min-h-[calc(3rem+env(safe-area-inset-top))]">
+        <header className="shrink-0 z-30 flex items-center gap-2 px-4 lg:hidden pt-[max(env(safe-area-inset-top),1rem)] pb-1 min-h-[calc(3.25rem+env(safe-area-inset-top))]">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="p-2 rounded-xl hover:bg-accent transition-colors"
+            className="p-2 rounded-xl hover:bg-accent transition-colors shrink-0"
           >
             <Menu className="h-5 w-5" />
           </button>
+          <TeamSwitcher compact />
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 lg:px-8 lg:pt-6 lg:pb-8 pb-24">
+        <main className="flex-1 overflow-y-auto p-4 lg:px-8 lg:pt-6 lg:pb-8 pb-[calc(4rem+env(safe-area-inset-bottom))]">
           <Outlet />
         </main>
 
-        <BottomNav />
+        <BottomNav hidden={sidebarOpen} />
         <SendNotificationModal open={notifModalOpen} onOpenChange={setNotifModalOpen} />
       </div>
     </div>

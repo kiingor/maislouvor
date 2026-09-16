@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,6 +13,8 @@ interface Props {
   onOpenChange: (o: boolean) => void;
 }
 
+const ALL_TEAMS = "__all__";
+
 export function InviteMemberModal({ open, onOpenChange }: Props) {
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
@@ -20,12 +22,20 @@ export function InviteMemberModal({ open, onOpenChange }: Props) {
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<string>("viewer");
   const [loading, setLoading] = useState(false);
-  const { currentTeam } = useTeam();
+  const { currentTeam, teams } = useTeam();
   const { toast } = useToast();
+
+  // Only teams where the current user is a leader can receive new members
+  const adminTeams = teams.filter((t) => t.role === "admin");
+  const [teamId, setTeamId] = useState<string>(currentTeam?.id ?? "");
+  useEffect(() => {
+    if (open) setTeamId(currentTeam?.id ?? adminTeams[0]?.id ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, currentTeam?.id]);
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentTeam || !email.trim() || !password.trim() || !fullName.trim()) return;
+    if (!teamId || !email.trim() || !password.trim() || !fullName.trim()) return;
 
     if (password.length < 6) {
       toast({ title: "Senha muito curta", description: "A senha deve ter pelo menos 6 caracteres.", variant: "destructive" });
@@ -34,10 +44,11 @@ export function InviteMemberModal({ open, onOpenChange }: Props) {
 
     setLoading(true);
 
+    const team_ids = teamId === ALL_TEAMS ? adminTeams.map((t) => t.id) : [teamId];
     const { data, error } = await supabase.functions.invoke("create-invite", {
       body: {
         email: email.trim().toLowerCase(),
-        team_id: currentTeam.id,
+        team_ids,
         role,
         password: password,
         full_name: fullName.trim(),
@@ -50,11 +61,13 @@ export function InviteMemberModal({ open, onOpenChange }: Props) {
       toast({ title: "Já é membro", description: "Este usuário já faz parte da equipe." });
       handleClose(false);
     } else {
-      if (data?.is_new_user) {
-        toast({ title: "Membro adicionado!", description: "Conta criada com a senha definida. O usuário pode fazer login agora." });
-      } else {
-        toast({ title: "Membro adicionado!", description: "O usuário já tinha conta e foi adicionado à equipe." });
-      }
+      const where = teamId === ALL_TEAMS ? "todas as suas equipes" : "a equipe";
+      toast({
+        title: "Membro adicionado!",
+        description: data?.is_new_user
+          ? `Conta criada. O membro foi adicionado a ${where} e já pode entrar.`
+          : `O usuário já tinha conta e foi adicionado a ${where}.`,
+      });
       handleClose(false);
     }
     setLoading(false);
@@ -79,6 +92,27 @@ export function InviteMemberModal({ open, onOpenChange }: Props) {
         </DialogHeader>
 
         <form onSubmit={handleInvite} className="space-y-4 mt-2">
+          {adminTeams.length > 1 && (
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Equipe</label>
+              <Select value={teamId} onValueChange={setTeamId}>
+                <SelectTrigger className="h-12 rounded-xl glass-input border-0">
+                  <SelectValue placeholder="Selecione a equipe" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_TEAMS}>Todas as equipes</SelectItem>
+                  {adminTeams.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                {teamId === ALL_TEAMS
+                  ? "O membro participará e verá todas as suas equipes."
+                  : "O membro participará e verá apenas esta equipe."}
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Nome completo</label>
             <GlassInput type="text" placeholder="Nome do membro" value={fullName} onChange={(e) => setFullName(e.target.value)} required />

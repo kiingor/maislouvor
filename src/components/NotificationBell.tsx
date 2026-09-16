@@ -127,7 +127,7 @@ export function NotificationBell({ variant = "icon" }: { variant?: "icon" | "sid
           </button>
         )}
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0 rounded-2xl border-border/50" align="end" sideOffset={8}>
+      <PopoverContent className="w-80 max-w-[calc(100vw-2rem)] p-0 rounded-2xl border-border/50" align="end" sideOffset={8}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
           <h3 className="text-sm font-semibold">Notificações</h3>
           <div className="flex gap-1">

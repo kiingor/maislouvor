@@ -6,6 +6,89 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const BROWSER_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;|&#x27;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => String.fromCodePoint(parseInt(n, 16)));
+}
+
+// Strip HTML tags from a fragment, keeping its text (and its inner spacing/newlines).
+function stripTags(html: string): string {
+  return decodeEntities(
+    html
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+  );
+}
+
+function matchFirst(html: string, re: RegExp): string | null {
+  const m = html.match(re);
+  return m ? m[1] : null;
+}
+
+// Deterministic parse of a Cifra Club page. Returns null if the cifra block is absent.
+function parseCifraClub(html: string, url: string): {
+  title: string;
+  artist: string;
+  key_original: string;
+  cifra_text: string;
+} | null {
+  const preRaw = matchFirst(html, /<pre[^>]*>([\s\S]*?)<\/pre>/i);
+  if (!preRaw) return null;
+
+  // Cifra body: keep chords (<b>) and spacing, drop all tags, normalise blank lines.
+  let cifra = stripTags(preRaw)
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  // og:title is "Song - ARTIST - Cifra Club" — handy fallback.
+  const ogTitle = matchFirst(html, /<meta[^>]+property="og:title"[^>]+content="([^"]*)"/i) || "";
+  const ogParts = ogTitle.split(" - ").map((p) => p.trim());
+
+  let title =
+    (matchFirst(html, /<h1[^>]*class="[^"]*\bt1\b[^"]*"[^>]*>([\s\S]*?)<\/h1>/i) &&
+      stripTags(matchFirst(html, /<h1[^>]*class="[^"]*\bt1\b[^"]*"[^>]*>([\s\S]*?)<\/h1>/i)!)) ||
+    ogParts[0] ||
+    "";
+  title = title.trim();
+
+  let artist =
+    (matchFirst(html, /<h2[^>]*class="[^"]*\bt3\b[^"]*"[^>]*>([\s\S]*?)<\/h2>/i) &&
+      stripTags(matchFirst(html, /<h2[^>]*class="[^"]*\bt3\b[^"]*"[^>]*>([\s\S]*?)<\/h2>/i)!)) ||
+    ogParts[1] ||
+    "";
+  artist = artist.trim();
+
+  // Key: <span id="cifra_tom">tom: <a ...>Am</a></span>  (fallback: plain "tom: G")
+  let key_original =
+    matchFirst(html, /<span[^>]*id="cifra_tom"[^>]*>[\s\S]*?<a[^>]*>([\s\S]*?)<\/a>/i) ||
+    matchFirst(html, /<span[^>]*id="cifra_tom"[^>]*>\s*tom:\s*([A-G][#b]?m?)/i) ||
+    "";
+  key_original = stripTags(key_original).trim();
+
+  // Last-resort title/artist from the URL slug.
+  if (!title || !artist) {
+    const slug = url.replace(/https?:\/\/[^/]+\//, "").replace(/\/+$/, "").split("/");
+    const human = (s: string) =>
+      s.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    if (!artist && slug[0]) artist = human(slug[0]);
+    if (!title && slug[1]) title = human(slug[1]);
+  }
+
+  return { title, artist, key_original, cifra_text: cifra };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -18,7 +101,6 @@ serve(async (req) => {
       });
     }
 
-    // Validate Cifra Club domain
     let parsed: URL;
     try {
       parsed = new URL(url);
@@ -36,12 +118,17 @@ serve(async (req) => {
       });
     }
 
-    // Fetch the page HTML
+    // Fetch the page HTML (browser UA — some CDNs reject unknown agents).
     const pageRes = await fetch(url, {
-      headers: { "User-Agent": "+Louvor/1.0" },
+      headers: {
+        "User-Agent": BROWSER_UA,
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "pt-BR,pt;q=0.9",
+      },
+      redirect: "follow",
     });
     if (!pageRes.ok) {
-      return new Response(JSON.stringify({ error: "Não foi possível acessar a página" }), {
+      return new Response(JSON.stringify({ error: `Não foi possível acessar a página (HTTP ${pageRes.status})` }), {
         status: 502,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -49,91 +136,76 @@ serve(async (req) => {
 
     const html = await pageRes.text();
 
-    // Truncate HTML to avoid token limits - keep first ~60k chars
-    const truncatedHtml = html.substring(0, 60000);
+    // 1) Fast path: parse the HTML directly (no AI, no timeout risk).
+    const parsedSong = parseCifraClub(html, url);
+    if (parsedSong && parsedSong.cifra_text && parsedSong.title) {
+      return new Response(JSON.stringify({ success: true, data: parsedSong }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    // 2) Fallback: AI extraction (guarded with a timeout so it can never hang the worker).
+    const AI_KEY = Deno.env.get("AI_API_KEY") || Deno.env.get("LOVABLE_API_KEY");
+    if (!AI_KEY) {
+      return new Response(JSON.stringify({ error: "Não foi possível extrair a cifra desta página." }), {
+        status: 422,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          {
-            role: "system",
-            content: `You are a music data extractor. Given HTML from Cifra Club, extract:
-- title: the song title
-- artist: the artist name
-- key_original: the original key/tom (e.g. "C", "Am", "G#m"). Look for "tom:" or similar indicators.
-- cifra_text: the full cifra (chords + lyrics) preserving chord positioning above lyrics for monospace display. Keep blank lines between sections. Remove any HTML tags. Include section headers like [Intro], [Verse], [Chorus] etc.
-
-Return ONLY valid JSON with these 4 fields. No markdown, no extra text.`,
-          },
-          {
-            role: "user",
-            content: truncatedHtml,
-          },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "extract_song_data",
-              description: "Extract song data from Cifra Club HTML",
-              parameters: {
-                type: "object",
-                properties: {
-                  title: { type: "string", description: "Song title" },
-                  artist: { type: "string", description: "Artist name" },
-                  key_original: { type: "string", description: "Original key/tom" },
-                  cifra_text: { type: "string", description: "Full cifra text with chords above lyrics" },
-                },
-                required: ["title", "artist", "cifra_text"],
-                additionalProperties: false,
-              },
+    const truncatedHtml = html.substring(0, 45000);
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 25000);
+    let aiRes: Response;
+    try {
+      aiRes = await fetch((Deno.env.get("AI_BASE_URL") || "https://iarouter.softcomia.com/v1") + "/chat/completions", {
+        method: "POST",
+        signal: ac.signal,
+        headers: { Authorization: `Bearer ${AI_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: Deno.env.get("AI_MODEL") || "cerebras/gpt-oss-120b",
+          stream: false,
+          messages: [
+            {
+              role: "system",
+              content:
+                'Extract from Cifra Club HTML and return ONLY JSON: {"title","artist","key_original","cifra_text"}. cifra_text must preserve chord positioning above lyrics for monospace, keep [section] headers and blank lines, no HTML.',
             },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "extract_song_data" } },
-      }),
-    });
+            { role: "user", content: truncatedHtml },
+          ],
+        }),
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      console.error("AI fallback failed/timed out:", err instanceof Error ? err.message : err);
+      return new Response(JSON.stringify({ error: "Não foi possível extrair a cifra (tempo esgotado)." }), {
+        status: 504,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    clearTimeout(timer);
 
     if (!aiRes.ok) {
-      if (aiRes.status === 429) {
-        return new Response(JSON.stringify({ error: "Limite de requisições excedido. Tente novamente em alguns instantes." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (aiRes.status === 402) {
-        return new Response(JSON.stringify({ error: "Créditos insuficientes." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const t = await aiRes.text();
-      console.error("AI gateway error:", aiRes.status, t);
+      const t = await aiRes.text().catch(() => "");
+      console.error("AI gateway error:", aiRes.status, t.slice(0, 500));
       return new Response(JSON.stringify({ error: "Erro ao processar a cifra" }), {
-        status: 500,
+        status: 502,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const aiData = await aiRes.json();
-    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) {
+    let content: string = aiData.choices?.[0]?.message?.content ?? "";
+    content = content.replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
+    let extracted: any;
+    try {
+      extracted = JSON.parse(content);
+    } catch {
       return new Response(JSON.stringify({ error: "Não foi possível extrair os dados da cifra" }), {
-        status: 500,
+        status: 422,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const extracted = JSON.parse(toolCall.function.arguments);
 
     return new Response(JSON.stringify({ success: true, data: extracted }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

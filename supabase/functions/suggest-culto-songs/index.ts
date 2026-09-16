@@ -18,7 +18,7 @@ serve(async (req) => {
       });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const LOVABLE_API_KEY = Deno.env.get("AI_API_KEY") || Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
     const songList = songs.map((s: any, i: number) =>
@@ -50,14 +50,15 @@ IMPORTANTE: Analise a LETRA de cada música abaixo e selecione APENAS as que se 
 Músicas disponíveis:
 ${songList}`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch((Deno.env.get("AI_BASE_URL") || "https://iarouter.softcomia.com/v1") + "/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: Deno.env.get("AI_MODEL") || "cerebras/gpt-oss-120b",
+        stream: false,
         temperature: 0.9,
         messages: [
           { role: "system", content: systemPrompt },

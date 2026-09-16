@@ -12,17 +12,45 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import {
-  Music, TrendingUp, EyeOff, AlertTriangle, ChevronDown, ChevronUp,
+  Music, TrendingUp, EyeOff, AlertTriangle, ChevronDown, ChevronUp, Wand2, Loader2, Pencil,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { format, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import { detectKeyFromUrl } from "@/lib/detectKey";
 
 export default function RepertorioDashboard() {
   const { currentTeam } = useTeam();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const qc = useQueryClient();
   const [showAllTop, setShowAllTop] = useState(false);
   const [showAllForgotten, setShowAllForgotten] = useState(false);
+  const [detectingId, setDetectingId] = useState<string | null>(null);
+
+  const handleDetectKey = async (song: { id: string; audio_path?: string | null }) => {
+    if (!song.audio_path || detectingId) return;
+    setDetectingId(song.id);
+    try {
+      const { data } = await supabase.storage.from("audio").createSignedUrl(song.audio_path, 3600);
+      if (!data?.signedUrl) throw new Error("Áudio indisponível");
+      const key = await detectKeyFromUrl(data.signedUrl);
+      if (!key) throw new Error("Não foi possível detectar o tom");
+      const { error } = await supabase
+        .from("songs")
+        .update({ key_original: key.name, key_current: key.name } as any)
+        .eq("id", song.id);
+      if (error) throw error;
+      toast({ title: "Tom detectado", description: `${key.label} aplicado.` });
+      qc.invalidateQueries({ queryKey: ["dashboard-songs", currentTeam?.id] });
+    } catch (e: any) {
+      toast({ title: "Falha ao detectar tom", description: e?.message, variant: "destructive" });
+    } finally {
+      setDetectingId(null);
+    }
+  };
 
   // Fetch all songs
   const { data: songs = [], isLoading: loadingSongs } = useQuery({
@@ -31,7 +59,7 @@ export default function RepertorioDashboard() {
       if (!currentTeam) return [];
       const { data } = await supabase
         .from("songs")
-        .select("id, title, artist, key_current, theme, audio_path, cifra_text, tags")
+        .select("id, title, artist, key_current, theme, audio_path, cifra_text, lyrics_text, tags")
         .eq("team_id", currentTeam.id);
       return data ?? [];
     },
@@ -157,7 +185,7 @@ export default function RepertorioDashboard() {
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <GlassCard className="p-5">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center">
@@ -210,8 +238,8 @@ export default function RepertorioDashboard() {
           <h3 className="font-medium mb-4 flex items-center gap-2">
             <TrendingUp className="h-4 w-4" /> Músicas mais tocadas
           </h3>
-          <div className="overflow-auto">
-            <Table>
+          <div className="overflow-x-auto">
+            <Table className="text-xs sm:text-sm">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12">#</TableHead>
@@ -263,8 +291,8 @@ export default function RepertorioDashboard() {
           <p className="text-xs text-muted-foreground mb-3">
             Nunca tocadas ou há mais de 60 dias sem tocar
           </p>
-          <div className="overflow-auto">
-            <Table>
+          <div className="overflow-x-auto">
+            <Table className="text-xs sm:text-sm">
               <TableHeader>
                 <TableRow>
                   <TableHead>Título</TableHead>
@@ -380,31 +408,58 @@ export default function RepertorioDashboard() {
             <AlertTriangle className="h-4 w-4" /> Cadastro incompleto
           </h3>
           <p className="text-xs text-muted-foreground mb-3">
-            Músicas com dados faltando — clique para completar
+            Músicas com dados faltando — use as ações para completar
           </p>
           <div className="space-y-2">
-            {metrics.incomplete.map((s) => {
+            {metrics.incomplete.map((s: any) => {
               const missing: string[] = [];
               if (!s.key_current) missing.push("Tom");
               if (!s.theme) missing.push("Tema");
               if (!s.audio_path) missing.push("Áudio");
               if (!s.cifra_text) missing.push("Cifra");
+              if (!s.lyrics_text) missing.push("Letra");
+              const canDetectKey = !s.key_current && !!s.audio_path;
+              const needsContent = !s.cifra_text || !s.lyrics_text;
               return (
                 <div
                   key={s.id}
-                  className="flex items-center justify-between p-3 rounded-xl bg-accent/50 cursor-pointer hover:bg-accent transition-colors"
-                  onClick={() => navigate(`/app/songs/${s.id}`)}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-accent/50"
                 >
-                  <div>
-                    <p className="text-sm font-medium">{s.title}</p>
-                    <p className="text-xs text-muted-foreground">{s.artist || "Sem artista"}</p>
-                  </div>
-                  <div className="flex gap-1.5 flex-wrap justify-end">
+                  <button
+                    className="text-left min-w-0 flex-1 cursor-pointer hover:opacity-80 transition-opacity"
+                    onClick={() => navigate(`/app/songs/${s.id}`)}
+                  >
+                    <p className="text-sm font-medium truncate">{s.title}</p>
+                    <p className="text-xs text-muted-foreground truncate">{s.artist || "Sem artista"}</p>
+                  </button>
+                  <div className="flex items-center gap-1.5 flex-wrap justify-end shrink-0">
                     {missing.map((m) => (
                       <Badge key={m} variant="secondary" className="text-[10px] px-1.5 py-0">
                         {m}
                       </Badge>
                     ))}
+                    {canDetectKey && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-lg gap-1.5 h-7 text-xs"
+                        disabled={detectingId === s.id}
+                        onClick={() => handleDetectKey(s)}
+                      >
+                        {detectingId === s.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+                        Detectar tom
+                      </Button>
+                    )}
+                    {needsContent && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-lg gap-1.5 h-7 text-xs"
+                        onClick={() => navigate(`/app/songs/${s.id}`)}
+                      >
+                        <Pencil className="h-3 w-3" /> Editar
+                      </Button>
+                    )}
                   </div>
                 </div>
               );

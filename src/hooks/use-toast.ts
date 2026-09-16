@@ -3,7 +3,11 @@ import * as React from "react";
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
 
 const TOAST_LIMIT = 1;
-const TOAST_REMOVE_DELAY = 1000000;
+// How long after a toast is dismissed (open=false) before it's dropped from state.
+// Was 1_000_000ms (~16min), which made toasts effectively linger forever.
+const TOAST_REMOVE_DELAY = 1000;
+// How long a toast stays visible before auto-dismissing.
+const DEFAULT_TOAST_DURATION = 5000;
 
 type ToasterToast = ToastProps & {
   id: string;
@@ -134,7 +138,7 @@ function dispatch(action: Action) {
 
 type Toast = Omit<ToasterToast, "id">;
 
-function toast({ ...props }: Toast) {
+function toast({ duration = DEFAULT_TOAST_DURATION, ...props }: Toast) {
   const id = genId();
 
   const update = (props: ToasterToast) =>
@@ -149,12 +153,20 @@ function toast({ ...props }: Toast) {
     toast: {
       ...props,
       id,
+      duration,
       open: true,
       onOpenChange: (open) => {
         if (!open) dismiss();
       },
     },
   });
+
+  // Belt-and-suspenders auto-dismiss: Radix's own duration timer can be paused
+  // (hover/refocus) and was paired with a ~16min remove delay, so toasts looked
+  // like they never closed. This guarantees the toast goes away on its own.
+  if (duration !== Infinity) {
+    setTimeout(dismiss, duration);
+  }
 
   return {
     id: id,

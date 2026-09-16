@@ -1,21 +1,29 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { CalendarDays, Music, Home, MessageCircle, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTeam } from "@/contexts/TeamContext";
 
-const navItems = [
-  { title: "Cultos", href: "/app/cultos", icon: CalendarDays },
-  { title: "Repertório", href: "/app/repertorios", icon: Music },
+const allNavItems = [
+  { title: "Cultos", href: "/app/cultos", icon: CalendarDays, resource: "cultos" as const },
+  { title: "Repertório", href: "/app/repertorios", icon: Music, resource: "repertorios" as const },
   { title: "Início", href: "/app/home", icon: Home, center: true },
-  { title: "Chat", href: "/app/chat", icon: MessageCircle },
+  { title: "Chat", href: "/app/chat", icon: MessageCircle, resource: "chat" as const },
   { title: "Usuário", href: "/app/settings", icon: User },
 ];
 
-export function BottomNav() {
+export function BottomNav({ hidden = false }: { hidden?: boolean }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { can } = useTeam();
+  const navItems = allNavItems.filter((item) => !("resource" in item) || can((item as any).resource, "ver"));
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden">
+    <nav
+      className={cn(
+        "fixed bottom-0 left-0 right-0 z-50 lg:hidden transition-transform duration-300 ease-out",
+        hidden && "translate-y-full pointer-events-none"
+      )}
+    >
       <div className="relative flex items-end justify-around px-2 pb-2 pt-1">
         {/* Background bar */}
         <div className="absolute bottom-0 left-0 right-0 h-16 glass-sidebar rounded-t-2xl" />

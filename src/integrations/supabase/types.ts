@@ -163,7 +163,7 @@ export type Database = {
           id: string
           instruments: string[]
           reason: string | null
-          status: "available" | "unavailable"
+          status: string
           team_member_id: string
         }
         Insert: {
@@ -172,7 +172,7 @@ export type Database = {
           id?: string
           instruments?: string[]
           reason?: string | null
-          status?: "available" | "unavailable"
+          status?: string
           team_member_id: string
         }
         Update: {
@@ -181,7 +181,7 @@ export type Database = {
           id?: string
           instruments?: string[]
           reason?: string | null
-          status?: "available" | "unavailable"
+          status?: string
           team_member_id?: string
         }
         Relationships: [
@@ -676,18 +676,21 @@ export type Database = {
       }
       teams: {
         Row: {
+          availability_mode: string
           created_at: string
           id: string
           name: string
           owner_id: string
         }
         Insert: {
+          availability_mode?: string
           created_at?: string
           id?: string
           name: string
           owner_id: string
         }
         Update: {
+          availability_mode?: string
           created_at?: string
           id?: string
           name?: string

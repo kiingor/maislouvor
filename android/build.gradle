@@ -1,0 +1,28 @@
+// Top-level build file — recriado em 16/08/2026 (não veio no pacote de migração do PC).
+// Versões alinhadas ao que o projeto já declara: Gradle 8.14.3 (gradle-wrapper.properties),
+// compileSdk/targetSdk 36 e Java 21 (variables.gradle / capacitor.build.gradle).
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.13.0'
+        // Necessário porque app/google-services.json existe (push via FCM).
+        classpath 'com.google.gms:google-services:4.4.3'
+    }
+}
+
+apply from: "variables.gradle"
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.layout.buildDirectory
+}

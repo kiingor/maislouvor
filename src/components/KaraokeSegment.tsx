@@ -7,9 +7,15 @@ interface ContinuousScrollProps {
   isScrolling: boolean;
   onScrollSpeedChange: (speed: number) => void;
   fontScale: number;
+  /** Extra multiplier applied only to chord lines, independent of lyric size. Defaults to 1. */
+  chordFontScale?: number;
   isDark: boolean;
   instrument: "violao" | "guitarra" | "guitarra_worship";
   isVoz: boolean;
+  /** Capa + nome da música no topo do conteúdo (rola junto com a letra/cifra). */
+  coverUrl?: string | null;
+  title?: string | null;
+  artist?: string | null;
 }
 
 const CHORD_TOKEN = /[A-G][#b]?(?:m|M|maj|min|dim|aug|sus[24]?|add\d+|[2-9]|1[0-3]|6\/9)*(?:\/[A-G][#b]?)?/;
@@ -50,9 +56,13 @@ export function KaraokeSegment({
   isScrolling,
   onScrollSpeedChange,
   fontScale,
+  chordFontScale = 1,
   isDark,
   instrument,
   isVoz,
+  coverUrl,
+  title,
+  artist,
 }: ContinuousScrollProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -76,7 +86,7 @@ export function KaraokeSegment({
     updateMax();
     window.addEventListener("resize", updateMax);
     return () => window.removeEventListener("resize", updateMax);
-  }, [lines, fontScale]);
+  }, [lines, fontScale, chordFontScale]);
 
   // Smooth auto-scroll via translateY with subpixel precision
   useEffect(() => {
@@ -212,6 +222,35 @@ export function KaraokeSegment({
           className="flex flex-col items-center gap-0.5 min-h-[50vh] pb-[60vh] will-change-transform"
           style={{ transform: `translateY(${-offsetRef.current}px)` }}
         >
+          {/* Capa + nome — topo do conteúdo, rola junto (não é fixo) */}
+          {(coverUrl || title) && (
+            <div className="flex flex-col items-center gap-3 pb-8 mb-2">
+              {coverUrl && (
+                <img
+                  src={coverUrl}
+                  alt={title ?? ""}
+                  draggable={false}
+                  className="w-32 h-32 sm:w-40 sm:h-40 rounded-2xl object-cover shadow-lg select-none"
+                />
+              )}
+              {title && (
+                <div className="text-center">
+                  <div className="font-bold leading-tight" style={{ fontSize: `${fontScale * 1.5}rem` }}>
+                    {title}
+                  </div>
+                  {artist && (
+                    <div
+                      className={isDark ? "text-white/50" : "text-black/50"}
+                      style={{ fontSize: `${fontScale * 0.9}rem`, marginTop: "0.25rem" }}
+                    >
+                      {artist}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {lines.map((line, i) => {
             if (line.type === "empty") {
               return <div key={i} className="h-4" />;
@@ -232,9 +271,9 @@ export function KaraokeSegment({
                 <div
                   key={i}
                   data-chords={line.chords.join(",")}
-                  className="font-mono text-primary/80 w-full text-center"
+                  className="font-mono text-primary w-full text-center"
                   style={{
-                    fontSize: `${fontScale * 0.95}rem`,
+                    fontSize: `${fontScale * 0.95 * chordFontScale}rem`,
                     fontWeight: 600,
                     letterSpacing: "0.05em",
                   }}

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">+Louvor</string>
+    <string name="title_activity_main">+Louvor</string>
+    <string name="package_name">com.maislouvor.app</string>
+    <string name="custom_url_scheme">com.maislouvor.app</string>
+</resources>

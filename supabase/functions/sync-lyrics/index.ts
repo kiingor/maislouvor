@@ -147,7 +147,7 @@ serve(async (req) => {
       });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const LOVABLE_API_KEY = Deno.env.get("AI_API_KEY") || Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
     const systemPrompt = `You are a music timing expert. Given lyric/chord segments and total song duration, estimate when each segment starts.
@@ -184,14 +184,15 @@ ${segments.map((s: string, i: number) => {
 
 Return ONLY the array of ${segments.length} timestamps using the suggest_timestamps tool.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch((Deno.env.get("AI_BASE_URL") || "https://iarouter.softcomia.com/v1") + "/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "openai/gpt-5",
+        model: Deno.env.get("AI_MODEL") || "cerebras/gpt-oss-120b",
+        stream: false,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },

@@ -1,34 +1,35 @@
 project_id = "hhqzapwtuyzchismcuie"
 
+# verify_jwt = false deixa a function acessível sem nenhuma credencial.
+#
+# Em 16/08/2026 havia 11 funções assim, três delas chamando o gateway de IA pago
+# com a LOVABLE_API_KEY do dono e sem verificar quem chamava. Abaixo ficam apenas
+# as que precisam mesmo ser públicas; as demais passam a exigir JWT (o
+# supabase.functions.invoke() do front já envia o token do usuário logado).
+#
+# AVISO: aplicar isto exige redeploy das functions. Antes de subir, confirme que
+# stems-callback continua funcionando — quem chama é o container demucs-worker da
+# VPS, que está fora deste repositório.
+
+# Link de convite: pode ser aberto por quem ainda não tem sessão.
 [functions.accept-invite]
 verify_jwt = false
 
-[functions.import-cifra]
-verify_jwt = false
-
-[functions.transpose]
-verify_jwt = false
-
-[functions.sync-lyrics]
-verify_jwt = false
-
-[functions.import-moises]
-verify_jwt = false
-
-[functions.transcribe-sync]
-verify_jwt = false
-
+# Playlist compartilhada por link público — chamada por fetch direto, sem token
+# (src/pages/PublicPlaylist.tsx:117).
 [functions.public-playlist]
 verify_jwt = false
 
-[functions.create-invite]
-verify_jwt = false
-
-[functions.suggest-culto-songs]
-verify_jwt = false
-
-[functions.separate-stems]
-verify_jwt = false
-
+# Retorno do worker de stems da VPS. Chamador externo a este repositório.
 [functions.stems-callback]
 verify_jwt = false
+
+# As funções abaixo passaram a exigir JWT em 16/08/2026:
+#
+#   suggest-culto-songs, import-moises, import-cifra, create-invite,
+#   separate-stems  -> chamadas pelo front em contexto autenticado
+#   sync-lyrics, transcribe-sync, transpose -> sem nenhum chamador no código;
+#                                              estavam abertas à toa
+#
+# Se alguma delas quebrar depois do deploy, o chamador não estava enviando
+# sessão — corrija o chamador, não reabra a function.

@@ -11,9 +11,11 @@ interface AudioUploadProps {
   audioPath: string | null;
   onUpload: (path: string | null) => void;
   readOnly?: boolean;
+  /** Compact: don't render an audio player (the trimmer/mixer already play it) — just manage the file. */
+  compact?: boolean;
 }
 
-export function AudioUpload({ songId, teamId, audioPath, onUpload, readOnly }: AudioUploadProps) {
+export function AudioUpload({ songId, teamId, audioPath, onUpload, readOnly, compact }: AudioUploadProps) {
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -58,7 +60,29 @@ export function AudioUpload({ songId, teamId, audioPath, onUpload, readOnly }: A
 
   return (
     <div className="space-y-2">
-      {signedUrl ? (
+      {signedUrl && compact ? (
+        <div className="flex items-center gap-2 rounded-xl glass-subtle px-3 py-2">
+          <Volume2 className="h-4 w-4 text-primary shrink-0" />
+          <span className="text-xs text-muted-foreground flex-1 truncate">Áudio enviado</span>
+          {!readOnly && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 rounded-lg gap-1 text-xs"
+                onClick={() => inputRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                Trocar
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg" onClick={handleRemove}>
+                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+              </Button>
+            </>
+          )}
+        </div>
+      ) : signedUrl ? (
         <div className="flex items-center gap-2">
           <Volume2 className="h-4 w-4 text-primary shrink-0" />
           <audio controls src={signedUrl} className="flex-1 h-8" />

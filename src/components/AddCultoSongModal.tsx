@@ -155,7 +155,9 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
 
       const results: AISuggestion[] = data.suggestions || [];
       setSuggestions(results);
-      setSelected(new Set(results.map((s) => s.songId)));
+      // Pré-seleciona só as que ainda não estão no culto (evita duplicar sem querer).
+      // As já adicionadas continuam marcáveis manualmente para repetir na sequência.
+      setSelected(new Set(results.filter((s) => !existingSongs.includes(s.songId)).map((s) => s.songId)));
       if (results.length === 0) {
         toast({ title: "Nenhuma música encontrada", description: "Não há músicas no repertório que se encaixem nesse tema.", variant: "destructive" });
       }
@@ -177,9 +179,9 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
   };
 
   const addSelectedSongs = async () => {
-    const toAdd = suggestions.filter((s) => selected.has(s.songId) && !existingSongs.includes(s.songId));
+    const toAdd = suggestions.filter((s) => selected.has(s.songId));
     if (toAdd.length === 0) {
-      toast({ title: "Nenhuma música nova para adicionar" });
+      toast({ title: "Nenhuma música selecionada" });
       return;
     }
 
@@ -224,7 +226,7 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetAI(); }}>
-      <DialogContent className="glass sm:rounded-2xl border-0 max-h-[80vh] flex flex-col">
+      <DialogContent className="glass sm:rounded-2xl border-0 max-w-sm sm:max-w-md max-h-[calc(100vh-120px)] flex flex-col">
         <DialogHeader>
           <DialogTitle>
             {showAI ? (
@@ -293,10 +295,10 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
                         {((song.tags && song.tags.length > 0) || song.theme) && (
                           <div className="flex flex-wrap gap-1 mt-0.5">
                             {song.theme && (
-                              <span className="text-[9px] font-medium bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">{song.theme}</span>
+                              <span className="text-[9px] font-medium bg-primary/10 text-primary px-1.5 py-0.5 rounded-full truncate max-w-full">{song.theme}</span>
                             )}
                             {song.tags?.map((tag: string, i: number) => (
-                              <span key={i} className="text-[9px] font-medium bg-accent text-muted-foreground px-1.5 py-0.5 rounded-full">{tag}</span>
+                              <span key={i} className="text-[9px] font-medium bg-accent text-muted-foreground px-1.5 py-0.5 rounded-full truncate max-w-full">{tag}</span>
                             ))}
                           </div>
                         )}
@@ -304,11 +306,15 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
                       {song.key_current && (
                         <span className="text-[10px] font-bold bg-accent px-1.5 py-0.5 rounded">{song.key_current}</span>
                       )}
-                      {isAdded ? (
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Check className="h-3.5 w-3.5 text-green-500" /> Adicionada
-                        </span>
-                      ) : (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isAdded && (
+                          <span
+                            className="text-[10px] text-muted-foreground flex items-center gap-0.5"
+                            title="Já está no roteiro — adicione de novo para repetir na sequência"
+                          >
+                            <Check className="h-3 w-3 text-green-500" /> no culto
+                          </span>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
@@ -316,9 +322,15 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
                           disabled={adding === song.id}
                           onClick={() => addSong(song.id)}
                         >
-                          {adding === song.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Adicionar"}
+                          {adding === song.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : isAdded ? (
+                            "Repetir"
+                          ) : (
+                            "Adicionar"
+                          )}
                         </Button>
-                      )}
+                      </div>
                     </div>
                   );
                 })
@@ -401,9 +413,7 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
                     return (
                       <div
                         key={s.songId}
-                        className={`flex items-start gap-3 p-3 rounded-xl glass-subtle transition-all ${
-                          isAdded ? "opacity-50" : ""
-                        }`}
+                        className="flex items-start gap-3 p-3 rounded-xl glass-subtle transition-all"
                       >
                         <div className="flex items-center gap-2 pt-0.5">
                           <span className="text-xs font-bold text-muted-foreground w-4 text-right">
@@ -412,7 +422,6 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
                           <Checkbox
                             checked={selected.has(s.songId)}
                             onCheckedChange={() => toggleSelect(s.songId)}
-                            disabled={isAdded}
                           />
                         </div>
                         <div className="flex-1 min-w-0">
@@ -431,7 +440,7 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
                           </div>
                           {isAdded && (
                             <span className="text-[10px] text-muted-foreground flex items-center gap-1 mt-1">
-                              <Check className="h-3 w-3 text-green-500" /> Já adicionada
+                              <Check className="h-3 w-3 text-green-500" /> Já no culto — marque para repetir
                             </span>
                           )}
                         </div>

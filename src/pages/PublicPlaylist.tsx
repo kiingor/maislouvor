@@ -29,6 +29,7 @@ import {
   X,
   Sun,
   Moon,
+  ListMusic,
 } from "lucide-react";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 
@@ -405,7 +406,7 @@ export default function PublicPlaylist() {
   return (
     <div
       ref={containerRef}
-      className="h-screen flex flex-col bg-background text-foreground overflow-hidden relative"
+      className="h-[100dvh] flex flex-col bg-background text-foreground overflow-hidden relative"
     >
       {/* Radial gradient background */}
       <div
@@ -446,7 +447,7 @@ export default function PublicPlaylist() {
       {/* Main content - centered cover/video */}
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center overflow-hidden px-6">
         {isVideoMode && videoId ? (
-          <div className="relative w-full" style={{ maxWidth: 640 }}>
+          <div className="relative w-full" style={{ maxWidth: '100%' }}>
             <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
               <div
                 id="yt-player"
@@ -489,7 +490,7 @@ export default function PublicPlaylist() {
       </div>
 
       {/* Transport bar - Spotify style */}
-      <footer className="relative z-10 px-4 pb-4 pt-2 md:px-8">
+      <footer className="relative z-10 px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-8">
         <div className="max-w-2xl mx-auto space-y-3">
           {/* Row 1: Action buttons */}
           <div className="flex items-center justify-between">
@@ -507,6 +508,18 @@ export default function PublicPlaylist() {
               <span className="text-xs text-muted-foreground">
                 {currentIndex + 1} / {data.songs.length}
               </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  setSearchQuery("");
+                  setShowSearchDialog(true);
+                }}
+                title="Lista de músicas"
+              >
+                <ListMusic className="h-4 w-4" />
+              </Button>
             </div>
 
             {/* Right: action buttons */}
@@ -641,9 +654,9 @@ export default function PublicPlaylist() {
 
       {/* Search dialog */}
       <Dialog open={showSearchDialog} onOpenChange={setShowSearchDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-w-sm sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Buscar música</DialogTitle>
+            <DialogTitle>Músicas</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="relative">
@@ -703,7 +716,7 @@ export default function PublicPlaylist() {
 
       {/* Lyrics dialog */}
       <Dialog open={showLyricsDialog} onOpenChange={setShowLyricsDialog}>
-        <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
+        <DialogContent className="max-w-sm sm:max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Type className="h-4 w-4" />
@@ -726,7 +739,7 @@ export default function PublicPlaylist() {
 
       {/* PWA Install Banner */}
       {canInstall && !installDismissed && (
-        <div className="fixed bottom-24 left-4 right-4 z-50 animate-in slide-in-from-bottom-4 duration-300">
+        <div className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] left-2 right-2 sm:left-4 sm:right-4 z-50 animate-in slide-in-from-bottom-4 duration-300">
           <div className="rounded-2xl bg-card/90 backdrop-blur-lg p-4 flex items-center gap-3 max-w-sm mx-auto shadow-lg border border-border/50">
             <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center shrink-0">
               <Music className="h-5 w-5 text-primary-foreground" />

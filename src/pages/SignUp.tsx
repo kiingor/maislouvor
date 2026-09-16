@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { GlassCard } from "@/components/GlassCard";
 import { GlassInput } from "@/components/GlassInput";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { InstallPWABanner } from "@/components/InstallPWABanner";
+import { BrandMark } from "@/components/BrandMark";
+import { GoogleButton } from "@/components/GoogleButton";
 import { Music, ListMusic, Users, Mic2, MonitorSmartphone, Layers } from "lucide-react";
 
 const features = [
@@ -24,12 +26,13 @@ export default function SignUp() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -44,9 +47,18 @@ export default function SignUp() {
         description: error.message,
         variant: "destructive",
       });
-    } else {
-      setSuccess(true);
+      setLoading(false);
+      return;
     }
+
+    // Email confirmation is disabled — sign-up returns a session, so go straight in.
+    if (data.session) {
+      navigate("/app/home", { replace: true });
+      return;
+    }
+
+    // Fallback: confirmation required (e.g. SMTP enabled later)
+    setSuccess(true);
     setLoading(false);
   };
 
@@ -60,7 +72,7 @@ export default function SignUp() {
         </div>
         <div className="relative z-10 w-full max-w-sm animate-in-up text-center px-6">
           <div className="h-14 w-14 rounded-2xl bg-foreground flex items-center justify-center mx-auto mb-4">
-            <span className="text-background text-xl font-bold">+L</span>
+            <BrandMark className="h-8 w-8 text-background" />
           </div>
           <h2 className="text-xl font-semibold mb-2">Verifique seu email</h2>
           <p className="text-muted-foreground text-sm mb-6">
@@ -89,7 +101,7 @@ export default function SignUp() {
           <div className="animate-in-up">
             <div className="flex items-center gap-3 mb-6 lg:mb-10">
               <div className="h-10 w-10 lg:h-12 lg:w-12 rounded-2xl bg-foreground flex items-center justify-center hover-lift shadow-lg">
-                <span className="text-background text-sm lg:text-base font-bold">+L</span>
+                <BrandMark className="h-6 w-6 lg:h-7 lg:w-7 text-background" />
               </div>
               <div>
                 <h1 className="text-xl lg:text-2xl font-semibold tracking-tight">+Louvor</h1>
@@ -127,7 +139,7 @@ export default function SignUp() {
         </div>
 
         {/* Right — Sign Up form */}
-        <div className="w-full max-w-md lg:min-w-[420px]">
+        <div className="w-full max-w-sm lg:max-w-md lg:min-w-[420px]">
           <div className="animate-in-up" style={{ animationDelay: "150ms" }}>
             <GlassCard className="p-6 lg:p-10 relative overflow-hidden">
               <div className="absolute -top-20 -right-20 w-40 h-40 rounded-full bg-foreground/[0.03] blur-2xl pointer-events-none" />
@@ -196,7 +208,9 @@ export default function SignUp() {
                   <div className="flex-1 h-px bg-border" />
                 </div>
 
-                <p className="text-center text-sm text-muted-foreground">
+                <GoogleButton label="Criar conta com Google" />
+
+                <p className="text-center text-sm text-muted-foreground mt-5">
                   Já tem conta?{" "}
                   <Link to="/login" className="text-foreground font-medium hover:underline underline-offset-4">
                     Entrar

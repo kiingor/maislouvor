@@ -196,3 +196,24 @@
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Gamificação — animações leves de avatar/jardim */
+@keyframes gam-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes gam-pop {
+  0% { transform: scale(0.55) translateY(6px); opacity: 0; }
+  55% { transform: scale(1.14) translateY(-6px); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+@keyframes gam-grow {
+  0% { transform: scale(0.7); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.gam-float { animation: gam-float 3s ease-in-out infinite; }
+.gam-celebrate { animation: gam-pop 0.6s ease; }
+.gam-grow { animation: gam-grow 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .gam-float, .gam-celebrate, .gam-grow { animation: none; }
+}

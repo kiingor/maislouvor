@@ -18,9 +18,15 @@ interface SongCardProps {
   onClick?: () => void;
   repertorios?: string[];
   actions?: React.ReactNode;
+  /**
+   * Esconde o badge de tom padrão do card. Usado onde o tom é exibido de forma
+   * mais explícita dentro de `actions` (ex.: roteiro do culto, que mostra
+   * "Original" x "Tocar em" lado a lado).
+   */
+  hideKey?: boolean;
 }
 
-export function SongCard({ song, index, onClick, repertorios, actions }: SongCardProps) {
+export function SongCard({ song, index, onClick, repertorios, actions, hideKey }: SongCardProps) {
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -68,7 +74,7 @@ export function SongCard({ song, index, onClick, repertorios, actions }: SongCar
           </div>
         )}
       </div>
-      {song.key_current && (
+      {song.key_current && !hideKey && (
         <span className="text-xs font-medium px-2 py-1 rounded-lg bg-accent text-muted-foreground shrink-0">
           {song.key_current}
         </span>

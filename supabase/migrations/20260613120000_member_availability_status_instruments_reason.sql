@@ -1,20 +1,14 @@
--- Extend member_availability to support availability status, chosen instruments
--- and a justification/reason when a member marks themselves as unavailable.
-
+-- Availability redesign: status (available/unavailable), per-day instruments, and reason.
 ALTER TABLE public.member_availability
   ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'available',
   ADD COLUMN IF NOT EXISTS instruments text[] NOT NULL DEFAULT '{}',
   ADD COLUMN IF NOT EXISTS reason text;
 
--- Restrict status to the two known values (existing rows default to 'available')
-ALTER TABLE public.member_availability
-  DROP CONSTRAINT IF EXISTS member_availability_status_check;
 ALTER TABLE public.member_availability
   ADD CONSTRAINT member_availability_status_check
   CHECK (status IN ('available', 'unavailable'));
 
--- Allow members to update their own availability (needed for upsert / toggling)
-DROP POLICY IF EXISTS "Members can update own availability" ON public.member_availability;
+-- The new flow upserts/updates availability rows, so members need UPDATE on their own rows.
 CREATE POLICY "Members can update own availability"
 ON public.member_availability FOR UPDATE
 TO authenticated

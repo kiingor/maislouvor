@@ -62,7 +62,7 @@ export function CultoModal({ open, onOpenChange, editCulto }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass rounded-2xl border-0 sm:max-w-md">
+      <DialogContent className="glass rounded-2xl border-0 max-w-sm sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold">{editCulto ? "Editar culto" : "Novo culto"}</DialogTitle>
         </DialogHeader>

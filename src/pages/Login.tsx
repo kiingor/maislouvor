@@ -6,6 +6,8 @@ import { GlassInput } from "@/components/GlassInput";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { InstallPWABanner } from "@/components/InstallPWABanner";
+import { BrandMark } from "@/components/BrandMark";
+import { GoogleButton } from "@/components/GoogleButton";
 import { Music, ListMusic, Users, Mic2, MonitorSmartphone, Layers } from "lucide-react";
 
 const features = [
@@ -84,7 +86,7 @@ export default function Login() {
             {/* Logo */}
             <div className="flex items-center gap-3 mb-6 lg:mb-10">
               <div className="h-10 w-10 lg:h-12 lg:w-12 rounded-2xl bg-foreground flex items-center justify-center hover-lift shadow-lg">
-                <span className="text-background text-sm lg:text-base font-bold">+L</span>
+                <BrandMark className="h-6 w-6 lg:h-7 lg:w-7 text-background" />
               </div>
               <div>
                 <h1 className="text-xl lg:text-2xl font-semibold tracking-tight">+Louvor</h1>
@@ -124,7 +126,7 @@ export default function Login() {
         </div>
 
         {/* Right — Login form */}
-        <div className="w-full max-w-md lg:min-w-[420px]">
+        <div className="w-full max-w-sm lg:max-w-md lg:min-w-[420px]">
           <div className="animate-in-up" style={{ animationDelay: "150ms" }}>
             <GlassCard className="p-6 lg:p-10 relative overflow-hidden">
               {/* Subtle inner glow */}
@@ -190,7 +192,9 @@ export default function Login() {
                   <div className="flex-1 h-px bg-border" />
                 </div>
 
-                <p className="text-center text-sm text-muted-foreground">
+                <GoogleButton label="Entrar com Google" />
+
+                <p className="text-center text-sm text-muted-foreground mt-5">
                   Não tem conta?{" "}
                   <Link to="/signup" className="text-foreground font-medium hover:underline underline-offset-4">
                     Criar conta

@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { GlassCard } from "@/components/GlassCard";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { BrandMark } from "@/components/BrandMark";
 
 export default function AcceptInvite() {
   const { token } = useParams<{ token: string }>();
@@ -44,12 +45,12 @@ export default function AcceptInvite() {
       <div className="w-full max-w-sm animate-in-up">
         <div className="flex flex-col items-center mb-8">
           <div className="h-14 w-14 rounded-2xl bg-foreground flex items-center justify-center mb-4">
-            <span className="text-background text-xl font-bold">+L</span>
+            <BrandMark className="h-8 w-8 text-background" />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">+Louvor</h1>
         </div>
 
-        <GlassCard className="p-8 text-center">
+        <GlassCard className="p-6 sm:p-8 text-center">
           {status === "loading" || status === "accepting" ? (
             <>
               <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin mx-auto mb-4" />

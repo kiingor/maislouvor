@@ -2,6 +2,7 @@ import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { Download, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/BrandMark";
 
 export function InstallPWABanner() {
   const { canInstall, install } = usePWAInstall();
@@ -10,10 +11,10 @@ export function InstallPWABanner() {
   if (!canInstall || dismissed) return null;
 
   return (
-    <div className="fixed bottom-6 left-4 right-4 z-50 animate-in-up">
-      <div className="glass rounded-2xl p-4 flex items-center gap-3 max-w-sm mx-auto shadow-lg border border-border/50">
+    <div className="fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-4 right-4 z-50 animate-in-up">
+      <div className="glass rounded-2xl p-4 flex items-center gap-3 max-w-[calc(100vw-2rem)] sm:max-w-sm mx-auto shadow-lg border border-border/50">
         <div className="h-10 w-10 rounded-xl bg-foreground flex items-center justify-center shrink-0">
-          <span className="text-background text-xs font-bold">+L</span>
+          <BrandMark className="h-6 w-6 text-background" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold">Instalar +Louvor</p>

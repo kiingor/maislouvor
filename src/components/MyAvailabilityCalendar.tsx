@@ -6,6 +6,12 @@ import { AvailabilityDayModal, MyAvailabilityEntry } from "@/components/Availabi
 import { Hand } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import {
+  DEFAULT_AVAILABILITY_MODE,
+  isAvailabilityStatusAllowed,
+  type AvailabilityMode,
+  type AvailabilityStatus,
+} from "@/lib/availability";
 
 const toDateStr = (d: Date) => format(d, "yyyy-MM-dd");
 
@@ -31,6 +37,7 @@ export const availabilityCalendarClassNames = {
 interface MyAvailabilityCalendarProps {
   teamMemberId: string | null;
   myInstruments: string[];
+  availabilityMode?: AvailabilityMode;
 }
 
 /**
@@ -39,7 +46,11 @@ interface MyAvailabilityCalendarProps {
  * available (choosing instruments) or unavailable (with a reason).
  * Self-contained: fetches its own data and invalidates the relevant caches on save.
  */
-export function MyAvailabilityCalendar({ teamMemberId, myInstruments }: MyAvailabilityCalendarProps) {
+export function MyAvailabilityCalendar({
+  teamMemberId,
+  myInstruments,
+  availabilityMode = DEFAULT_AVAILABILITY_MODE,
+}: MyAvailabilityCalendarProps) {
   const queryClient = useQueryClient();
   const [modalDate, setModalDate] = useState<Date | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -60,14 +71,16 @@ export function MyAvailabilityCalendar({ teamMemberId, myInstruments }: MyAvaila
   const myMap = useMemo(() => {
     const map: Record<string, MyAvailabilityEntry> = {};
     myAvailability.forEach((a: any) => {
+      const status = (a.status ?? "available") as AvailabilityStatus;
+      if (!isAvailabilityStatusAllowed(availabilityMode, status)) return;
       map[a.available_date] = {
-        status: (a.status ?? "available") as "available" | "unavailable",
+        status,
         instruments: a.instruments ?? [],
         reason: a.reason ?? null,
       };
     });
     return map;
-  }, [myAvailability]);
+  }, [myAvailability, availabilityMode]);
 
   const modifiers = {
     myAvailable: (d: Date) => myMap[toDateStr(d)]?.status === "available",
@@ -97,15 +110,24 @@ export function MyAvailabilityCalendar({ teamMemberId, myInstruments }: MyAvaila
         locale={ptBR}
         className="w-full"
       />
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
+        {availabilityMode !== "unavailable_only" && (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded-full bg-green-500/40 ring-1 ring-green-500/60" /> Disponível
+          </span>
+        )}
+        {availabilityMode !== "available_only" && (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded-full bg-red-500/40 ring-1 ring-red-500/60" /> Indisponível
+          </span>
+        )}
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-full bg-green-500/40 ring-1 ring-green-500/60" /> Disponível
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-full bg-red-500/40 ring-1 ring-red-500/60" /> Indisponível
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Hand className="h-3.5 w-3.5" /> Toque em um dia para marcar
+          <Hand className="h-3.5 w-3.5" />
+          {availabilityMode === "available_only"
+            ? "Toque para confirmar"
+            : availabilityMode === "unavailable_only"
+              ? "Toque para bloquear"
+              : "Toque em um dia para marcar"}
         </span>
       </div>
 
@@ -115,6 +137,7 @@ export function MyAvailabilityCalendar({ teamMemberId, myInstruments }: MyAvaila
         date={modalDate}
         teamMemberId={teamMemberId}
         myInstruments={myInstruments}
+        availabilityMode={availabilityMode}
         existing={modalDate ? myMap[toDateStr(modalDate)] ?? null : null}
         onSaved={handleSaved}
       />

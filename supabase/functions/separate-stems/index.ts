@@ -22,10 +22,6 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const workerUrl = (Deno.env.get("WORKER_URL") ?? "https://demucs.maislouvor.com").replace(/\/$/, "");
-    const workerToken = Deno.env.get("WORKER_TOKEN")!;
-    const callbackToken = Deno.env.get("STEMS_CALLBACK_TOKEN")!;
-    if (!workerToken || !callbackToken) return json({ error: "Worker not configured" }, 500);
 
     // Verify the calling user
     const userClient = createClient(supabaseUrl, anonKey, {
@@ -70,40 +66,27 @@ Deno.serve(async (req) => {
       return json({ error: "audio_path does not belong to this song" }, 400);
     }
 
-    // Signed URL so the worker can fetch the audio (6h covers a busy queue)
-    const { data: signed, error: signErr } = await admin.storage
-      .from("audio")
-      .createSignedUrl(audio_path, 21600);
-    if (signErr || !signed?.signedUrl) return json({ error: "Could not sign audio URL" }, 500);
+    // Enqueue a separation job. A worker (home GPU first, VPS CPU as fallback) will
+    // pull it from the queue — so the job survives restarts and waits for a worker.
+    // Drop any earlier still-queued job for this song to avoid duplicates.
+    await admin.from("stem_jobs").delete().eq("song_id", song.id).eq("status", "queued");
 
-    // Kick off the separation job on the worker
-    const workerRes = await fetch(`${workerUrl}/jobs`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${workerToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        audio_url: signed.signedUrl,
-        callback_url: `${supabaseUrl}/functions/v1/stems-callback`,
-        callback_token: callbackToken,
-        meta: { song_id: song.id, team_id: song.team_id },
-      }),
-    });
-    if (!workerRes.ok) {
-      const text = await workerRes.text();
-      console.error("worker error", workerRes.status, text);
-      return json({ error: "Worker rejected the job" }, 502);
-    }
-    const { job_id } = await workerRes.json();
-    if (!job_id) {
-      console.error("worker returned no job_id");
-      return json({ error: "Worker did not return a job id" }, 502);
+    const { data: jobRow, error: insErr } = await admin
+      .from("stem_jobs")
+      .insert({ song_id: song.id, team_id: song.team_id, audio_path })
+      .select("id")
+      .single();
+    if (insErr || !jobRow) {
+      console.error("enqueue failed", insErr);
+      return json({ error: "Could not enqueue the job" }, 500);
     }
 
     await admin
       .from("songs")
-      .update({ stems_status: "processing", stems_job_id: job_id, stems_error: null } as any)
+      .update({ stems_status: "processing", stems_job_id: jobRow.id, stems_error: null } as any)
       .eq("id", song.id);
 
-    return json({ success: true, job_id });
+    return json({ success: true, job_id: jobRow.id, queued: true });
   } catch (err) {
     console.error("separate-stems error", err);
     return json({ error: (err as Error).message }, 500);

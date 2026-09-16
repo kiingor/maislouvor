@@ -7,23 +7,30 @@ import { GlassCard } from "@/components/GlassCard";
 import { GlassInput } from "@/components/GlassInput";
 import { RoleBadge } from "@/components/RoleBadge";
 import { InviteMemberModal } from "@/components/InviteMemberModal";
-import { EditMemberModal } from "@/components/EditMemberModal";
+import { MemberEditModal } from "@/components/MemberEditModal";
 import { AvatarCropModal } from "@/components/AvatarCropModal";
 import { MyAvailabilityCalendar } from "@/components/MyAvailabilityCalendar";
+import { UserNotificationPrefs } from "@/components/UserNotificationPrefs";
+import { UserStatsCard } from "@/components/UserStatsCard";
+import { TeamAvailabilitySettings } from "@/components/TeamAvailabilitySettings";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { User, Users, UserPlus, Trash2, Camera, CalendarCheck, KeyRound, Pencil, Save, Mail } from "lucide-react";
-import { INSTRUMENTS, INSTRUMENT_ICONS } from "@/data/instruments";
+import { User, Users, UserPlus, Trash2, Camera, CalendarCheck, KeyRound, Pencil, Save, Mail, Phone, Ticket, Copy, Check, RefreshCw, Clock, X, Settings2 } from "lucide-react";
+import { instrumentIcon } from "@/data/instruments";
+import { InstrumentPicker } from "@/components/InstrumentPicker";
 import { cn } from "@/lib/utils";
+import { personalAvailabilityLabel } from "@/lib/availability";
 
 export default function TeamSettings() {
-  const { currentTeam, isAdmin, canEdit, profileId } = useTeam();
+  const { currentTeam, isAdmin, profileId, teams, can, refetch } = useTeam();
+  const canManageMembers = can("membros", "editar");
+  const adminTeams = teams.filter((t) => t.role === "admin").map((t) => ({ id: t.id, name: t.name }));
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [editMember, setEditMember] = useState<{ id: string; full_name: string | null; user_id: string } | null>(null);
+  const [editMember, setEditMember] = useState<any | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -41,13 +48,18 @@ export default function TeamSettings() {
   const [nameValue, setNameValue] = useState("");
   const [savingName, setSavingName] = useState(false);
 
+  // Editable phone state
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [phoneValue, setPhoneValue] = useState("");
+  const [savingPhone, setSavingPhone] = useState(false);
+
   const { data: members = [], isLoading } = useQuery({
     queryKey: ["team-members", currentTeam?.id],
     queryFn: async () => {
       if (!currentTeam) return [];
       const { data } = await supabase
         .from("team_members")
-        .select("id, role, profile_id, instruments, profiles(id, full_name, user_id, avatar_url)")
+        .select("id, role, permissions, profile_id, instruments, instrument_levels, profiles(id, full_name, user_id, avatar_url, phone, notification_prefs)" as any)
         .eq("team_id", currentTeam.id);
       return data ?? [];
     },
@@ -57,6 +69,8 @@ export default function TeamSettings() {
   const myMember = members.find((m: any) => m.profile_id === profileId);
   const myProfile = myMember ? (myMember as any).profiles : null;
   const myInstruments: string[] = (myMember as any)?.instruments || [];
+  const myInstrumentLevels: Record<string, string> = (myMember as any)?.instrument_levels || {};
+  const myNotificationPrefs = (myProfile as any)?.notification_prefs ?? null;
 
   // Init name value when profile loads
   useEffect(() => {
@@ -64,6 +78,13 @@ export default function TeamSettings() {
       setNameValue(myProfile.full_name);
     }
   }, [myProfile?.full_name]);
+
+  // Init phone value when profile loads
+  useEffect(() => {
+    if (!editingPhone) {
+      setPhoneValue((myProfile as any)?.phone ?? "");
+    }
+  }, [(myProfile as any)?.phone]);
 
   const { data: invites = [] } = useQuery({
     queryKey: ["team-invites", currentTeam?.id],
@@ -76,13 +97,66 @@ export default function TeamSettings() {
         .eq("accepted", false);
       return data ?? [];
     },
-    enabled: !!currentTeam && isAdmin,
+    enabled: !!currentTeam && canManageMembers,
   });
 
-  const handleRoleChange = async (memberId: string, newRole: string) => {
-    const { error } = await supabase.from("team_members").update({ role: newRole as "admin" | "editor" | "viewer" }).eq("id", memberId);
-    if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
-    else { toast({ title: "Função atualizada" }); qc.invalidateQueries({ queryKey: ["team-members"] }); }
+  // Código de convite da equipe
+  const { data: teamCode } = useQuery({
+    queryKey: ["team-code", currentTeam?.id],
+    queryFn: async () => {
+      if (!currentTeam) return null;
+      const { data } = await supabase.from("teams").select("join_code").eq("id", currentTeam.id).single();
+      return (data as any)?.join_code ?? null;
+    },
+    enabled: !!currentTeam && canManageMembers,
+  });
+
+  // Solicitações de entrada pendentes (via RPC — traz o nome do solicitante)
+  const { data: joinRequests = [] } = useQuery({
+    queryKey: ["join-requests", currentTeam?.id],
+    queryFn: async () => {
+      if (!currentTeam) return [];
+      const { data } = await (supabase as any).rpc("list_join_requests", { p_team_id: currentTeam.id });
+      return data ?? [];
+    },
+    enabled: !!currentTeam && canManageMembers,
+  });
+
+  const [copied, setCopied] = useState(false);
+  const handleCopyCode = async () => {
+    if (!teamCode) return;
+    try { await navigator.clipboard.writeText(teamCode); } catch { /* ignore */ }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleRegenerateCode = async () => {
+    if (!currentTeam) return;
+    const { data, error } = await (supabase as any).rpc("regenerate_team_code", { p_team_id: currentTeam.id });
+    if (error) { toast({ title: "Erro", description: error.message, variant: "destructive" }); return; }
+    qc.invalidateQueries({ queryKey: ["team-code"] });
+    toast({ title: "Novo código gerado!", description: `Agora é ${data}. Compartilhe o novo com a equipe.` });
+  };
+
+  const handleApproveRequest = async (id: string) => {
+    const { data, error } = await (supabase as any).rpc("approve_join_request", { p_request_id: id });
+    if (error || !data?.ok) {
+      toast({ title: "Erro ao aprovar", description: error?.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Membro aprovado!" });
+    qc.invalidateQueries({ queryKey: ["join-requests"] });
+    qc.invalidateQueries({ queryKey: ["team-members"] });
+  };
+
+  const handleRejectRequest = async (id: string) => {
+    const { data, error } = await (supabase as any).rpc("reject_join_request", { p_request_id: id });
+    if (error || !data?.ok) {
+      toast({ title: "Erro ao recusar", description: error?.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Solicitação recusada" });
+    qc.invalidateQueries({ queryKey: ["join-requests"] });
   };
 
   const handleRemove = async (memberId: string) => {
@@ -133,6 +207,32 @@ export default function TeamSettings() {
     }
   };
 
+  const handleSavePhone = async () => {
+    if (!myProfile?.id) return;
+    setSavingPhone(true);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ phone: phoneValue.trim() || null } as any)
+      .eq("id", myProfile.id);
+    setSavingPhone(false);
+    if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
+    else {
+      toast({ title: "Telefone atualizado!" });
+      setEditingPhone(false);
+      qc.invalidateQueries({ queryKey: ["team-members"] });
+    }
+  };
+
+  const handleInstrumentLevel = async (memberId: string, levels: Record<string, string>, instrument: string, level: string) => {
+    const updated = { ...levels, [instrument]: level };
+    const { error } = await supabase
+      .from("team_members")
+      .update({ instrument_levels: updated } as any)
+      .eq("id", memberId);
+    if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
+    else qc.invalidateQueries({ queryKey: ["team-members"] });
+  };
+
   // Other members (excluding self)
   const otherMembers = members.filter((m: any) => m.profile_id !== profileId);
 
@@ -175,19 +275,24 @@ export default function TeamSettings() {
           <TabsTrigger value="members" className="flex-1 gap-1.5">
             <Users className="h-3.5 w-3.5" /> Membros
           </TabsTrigger>
+          {isAdmin && (
+            <TabsTrigger value="team" className="flex-1 gap-1.5">
+              <Settings2 className="h-3.5 w-3.5" /> Equipe
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* ===== ABA: MEU USUÁRIO ===== */}
         <TabsContent value="profile">
           {/* Desktop: 2 colunas | Mobile: coluna única */}
-          <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 max-w-4xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 max-w-full sm:max-w-2xl lg:max-w-4xl mx-auto px-4 sm:px-0">
 
             {/* Coluna esquerda: Avatar + Dados pessoais */}
             <div className="space-y-6">
               {/* Avatar grande */}
               <GlassCard className="p-6 flex flex-col items-center gap-4">
                 <div className="relative group">
-                  <Avatar className="h-28 w-28 lg:h-32 lg:w-32">
+                  <Avatar className="h-20 w-20 sm:h-24 sm:w-24 lg:h-32 lg:w-32">
                     {myProfile?.avatar_url ? (
                       <AvatarImage src={myProfile.avatar_url} alt={myProfile?.full_name || ""} />
                     ) : null}
@@ -240,51 +345,95 @@ export default function TeamSettings() {
                 <GlassInput value={userEmail} disabled className="opacity-60 cursor-not-allowed" />
               </GlassCard>
 
+              {/* Telefone / WhatsApp */}
+              <GlassCard className="p-4 space-y-3">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Phone className="h-3 w-3" /> Telefone / WhatsApp
+                </label>
+                <div className="flex gap-2">
+                  <GlassInput
+                    type="tel"
+                    inputMode="tel"
+                    value={phoneValue}
+                    onChange={(e) => { setPhoneValue(e.target.value); setEditingPhone(true); }}
+                    placeholder="(00) 00000-0000"
+                  />
+                  {editingPhone && (
+                    <Button size="icon" className="shrink-0 h-12 w-12 rounded-xl" onClick={handleSavePhone} disabled={savingPhone}>
+                      <Save className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </GlassCard>
+
               {/* Alterar senha */}
               <Button variant="outline" className="w-full rounded-xl gap-2 h-12" onClick={() => navigate("/app/change-password")}>
                 <KeyRound className="h-4 w-4" /> Alterar senha
               </Button>
             </div>
 
-            {/* Coluna direita: Instrumentos + Disponibilidade */}
+            {/* Coluna direita: Instrumentos + Disponibilidade + Notificações + Estatísticas */}
             <div className="space-y-6">
               {/* Instrumentos */}
               {myMember && (
                 <GlassCard className="p-4 space-y-3">
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Instrumentos</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {INSTRUMENTS.map((inst) => {
-                      const active = myInstruments.includes(inst);
-                      const Icon = INSTRUMENT_ICONS[inst];
-                      return (
-                        <button
-                          key={inst}
-                          onClick={() => toggleInstrument(myMember.id, myInstruments, inst)}
-                          className={cn(
-                            "text-xs px-2.5 py-1.5 rounded-full border transition-colors flex items-center gap-1.5",
-                            active
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-accent/50 text-muted-foreground border-border hover:border-primary/50"
-                          )}
-                        >
-                          {Icon && <Icon className="h-3 w-3" />}
-                          {inst}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Minhas funções</label>
+                  <InstrumentPicker
+                    selected={myInstruments}
+                    onToggle={(inst) => toggleInstrument(myMember.id, myInstruments, inst)}
+                  />
+
+                  {/* Nível por função */}
+                  {myInstruments.length > 0 && (
+                    <div className="space-y-2 pt-2 border-t border-border/50">
+                      <p className="text-xs text-muted-foreground">Nível em cada função:</p>
+                      {myInstruments.map((inst) => {
+                        const Icon = instrumentIcon(inst);
+                        return (
+                          <div key={inst} className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium flex items-center gap-1.5 min-w-0">
+                              <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              <span className="truncate">{inst}</span>
+                            </span>
+                            <Select
+                              value={myInstrumentLevels[inst] ?? ""}
+                              onValueChange={(v) => handleInstrumentLevel(myMember.id, myInstrumentLevels, inst, v)}
+                            >
+                              <SelectTrigger className="h-9 w-full sm:w-36 rounded-lg text-xs shrink-0">
+                                <SelectValue placeholder="Nível" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="aprendendo">Aprendendo</SelectItem>
+                                <SelectItem value="intermediario">Intermediário</SelectItem>
+                                <SelectItem value="avancado">Avançado</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </GlassCard>
               )}
 
-              {/* Disponibilidade */}
-              {myMember && (
-                <GlassCard className="p-4 space-y-3">
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                    <CalendarCheck className="h-3 w-3" /> Minha Disponibilidade
-                  </label>
-                  <MyAvailabilityCalendar teamMemberId={myMember.id} myInstruments={myInstruments} />
-                </GlassCard>
-              )}
+              {/* Minha disponibilidade */}
+              <GlassCard className="p-4 space-y-3">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <CalendarCheck className="h-3 w-3" />
+                  {personalAvailabilityLabel(currentTeam?.availability_mode ?? "both")}
+                </label>
+                <MyAvailabilityCalendar
+                  teamMemberId={myMember?.id ?? null}
+                  myInstruments={myInstruments}
+                  availabilityMode={currentTeam?.availability_mode}
+                />
+              </GlassCard>
+
+              {/* Preferências de notificação */}
+              <UserNotificationPrefs profileTableId={myProfile?.id ?? null} prefs={myNotificationPrefs} />
+
+              {/* Minhas estatísticas */}
+              <UserStatsCard teamMemberId={myMember?.id ?? null} />
             </div>
           </div>
         </TabsContent>
@@ -292,11 +441,81 @@ export default function TeamSettings() {
         {/* ===== ABA: MEMBROS ===== */}
         <TabsContent value="members">
           <div className="space-y-4">
+            {/* Código de convite da equipe */}
+            {canManageMembers && (
+              <GlassCard className="p-5">
+                <div className="flex items-center gap-2 mb-1">
+                  <Ticket className="h-4 w-4 text-primary" />
+                  <h2 className="text-sm font-semibold">Código da equipe</h2>
+                </div>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Compartilhe este código. Quem entrar com ele vira uma solicitação que você aprova aqui embaixo.
+                </p>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 rounded-xl border border-border bg-accent/40 px-4 py-3 text-center">
+                    <span className="text-2xl font-mono font-semibold tracking-[0.3em]">{teamCode ?? "—"}</span>
+                  </div>
+                  <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl shrink-0" onClick={handleCopyCode} title="Copiar código">
+                    {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl shrink-0" title="Gerar novo código">
+                        <RefreshCw className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Gerar um novo código?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          O código atual deixará de funcionar. Quem ainda não entrou precisará do código novo.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleRegenerateCode}>Gerar novo</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </GlassCard>
+            )}
+
+            {/* Solicitações de entrada pendentes */}
+            {canManageMembers && joinRequests.length > 0 && (
+              <div className="space-y-3">
+                <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5" /> Solicitações de entrada ({joinRequests.length})
+                </h2>
+                {joinRequests.map((r: any) => (
+                  <GlassCard key={r.id} variant="subtle" className="p-4 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Avatar className="h-9 w-9">
+                        {r.avatar_url ? <AvatarImage src={r.avatar_url} alt={r.full_name || ""} /> : null}
+                        <AvatarFallback className="text-sm font-medium bg-accent">
+                          {(r.full_name ?? "?")[0]?.toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <p className="text-sm font-medium truncate">{r.full_name ?? "Sem nome"}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button size="sm" className="h-8 rounded-lg gap-1.5 text-xs" onClick={() => handleApproveRequest(r.id)}>
+                        <Check className="h-3.5 w-3.5" /> Aprovar
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8 rounded-lg gap-1.5 text-xs" onClick={() => handleRejectRequest(r.id)}>
+                        <X className="h-3.5 w-3.5" /> Recusar
+                      </Button>
+                    </div>
+                  </GlassCard>
+                ))}
+              </div>
+            )}
+
             {/* Header com botão convidar */}
-            {isAdmin && (
+            {canManageMembers && (
               <div className="flex justify-end">
-                <Button onClick={() => setInviteOpen(true)} className="rounded-xl gap-2">
-                  <UserPlus className="h-4 w-4" /> Convidar
+                <Button onClick={() => setInviteOpen(true)} variant="outline" className="rounded-xl gap-2">
+                  <UserPlus className="h-4 w-4" /> Adicionar manualmente
                 </Button>
               </div>
             )}
@@ -321,14 +540,11 @@ export default function TeamSettings() {
                       member={m}
                       profile={profile}
                       isSelf={isSelf}
-                      isAdmin={isAdmin}
-                      canEditSelf={isSelf}
+                      isAdmin={canManageMembers}
                       instruments={memberInstruments}
-                      onRoleChange={handleRoleChange}
                       onRemove={handleRemove}
-                      onToggleInstrument={(instrument) => toggleInstrument(m.id, memberInstruments, instrument)}
                       onAvatarUpload={(file) => handleAvatarUpload(profile?.user_id, profile?.id, file)}
-                      onEdit={() => setEditMember(profile ? { id: profile.id, full_name: profile.full_name, user_id: profile.user_id } : null)}
+                      onEdit={() => setEditMember(m)}
                     />
                   );
                 })
@@ -336,7 +552,7 @@ export default function TeamSettings() {
             </div>
 
             {/* Convites pendentes */}
-            {isAdmin && invites.length > 0 && (
+            {canManageMembers && invites.length > 0 && (
               <div className="mt-4 space-y-3">
                 <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Convites pendentes</h2>
                 {invites.map((inv: any) => (
@@ -354,15 +570,30 @@ export default function TeamSettings() {
             )}
           </div>
         </TabsContent>
+
+        {/* ===== ABA: EQUIPE (SOMENTE LÍDER) ===== */}
+        {isAdmin && currentTeam && (
+          <TabsContent value="team">
+            <div className="mx-auto max-w-5xl px-4 sm:px-0">
+              <TeamAvailabilitySettings
+                teamId={currentTeam.id}
+                value={currentTeam.availability_mode}
+                onSaved={refetch}
+              />
+            </div>
+          </TabsContent>
+        )}
       </Tabs>
 
       <InviteMemberModal open={inviteOpen} onOpenChange={setInviteOpen} />
-      <EditMemberModal
+      <MemberEditModal
         open={!!editMember}
         onOpenChange={(o) => { if (!o) setEditMember(null); }}
-        profile={editMember}
+        member={editMember}
+        currentTeamId={currentTeam?.id ?? ""}
+        adminTeams={adminTeams}
+        canSetPassword={canManageMembers}
         onSaved={() => qc.invalidateQueries({ queryKey: ["team-members"] })}
-        isAdmin={isAdmin}
       />
 
       {selfCropSrc && (
@@ -382,11 +613,8 @@ function MemberCard({
   profile,
   isSelf,
   isAdmin,
-  canEditSelf,
   instruments,
-  onRoleChange,
   onRemove,
-  onToggleInstrument,
   onAvatarUpload,
   onEdit,
 }: {
@@ -394,20 +622,15 @@ function MemberCard({
   profile: any;
   isSelf: boolean;
   isAdmin: boolean;
-  canEditSelf: boolean;
   instruments: string[];
-  onRoleChange: (id: string, role: string) => void;
   onRemove: (id: string) => void;
-  onToggleInstrument: (instrument: string) => void;
   onAvatarUpload: (file: File) => void;
   onEdit: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [expanded, setExpanded] = useState(false);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const canManage = isAdmin && !isSelf;
-  const canEditInstruments = isAdmin || canEditSelf;
-  const canEditAvatar = isAdmin || canEditSelf;
+  const canEditAvatar = isAdmin || isSelf;
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -472,33 +695,12 @@ function MemberCard({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {(canEditInstruments) && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-lg text-xs h-8"
-              onClick={() => setExpanded(!expanded)}
-            >
-              {expanded ? "Fechar" : "Instrumentos"}
-            </Button>
-          )}
-          {(isAdmin || isSelf) && (
-            <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg" onClick={onEdit}>
-              <Pencil className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          {canManage ? (
+          <RoleBadge role={member.role} />
+          {canManage && (
             <>
-              <Select value={member.role} onValueChange={(v) => onRoleChange(member.id, v)}>
-                <SelectTrigger className="h-8 w-28 rounded-lg text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Líder</SelectItem>
-                  <SelectItem value="editor">Editor</SelectItem>
-                  <SelectItem value="viewer">Membro</SelectItem>
-                </SelectContent>
-              </Select>
+              <Button variant="outline" size="sm" className="h-8 rounded-lg gap-1.5 text-xs" onClick={onEdit}>
+                <Pencil className="h-3.5 w-3.5" /> Editar
+              </Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive">
@@ -517,39 +719,9 @@ function MemberCard({
                 </AlertDialogContent>
               </AlertDialog>
             </>
-          ) : (
-            <RoleBadge role={member.role} />
           )}
         </div>
       </div>
-
-      {/* Instruments panel */}
-      {expanded && canEditInstruments && (
-        <div className="px-4 pb-4 pt-1 border-t border-border/50">
-          <p className="text-xs text-muted-foreground mb-2">Selecione os instrumentos:</p>
-          <div className="flex flex-wrap gap-1.5">
-            {INSTRUMENTS.map((inst) => {
-              const active = instruments.includes(inst);
-              const Icon = INSTRUMENT_ICONS[inst];
-              return (
-                <button
-                  key={inst}
-                  onClick={() => onToggleInstrument(inst)}
-                  className={cn(
-                    "text-xs px-2.5 py-1 rounded-full border transition-colors flex items-center gap-1.5",
-                    active
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-accent/50 text-muted-foreground border-border hover:border-primary/50"
-                  )}
-                >
-                  {Icon && <Icon className="h-3 w-3" />}
-                  {inst}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {cropSrc && (
         <AvatarCropModal
