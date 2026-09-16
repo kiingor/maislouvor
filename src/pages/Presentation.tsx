@@ -1256,20 +1256,22 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
       {/* Loop Panel — mobile drawer */}
       {isMobile && (
         <Drawer open={showLoopPanel && !!currentSongId} onOpenChange={setShowLoopPanel}>
-          <DrawerContent className={`max-h-[70vh] ${isDark ? "bg-background" : "bg-background"}`}>
-            {currentSongId && (
-              <LoopPanel
-                songId={currentSongId}
-                currentTime={audioProgress}
-                activeLoopId={activeLoop?.id ?? null}
-                currentRepetition={currentRepetition}
-                playbackRate={playbackRate}
-                onSelectLoop={handleSelectLoop}
-                onPlaybackRateChange={handlePlaybackRateChange}
-                isDark={isDark}
-                onClose={() => setShowLoopPanel(false)}
-              />
-            )}
+          <DrawerContent className="h-[82dvh] max-h-[calc(100dvh-1rem)] overflow-hidden bg-background pb-[env(safe-area-inset-bottom)]">
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {currentSongId && (
+                <LoopPanel
+                  songId={currentSongId}
+                  currentTime={audioProgress}
+                  activeLoopId={activeLoop?.id ?? null}
+                  currentRepetition={currentRepetition}
+                  playbackRate={playbackRate}
+                  onSelectLoop={handleSelectLoop}
+                  onPlaybackRateChange={handlePlaybackRateChange}
+                  isDark={isDark}
+                  onClose={() => setShowLoopPanel(false)}
+                />
+              )}
+            </div>
           </DrawerContent>
         </Drawer>
       )}
