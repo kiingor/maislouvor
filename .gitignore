@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# +Louvor worker — secrets & local files (NEVER commit)
+worker-gpu/.env
+worker-gpu/yt-cookies.txt
+worker-gpu/*.log
+worker-gpu/.venv/
