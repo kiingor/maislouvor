@@ -8,13 +8,15 @@ import { TrackMixer } from "@/components/TrackMixer";
 import * as Tone from "tone";
 import { detectKeyFromUrl, parseKeyName, DetectedKey } from "@/lib/detectKey";
 import { LoopPanel } from "@/components/LoopPanel";
+import type { LoopRange } from "@/lib/loopTime";
+import type { Database } from "@/integrations/supabase/types";
 import { Metronome } from "@/components/Metronome";
 import { transposeCifra, capoSuggestion, transposeKeyName as transposeKeyLabel, semitonesBetweenKeys } from "@/lib/chordpro";
 import { useTeam } from "@/contexts/TeamContext";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Drawer, DrawerContent } from "@/components/ui/drawer";
+import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from "@/components/ui/drawer";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { isVocalRole } from "@/data/instruments";
@@ -48,6 +50,8 @@ import {
   Guitar,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+
+type LoopPoint = Database["public"]["Tables"]["song_loop_points"]["Row"];
 
 type Instrument = "violao" | "guitarra" | "guitarra_worship" | "voz";
 
@@ -433,10 +437,12 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
 
   // Loop / Rehearsal mode
   const [showLoopPanel, setShowLoopPanel] = useState(false);
-  const [activeLoop, setActiveLoop] = useState<any>(null);
+  const [activeLoop, setActiveLoop] = useState<LoopPoint | null>(null);
   const [currentRepetition, setCurrentRepetition] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
-  const activeLoopRef = useRef<any>(null);
+  const activeLoopRef = useRef<LoopPoint | null>(null);
+  const previewRangeRef = useRef<LoopRange | null>(null);
+  const [isPreviewingLoop, setIsPreviewingLoop] = useState(false);
   const currentRepetitionRef = useRef(0);
   const isMobile = useIsMobile();
 
@@ -1305,6 +1311,10 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
       else playIntentRef.current = false;
     };
     const handleEnded = () => {
+      if (audio.currentTime < audio.duration) return;
+      previewRangeRef.current = null;
+      setIsPreviewingLoop(false);
+      setIsPlaying(false);
       playIntentRef.current = false;
       setAudioPlaying(false);
       setAudioProgress(audio.duration);
@@ -1313,17 +1323,37 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
       const t = audio.currentTime;
       setAudioProgress(t);
       
+      const preview = previewRangeRef.current;
+      if (preview && t >= preview.end_time) {
+        previewRangeRef.current = null;
+        setIsPreviewingLoop(false);
+        playIntentRef.current = false;
+        audio.pause();
+        audio.currentTime = preview.end_time;
+        syncTrackAudios("pause");
+        syncTrackAudios("seek", preview.end_time);
+        setAudioProgress(preview.end_time);
+        setAudioPlaying(false);
+        setIsPlaying(false);
+        return;
+      }
+
       // Loop logic
       const loop = activeLoopRef.current;
       if (loop && t >= loop.end_time) {
         const rep = currentRepetitionRef.current + 1;
         if (loop.repeat_count > 0 && rep > loop.repeat_count) {
           // Finished all repetitions
+          activeLoopRef.current = null;
+          currentRepetitionRef.current = 0;
           setActiveLoop(null);
           setCurrentRepetition(0);
         } else {
+          currentRepetitionRef.current = rep;
           setCurrentRepetition(rep);
           audio.currentTime = loop.start_time;
+          setAudioProgress(loop.start_time);
+          if (audio.paused) audio.play().catch(() => {});
           // sync tracks too
           const map = trackAudiosRef.current;
           for (const [, trk] of map) {
@@ -1394,15 +1424,78 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
 
   useEffect(() => { isTransicaoRef.current = isTransicao; }, [isTransicao]);
 
-  const handleSelectLoop = useCallback((loop: any) => {
+  const handleSelectLoop = useCallback((loop: LoopPoint | null) => {
+    activeLoopRef.current = loop;
+    currentRepetitionRef.current = loop ? 1 : 0;
     setActiveLoop(loop);
-    setCurrentRepetition(0);
+    setCurrentRepetition(loop ? 1 : 0);
     if (loop && audioRef.current) {
       audioRef.current.currentTime = loop.start_time;
       syncTrackAudios("seek", loop.start_time);
       setAudioProgress(loop.start_time);
     }
   }, [syncTrackAudios]);
+
+  const handleLoopSeek = useCallback((time: number) => {
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(audio.duration)) return;
+    const nextTime = Math.max(0, Math.min(audio.duration, time));
+    audio.currentTime = nextTime;
+    syncTrackAudios("seek", nextTime);
+    setAudioProgress(nextTime);
+    if (!isTransicao) syncSegmentWithAudioTime(nextTime);
+  }, [syncTrackAudios, syncSegmentWithAudioTime, isTransicao]);
+
+  const handlePreviewLoop = useCallback((range: LoopRange | null) => {
+    const audio = audioRef.current;
+    const wasPreviewing = previewRangeRef.current !== null;
+    previewRangeRef.current = range;
+    setIsPreviewingLoop(!!range);
+    if (!audio) return;
+    if (!range) {
+      if (wasPreviewing) {
+        playIntentRef.current = false;
+        setBuffering(false);
+        audio.pause();
+        syncTrackAudios("pause");
+        setAudioPlaying(false);
+        setIsPlaying(false);
+      }
+      return;
+    }
+    Tone.start().catch(() => {});
+    setCountdown(null);
+    playIntentRef.current = true;
+    handleSelectLoop(null);
+    handleLoopSeek(range.start_time);
+    audio.play().then(() => {
+      if (previewRangeRef.current !== range || audioRef.current !== audio) return;
+      syncTrackAudios("play", audio.currentTime);
+      setAudioPlaying(true);
+      setIsPlaying(true);
+    }).catch(() => {
+      if (previewRangeRef.current !== range) return;
+      previewRangeRef.current = null;
+      playIntentRef.current = false;
+      setIsPreviewingLoop(false);
+      setBuffering(false);
+      toast({ title: "Não foi possível reproduzir o áudio", description: "Tente ouvir o trecho novamente.", variant: "destructive" });
+    });
+  }, [handleLoopSeek, handleSelectLoop, syncTrackAudios, toast]);
+
+  const closeLoopPanel = useCallback(() => {
+    handlePreviewLoop(null);
+    setShowLoopPanel(false);
+  }, [handlePreviewLoop]);
+
+  useEffect(() => {
+    previewRangeRef.current = null;
+    setIsPreviewingLoop(false);
+    activeLoopRef.current = null;
+    setActiveLoop(null);
+    currentRepetitionRef.current = 0;
+    setCurrentRepetition(0);
+  }, [currentSongId]);
 
   const handlePlaybackRateChange = useCallback((rate: number) => {
     setPlaybackRate(rate);
@@ -1789,6 +1882,9 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target;
+      if (target instanceof HTMLElement && target.closest('input, textarea, select, button, [role="slider"], [contenteditable="true"]')) return;
       if (e.key === " ") { e.preventDefault(); togglePlay(); }
       if (!isTransicao) {
         if (e.key === "ArrowRight") goNextSegment();
@@ -2210,17 +2306,23 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
 
         {/* Loop Panel — desktop sidebar */}
         {showLoopPanel && !isMobile && currentSongId && countdown === null && (
-          <div className="order-first h-full shrink-0 w-72 pt-14 overflow-hidden" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+          <div className="order-first h-full shrink-0 w-[360px] pt-14 overflow-hidden" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
             <LoopPanel
               songId={currentSongId}
               currentTime={audioProgress}
+              duration={audioDuration}
+              isPlaying={audioPlaying}
+              isPreviewing={isPreviewingLoop}
+              onSeek={handleLoopSeek}
+              onTogglePlayback={togglePlay}
+              onPreview={handlePreviewLoop}
               activeLoopId={activeLoop?.id ?? null}
               currentRepetition={currentRepetition}
               playbackRate={playbackRate}
               onSelectLoop={handleSelectLoop}
               onPlaybackRateChange={handlePlaybackRateChange}
               isDark={isDark}
-              onClose={() => setShowLoopPanel(false)}
+              onClose={closeLoopPanel}
             />
           </div>
         )}
@@ -2281,22 +2383,30 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
 
       {/* Loop Panel — mobile drawer */}
       {isMobile && (
-        <Drawer open={showLoopPanel && !!currentSongId} onOpenChange={setShowLoopPanel}>
+        <Drawer open={showLoopPanel && !!currentSongId} onOpenChange={(open) => { if (open) setShowLoopPanel(true); else closeLoopPanel(); }}>
           <DrawerContent
-            className={`h-[82dvh] max-h-[calc(100dvh-1rem)] overflow-hidden bg-background pb-[env(safe-area-inset-bottom)] text-foreground ${isDark ? "dark" : ""}`}
+            className={`h-[90dvh] max-h-[calc(100dvh-1rem)] overflow-hidden bg-background pb-[env(safe-area-inset-bottom)] text-foreground ${isDark ? "dark" : ""}`}
           >
+            <DrawerTitle className="sr-only">Modo ensaio</DrawerTitle>
+            <DrawerDescription className="sr-only">Crie e ouça trechos da música para ensaiar.</DrawerDescription>
             <div className="min-h-0 flex-1 overflow-hidden">
               {currentSongId && (
                 <LoopPanel
                   songId={currentSongId}
                   currentTime={audioProgress}
+                  duration={audioDuration}
+                  isPlaying={audioPlaying}
+                  isPreviewing={isPreviewingLoop}
+                  onSeek={handleLoopSeek}
+                  onTogglePlayback={togglePlay}
+                  onPreview={handlePreviewLoop}
                   activeLoopId={activeLoop?.id ?? null}
                   currentRepetition={currentRepetition}
                   playbackRate={playbackRate}
                   onSelectLoop={handleSelectLoop}
                   onPlaybackRateChange={handlePlaybackRateChange}
                   isDark={isDark}
-                  onClose={() => setShowLoopPanel(false)}
+                  onClose={closeLoopPanel}
                   inDrawer
                 />
               )}
@@ -2565,7 +2675,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
             <Button
               variant="ghost"
               className={`rounded-xl flex-1 min-w-0 h-11 gap-1.5 px-2 ${showLoopPanel ? "text-primary bg-primary/10" : ""} ${hoverBg}`}
-              onClick={() => setShowLoopPanel((v) => !v)}
+              onClick={() => { if (showLoopPanel) closeLoopPanel(); else setShowLoopPanel(true); }}
               title="Modo Ensaio"
             >
               <Repeat className="h-4 w-4 shrink-0" />
