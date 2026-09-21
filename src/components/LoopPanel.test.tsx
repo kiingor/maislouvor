@@ -37,6 +37,12 @@ function setup(songId = "song-1") {
 
   const props = {
     currentTime: 215,
+    duration: 300,
+    isPlaying: false,
+    isPreviewing: false,
+    onSeek: vi.fn(),
+    onTogglePlayback: vi.fn(),
+    onPreview: vi.fn(),
     activeLoopId: null,
     currentRepetition: 0,
     playbackRate: 1,
@@ -71,7 +77,7 @@ describe("LoopPanel", () => {
 
     expect(screen.getByText("Novo loop")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Início do loop" })).toHaveValue("3:35");
-    expect(screen.getByRole("textbox", { name: "Fim do loop" })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "Fim do loop" })).toHaveValue("3:55");
     expect(screen.getByRole("button", { name: "Criar loop" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancelar" })).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Loops salvos" })).not.toBeInTheDocument();

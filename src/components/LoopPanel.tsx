@@ -1,46 +1,23 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Switch } from "@/components/ui/switch";
+import { LoopEditor } from "./LoopEditor";
+import { formatLoopTime as formatTime, type LoopDraft, type LoopRange } from "@/lib/loopTime";
 import type { Database } from "@/integrations/supabase/types";
 import {
   Plus,
   Trash2,
   Repeat,
   X,
-  Target,
-  Flag,
   Users,
   ChevronLeft,
   Infinity as InfinityIcon,
   Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
-
-function formatTime(s: number): string {
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${sec.toString().padStart(2, "0")}`;
-}
-
-function parseTimeInput(val: string): number | null {
-  const match = val.match(/^(\d+):(\d{1,2})$/);
-  if (match) return parseInt(match[1]) * 60 + parseInt(match[2]);
-  const num = parseFloat(val);
-  return isFinite(num) && num >= 0 ? num : null;
-}
-
-function autoFormatTime(raw: string): string {
-  const digits = raw.replace(/\D/g, "");
-  if (digits.length === 0) return "";
-  if (digits.length <= 2) return `0:${digits.padStart(2, "0")}`;
-  const secs = digits.slice(-2);
-  const mins = digits.slice(0, -2);
-  return `${parseInt(mins)}:${secs}`;
-}
 
 function errorMessage(error: unknown): string {
   if (
@@ -59,6 +36,12 @@ type LoopPoint = Database["public"]["Tables"]["song_loop_points"]["Row"];
 interface LoopPanelProps {
   songId: string;
   currentTime: number;
+  duration: number;
+  isPlaying: boolean;
+  isPreviewing: boolean;
+  onSeek: (time: number) => void;
+  onTogglePlayback: () => void;
+  onPreview: (range: LoopRange | null) => void;
   activeLoopId: string | null;
   currentRepetition: number;
   playbackRate: number;
@@ -73,6 +56,12 @@ const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5];
 export function LoopPanel({
   songId,
   currentTime,
+  duration,
+  isPlaying,
+  isPreviewing,
+  onSeek,
+  onTogglePlayback,
+  onPreview,
   activeLoopId,
   currentRepetition,
   playbackRate,
@@ -84,21 +73,13 @@ export function LoopPanel({
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("my");
   const [showForm, setShowForm] = useState(false);
-  const [editingLoopId, setEditingLoopId] = useState<string | null>(null);
-  const [formLabel, setFormLabel] = useState("Loop");
-  const [formStart, setFormStart] = useState("");
-  const [formEnd, setFormEnd] = useState("");
-  const [formRepeat, setFormRepeat] = useState(0);
+  const [editingLoop, setEditingLoop] = useState<LoopPoint | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
 
   useEffect(() => {
     setTab("my");
     setShowForm(false);
-    setEditingLoopId(null);
-    setFormLabel("Loop");
-    setFormStart("");
-    setFormEnd("");
-    setFormRepeat(0);
+    setEditingLoop(null);
     setSelectedProfileId(null);
   }, [songId]);
 
@@ -114,12 +95,13 @@ export function LoopPanel({
     queryFn: async () => {
       const { data: profile } = await supabase.rpc("get_my_profile_id");
       if (!profile) return [];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("song_loop_points")
         .select("*")
         .eq("song_id", songId)
         .eq("profile_id", profile)
         .order("sort_order");
+      if (error) throw error;
       return data ?? [];
     },
   });
@@ -128,12 +110,13 @@ export function LoopPanel({
   const { data: publicLoops = [] } = useQuery({
     queryKey: ["public-loops", songId],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("song_loop_points")
         .select("*")
         .eq("song_id", songId)
         .eq("is_public", true)
         .order("sort_order");
+      if (error) throw error;
       return data ?? [];
     },
   });
@@ -195,6 +178,7 @@ export function LoopPanel({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["my-loops", songId] });
       queryClient.invalidateQueries({ queryKey: ["all-my-loops"] });
+      queryClient.invalidateQueries({ queryKey: ["public-loops", songId] });
       resetForm();
       toast.success("Loop atualizado!");
     },
@@ -209,6 +193,8 @@ export function LoopPanel({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["my-loops", songId] });
+      queryClient.invalidateQueries({ queryKey: ["all-my-loops"] });
+      queryClient.invalidateQueries({ queryKey: ["public-loops", songId] });
       toast.success("Loop removido");
     },
   });
@@ -229,59 +215,28 @@ export function LoopPanel({
   });
 
   const resetForm = () => {
+    onPreview(null);
     setShowForm(false);
-    setEditingLoopId(null);
-    setFormLabel("Loop");
-    setFormStart("");
-    setFormEnd("");
-    setFormRepeat(0);
+    setEditingLoop(null);
   };
 
   const startEditing = (loop: LoopPoint) => {
-    setEditingLoopId(loop.id);
-    setFormLabel(loop.label);
-    setFormStart(formatTime(loop.start_time));
-    setFormEnd(formatTime(loop.end_time));
-    setFormRepeat(loop.repeat_count);
+    onPreview(null);
+    onSelectLoop(null);
+    setEditingLoop(loop);
     setShowForm(true);
   };
 
   const startCreating = () => {
-    setEditingLoopId(null);
-    setFormLabel("Loop");
-    setFormStart(formatTime(currentTime));
-    setFormEnd("");
-    setFormRepeat(0);
+    onPreview(null);
+    onSelectLoop(null);
+    setEditingLoop(null);
     setShowForm(true);
   };
 
-  const handleSubmit = () => {
-    const start = parseTimeInput(formStart);
-    const end = parseTimeInput(formEnd);
-    if (start === null || end === null) {
-      toast.error("Formato inválido. Use m:ss");
-      return;
-    }
-    if (start >= end) {
-      toast.error("O início deve ser antes do fim");
-      return;
-    }
-    if (editingLoopId) {
-      updateLoop.mutate({
-        id: editingLoopId,
-        label: formLabel || "Loop",
-        start_time: start,
-        end_time: end,
-        repeat_count: formRepeat,
-      });
-    } else {
-      createLoop.mutate({
-        label: formLabel || "Loop",
-        start_time: start,
-        end_time: end,
-        repeat_count: formRepeat,
-      });
-    }
+  const handleSubmit = (draft: LoopDraft) => {
+    if (editingLoop) updateLoop.mutate({ id: editingLoop.id, ...draft });
+    else createLoop.mutate(draft);
   };
 
   const profileLoops = selectedProfileId
@@ -289,7 +244,7 @@ export function LoopPanel({
     : [];
 
   const content = (
-    <div className={`flex h-full min-h-0 flex-col overflow-hidden ${isDark ? "text-white" : "text-black"}`}>
+    <div onKeyDown={(event) => event.stopPropagation()} className={`flex h-full min-h-0 flex-col overflow-hidden ${isDark ? "text-white" : "text-black"}`}>
       {/* Header */}
       <div className={`flex shrink-0 items-center justify-between border-b px-4 py-3 ${borderSubtle}`}>
         <div className="flex items-center gap-2">
@@ -298,7 +253,7 @@ export function LoopPanel({
         </div>
         <button
           type="button"
-          onClick={onClose}
+          onClick={() => { onPreview(null); onClose(); }}
           className={`rounded-lg p-1.5 ${hoverBg}`}
           aria-label="Fechar modo ensaio"
         >
@@ -307,7 +262,7 @@ export function LoopPanel({
       </div>
 
       {/* Speed control */}
-      <div className={`flex shrink-0 items-center gap-1.5 border-b px-4 py-2.5 ${borderSubtle}`}>
+      <div className={`flex shrink-0 flex-wrap items-center gap-1.5 border-b px-4 py-2.5 ${borderSubtle}`}>
         <span className={`text-[10px] font-semibold uppercase tracking-wider ${subtleText} mr-1`}>Velocidade</span>
         {SPEED_OPTIONS.map((speed) => (
           <button
@@ -325,15 +280,15 @@ export function LoopPanel({
       </div>
 
       {/* Tabs */}
-      <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
-        <TabsList className={`mx-4 mt-2 shrink-0 ${isDark ? "bg-white/10" : "bg-black/10"}`}>
+      <Tabs value={tab} onValueChange={(value) => { onPreview(null); setTab(value); }} className="flex min-h-0 flex-1 flex-col">
+        {!showForm && <TabsList className={`mx-4 mt-2 shrink-0 ${isDark ? "bg-white/10" : "bg-black/10"}`}>
           <TabsTrigger value="my" className="flex-1 text-xs">
             Meus loops{myLoops.length > 0 ? ` (${myLoops.length})` : ""}
           </TabsTrigger>
           <TabsTrigger value="profiles" className="flex-1 text-xs gap-1">
             <Users className="h-3 w-3" /> Perfis
           </TabsTrigger>
-        </TabsList>
+        </TabsList>}
 
         {/* My Loops */}
         <TabsContent
@@ -341,133 +296,21 @@ export function LoopPanel({
           className="min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
         >
           {showForm ? (
-            <form
-              className="flex min-h-0 flex-1 flex-col"
-              onSubmit={(event) => {
-                event.preventDefault();
-                handleSubmit();
-              }}
-            >
-              <div
-                className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-3 touch-pan-y"
-                data-vaul-no-drag
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold">
-                      {editingLoopId ? "Editar loop" : "Novo loop"}
-                    </p>
-                    <p className={`mt-0.5 text-[11px] leading-relaxed ${subtleText}`}>
-                      Use a posição da música para marcar o início e o fim do trecho.
-                    </p>
-                  </div>
-                  <div className={`shrink-0 rounded-lg px-2 py-1 text-right ${accentBg}`}>
-                    <span className={`block text-[9px] uppercase tracking-wide ${subtleText}`}>Agora</span>
-                    <span className="font-mono text-xs tabular-nums">{formatTime(currentTime)}</span>
-                  </div>
-                </div>
-
-                <label className="block space-y-1.5">
-                  <span className={`text-[10px] font-medium uppercase tracking-wide ${subtleText}`}>Nome</span>
-                  <input
-                    value={formLabel}
-                    onChange={(e) => setFormLabel(e.target.value)}
-                    placeholder="Ex.: Refrão"
-                    className={`w-full rounded-lg border bg-transparent px-3 py-2 text-sm ${borderSubtle} focus:border-primary focus:outline-none`}
-                  />
-                </label>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="min-w-0">
-                    <label className="block space-y-1.5">
-                      <span className={`text-[10px] font-medium uppercase tracking-wide ${subtleText}`}>Início</span>
-                      <input
-                        value={formStart}
-                        onChange={(e) => setFormStart(autoFormatTime(e.target.value))}
-                        placeholder="0:00"
-                        inputMode="numeric"
-                        aria-label="Início do loop"
-                        className={`w-full rounded-lg border bg-transparent px-3 py-2 font-mono text-sm ${borderSubtle} focus:border-primary focus:outline-none`}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setFormStart(formatTime(currentTime))}
-                      className={`mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[11px] font-medium ${accentBg} ${hoverBg}`}
-                      aria-label={`Usar ${formatTime(currentTime)} como início`}
-                    >
-                      <Target className="h-3.5 w-3.5 text-primary" />
-                      Marcar agora
-                    </button>
-                  </div>
-                  <div className="min-w-0">
-                    <label className="block space-y-1.5">
-                      <span className={`text-[10px] font-medium uppercase tracking-wide ${subtleText}`}>Fim</span>
-                      <input
-                        value={formEnd}
-                        onChange={(e) => setFormEnd(autoFormatTime(e.target.value))}
-                        placeholder="0:30"
-                        inputMode="numeric"
-                        aria-label="Fim do loop"
-                        className={`w-full rounded-lg border bg-transparent px-3 py-2 font-mono text-sm ${borderSubtle} focus:border-primary focus:outline-none`}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setFormEnd(formatTime(currentTime))}
-                      className={`mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[11px] font-medium ${accentBg} ${hoverBg}`}
-                      aria-label={`Usar ${formatTime(currentTime)} como fim`}
-                    >
-                      <Flag className="h-3.5 w-3.5 text-primary" />
-                      Marcar agora
-                    </button>
-                  </div>
-                </div>
-
-                <label className="block space-y-1.5">
-                  <span className={`text-[10px] font-medium uppercase tracking-wide ${subtleText}`}>Repetições</span>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min={0}
-                      value={formRepeat}
-                      onChange={(e) => setFormRepeat(Math.max(0, parseInt(e.target.value) || 0))}
-                      aria-label="Quantidade de repetições"
-                      className={`w-20 rounded-lg border bg-transparent px-3 py-2 font-mono text-sm ${borderSubtle} focus:border-primary focus:outline-none`}
-                    />
-                    <span className={`text-[11px] ${subtleText}`}>
-                      {formRepeat === 0 ? (
-                        <span className="flex items-center gap-1">
-                          <InfinityIcon className="h-3.5 w-3.5" /> Repete sem parar
-                        </span>
-                      ) : (
-                        `${formRepeat} vez${formRepeat === 1 ? "" : "es"}`
-                      )}
-                    </span>
-                  </div>
-                </label>
-              </div>
-
-              <div className={`flex shrink-0 gap-2 border-t px-4 py-3 ${borderSubtle}`}>
-                <Button
-                  type="submit"
-                  size="sm"
-                  className="flex-1 rounded-xl text-xs"
-                  disabled={createLoop.isPending || updateLoop.isPending}
-                >
-                  {editingLoopId ? "Salvar alterações" : "Criar loop"}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="rounded-xl text-xs"
-                  onClick={resetForm}
-                >
-                  Cancelar
-                </Button>
-              </div>
-            </form>
+            <LoopEditor
+              key={editingLoop?.id ?? "new"}
+              initialValue={editingLoop ?? undefined}
+              currentTime={currentTime}
+              duration={duration}
+              isPlaying={isPlaying}
+              isPreviewing={isPreviewing}
+              isDark={isDark}
+              isSaving={createLoop.isPending || updateLoop.isPending}
+              onSeek={onSeek}
+              onTogglePlayback={onTogglePlayback}
+              onPreview={onPreview}
+              onSave={handleSubmit}
+              onCancel={resetForm}
+            />
           ) : (
             <>
               <div className={`shrink-0 border-b px-4 py-3 ${borderSubtle}`}>
