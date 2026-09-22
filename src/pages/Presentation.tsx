@@ -8,6 +8,7 @@ import { TrackMixer } from "@/components/TrackMixer";
 import * as Tone from "tone";
 import { detectKeyFromUrl, parseKeyName, DetectedKey } from "@/lib/detectKey";
 import { LoopPanel } from "@/components/LoopPanel";
+import { LoopDrawer } from "@/components/LoopDrawer";
 import type { LoopRange } from "@/lib/loopTime";
 import type { Database } from "@/integrations/supabase/types";
 import { Metronome } from "@/components/Metronome";
@@ -16,7 +17,7 @@ import { useTeam } from "@/contexts/TeamContext";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from "@/components/ui/drawer";
+import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { isVocalRole } from "@/data/instruments";
@@ -2383,13 +2384,11 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
 
       {/* Loop Panel — mobile drawer */}
       {isMobile && (
-        <Drawer open={showLoopPanel && !!currentSongId} onOpenChange={(open) => { if (open) setShowLoopPanel(true); else closeLoopPanel(); }}>
-          <DrawerContent
-            className={`h-[90dvh] max-h-[calc(100dvh-1rem)] overflow-hidden bg-background pb-[env(safe-area-inset-bottom)] text-foreground ${isDark ? "dark" : ""}`}
-          >
-            <DrawerTitle className="sr-only">Modo ensaio</DrawerTitle>
-            <DrawerDescription className="sr-only">Crie e ouça trechos da música para ensaiar.</DrawerDescription>
-            <div className="min-h-0 flex-1 overflow-hidden">
+        <LoopDrawer
+          open={showLoopPanel && !!currentSongId}
+          onOpenChange={(open) => { if (open) setShowLoopPanel(true); else closeLoopPanel(); }}
+          isDark={isDark}
+        >
               {currentSongId && (
                 <LoopPanel
                   songId={currentSongId}
@@ -2410,9 +2409,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
                   inDrawer
                 />
               )}
-            </div>
-          </DrawerContent>
-        </Drawer>
+        </LoopDrawer>
       )}
 
       {/* Mixer — mobile drawer (bandeja, igual ao loop e ao metrônomo) */}
