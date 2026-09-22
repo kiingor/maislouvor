@@ -280,7 +280,7 @@ export function LoopPanel({
       </div>
 
       {/* Tabs */}
-      <Tabs value={tab} onValueChange={(value) => { onPreview(null); setTab(value); }} className="flex min-h-0 flex-1 flex-col">
+      <Tabs value={tab} onValueChange={(value) => { onPreview(null); setTab(value); }} className="flex h-0 min-h-0 flex-1 flex-col overflow-hidden">
         {!showForm && <TabsList className={`mx-4 mt-2 shrink-0 ${isDark ? "bg-white/10" : "bg-black/10"}`}>
           <TabsTrigger value="my" className="flex-1 text-xs">
             Meus loops{myLoops.length > 0 ? ` (${myLoops.length})` : ""}
@@ -293,7 +293,7 @@ export function LoopPanel({
         {/* My Loops */}
         <TabsContent
           value="my"
-          className="min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
+          className="h-0 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
         >
           {showForm ? (
             <LoopEditor
@@ -334,7 +334,9 @@ export function LoopPanel({
               <div
                 role="list"
                 aria-label="Loops salvos"
-                className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-4 py-3 touch-pan-y"
+                tabIndex={0}
+                style={{ WebkitOverflowScrolling: "touch", scrollbarGutter: "stable" }}
+                className="h-0 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-4 py-3 touch-pan-y"
                 data-vaul-no-drag
               >
                 {myLoops.length === 0 && (
@@ -428,7 +430,8 @@ export function LoopPanel({
         {/* Profiles */}
         <TabsContent
           value="profiles"
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 touch-pan-y"
+          className="h-0 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 touch-pan-y"
+          style={{ WebkitOverflowScrolling: "touch", scrollbarGutter: "stable" }}
           data-vaul-no-drag
         >
           {selectedProfileId ? (

@@ -6,11 +6,11 @@ import { ChordDiagram } from "@/components/ChordDiagram";
 import { KaraokeSegment } from "@/components/KaraokeSegment";
 import { TrackMixer } from "@/components/TrackMixer";
 import { LoopPanel } from "@/components/LoopPanel";
+import { LoopDrawer } from "@/components/LoopDrawer";
 import type { LoopRange } from "@/lib/loopTime";
 import type { Database } from "@/integrations/supabase/types";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
-import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from "@/components/ui/drawer";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getYouTubeVideoId, normalizeMediaUrl, openExternalMedia } from "@/lib/mediaUrl";
@@ -1351,11 +1351,11 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
 
       {/* Loop Panel — mobile drawer */}
       {isMobile && (
-        <Drawer open={showLoopPanel && !!currentSongId} onOpenChange={(open) => { if (open) setShowLoopPanel(true); else closeLoopPanel(); }}>
-          <DrawerContent className={`h-[90dvh] max-h-[calc(100dvh-1rem)] overflow-hidden pb-[env(safe-area-inset-bottom)] ${isDark ? "dark bg-[#1b1b1a] text-white" : "bg-[#fafaf8] text-black"}`}>
-            <DrawerTitle className="sr-only">Modo ensaio</DrawerTitle>
-            <DrawerDescription className="sr-only">Crie e ouça trechos da música para ensaiar.</DrawerDescription>
-            <div className="min-h-0 flex-1 overflow-hidden">
+        <LoopDrawer
+          open={showLoopPanel && !!currentSongId}
+          onOpenChange={(open) => { if (open) setShowLoopPanel(true); else closeLoopPanel(); }}
+          isDark={isDark}
+        >
               {currentSongId && (
                 <LoopPanel
                   songId={currentSongId}
@@ -1375,9 +1375,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
                   onClose={closeLoopPanel}
                 />
               )}
-            </div>
-          </DrawerContent>
-        </Drawer>
+        </LoopDrawer>
       )}
 
       {/* Segment Timeline — only in padrao mode */}
