@@ -90,6 +90,15 @@ export default function SongEditor() {
     refetchOnReconnect: false,
   });
 
+  const { data: canEditAdditionalAudio = false } = useQuery({
+    queryKey: ["song-audio-edit-permission", id, currentTeam?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("can_edit_song_audio", { p_song_id: id! });
+      return !error && data === true;
+    },
+    enabled: !!id && !!song && song.team_id === currentTeam?.id,
+  });
+
   const { data: songHistory = [] } = useQuery({
     queryKey: ["song-history", id],
     queryFn: async () => {
@@ -674,7 +683,7 @@ export default function SongEditor() {
               key={song.id}
               songId={song.id}
               teamId={song.team_id}
-              readOnly={readOnly || song.team_id !== currentTeam?.id}
+              readOnly={!canEditAdditionalAudio}
             />
           </GlassCard>
 

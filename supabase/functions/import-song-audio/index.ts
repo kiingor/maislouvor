@@ -30,8 +30,8 @@ Deno.serve(async (req) => {
     const { data: song, error: songError } = await userClient.from("songs")
       .select("id, team_id").eq("id", input.songId).single();
     if (songError || !song) return json({ error: "Música não encontrada" }, 404);
-    const { data: allowed, error: permissionError } = await userClient.rpc("member_can", {
-      _user_id: user.id, _team_id: song.team_id, _resource: "musicas", _action: "editar",
+    const { data: allowed, error: permissionError } = await userClient.rpc("can_edit_song_audio", {
+      p_song_id: song.id,
     });
     if (permissionError || !allowed) return json({ error: "Sem permissão para editar esta música" }, 403);
 

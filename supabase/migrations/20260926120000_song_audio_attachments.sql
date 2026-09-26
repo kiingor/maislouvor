@@ -48,32 +48,40 @@ GRANT INSERT (id, song_id, title, audio_path) ON public.song_audio_attachments T
 GRANT UPDATE (title) ON public.song_audio_attachments TO authenticated;
 GRANT ALL ON public.song_audio_attachments TO service_role;
 
+-- Keep the same authorization rule on the legacy and current backends. An
+-- explicit granular permission must never fall back to the broader team role.
+CREATE FUNCTION public.can_edit_song_audio(p_song_id uuid)
+RETURNS boolean LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = '' AS $$
+DECLARE song_team uuid; allowed boolean;
+BEGIN
+  SELECT team_id INTO song_team FROM public.songs WHERE id = p_song_id;
+  IF song_team IS NULL THEN RETURN false; END IF;
+  IF to_regprocedure('public.member_can(uuid,uuid,text,text)') IS NOT NULL THEN
+    EXECUTE 'SELECT public.member_can(auth.uid(), $1, ''musicas'', ''editar'')'
+      INTO allowed USING song_team;
+  ELSE
+    SELECT public.can_edit_team(auth.uid(), song_team) INTO allowed;
+  END IF;
+  RETURN COALESCE(allowed, false);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.can_edit_song_audio(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_edit_song_audio(uuid) TO authenticated, service_role;
+
 -- Reading follows the parent song's RLS, including explicit read shares.
 CREATE POLICY "Readers can view additional audio"
 ON public.song_audio_attachments FOR SELECT TO authenticated
 USING (EXISTS (SELECT 1 FROM public.songs s WHERE s.id = song_id));
 CREATE POLICY "Editors can add additional audio"
 ON public.song_audio_attachments FOR INSERT TO authenticated
-WITH CHECK (EXISTS (
-  SELECT 1 FROM public.songs s WHERE s.id = song_id
-    AND public.member_can(auth.uid(), s.team_id, 'musicas', 'editar')
-));
+WITH CHECK (public.can_edit_song_audio(song_id));
 CREATE POLICY "Editors can rename additional audio"
 ON public.song_audio_attachments FOR UPDATE TO authenticated
-USING (EXISTS (
-  SELECT 1 FROM public.songs s WHERE s.id = song_id
-    AND public.member_can(auth.uid(), s.team_id, 'musicas', 'editar')
-))
-WITH CHECK (EXISTS (
-  SELECT 1 FROM public.songs s WHERE s.id = song_id
-    AND public.member_can(auth.uid(), s.team_id, 'musicas', 'editar')
-));
+USING (public.can_edit_song_audio(song_id))
+WITH CHECK (public.can_edit_song_audio(song_id));
 CREATE POLICY "Editors can remove additional audio"
 ON public.song_audio_attachments FOR DELETE TO authenticated
-USING (EXISTS (
-  SELECT 1 FROM public.songs s WHERE s.id = song_id
-    AND public.member_can(auth.uid(), s.team_id, 'musicas', 'editar')
-));
+USING (public.can_edit_song_audio(song_id));
 
 CREATE POLICY "Song readers can play additional audio files"
 ON storage.objects FOR SELECT TO authenticated

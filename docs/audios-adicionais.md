@@ -1,61 +1,62 @@
 # Áudios adicionais por música
 
-Implementação na branch `feat/audios-adicionais`, a partir de `release/loops-20260921` (`990c695`). A `main` local não contém a interface e a função de importação do YouTube usadas pela versão integrada. O trabalho está em `../MaisLouvor-audios-adicionais`; a árvore original foi preservada.
+Integração local sobre a `main` no commit `2fb6d64` (sequência de loops). A implementação de `4afe38c`, da branch `feat/audios-adicionais`, foi adaptada à interface e às permissões desta base. Não foi incorporada a árvore inteira de `release/loops-20260921`, que usa outro esquema de banco. A correção local do avanço indevido aos 1:09 e seus cinco testes também estão incluídos.
 
 ## Uso
 
-- No editor, a seção **Áudios adicionais** permite adicionar arquivos (até 50 MB) ou importar o áudio de um vídeo do YouTube. Cada item tem nome próprio, reprodução, renomeação e remoção com confirmação.
-- Os membros que podem ler a música encontram os materiais no resumo e pelo botão de fones no ensaio. Só editores da música podem modificá-los.
-- O status da importação fica salvo e é consultado a cada quatro segundos enquanto aguarda ou processa. Falhas permitem tentar novamente no mesmo item.
-- No ensaio, abrir os materiais pausa a reprodução principal e as faixas, conservando posição, velocidade e loop selecionado. Fechar o material para o áudio adicional; o usuário pode retomar a música. Atalhos do ensaio ficam suspensos enquanto esse diálogo está aberto.
+- No editor, **Áudios adicionais** recebe arquivos de até 50 MB ou importações do YouTube. Cada item tem nome, reprodução, renomeação e remoção com confirmação.
+- Leitores da música acessam os materiais no resumo e pelo botão de fones no ensaio. Somente editores da equipe proprietária podem modificá-los.
+- A fila fica persistida e é consultada a cada quatro segundos enquanto aguarda ou processa. Falhas permitem tentar novamente no mesmo item.
+- Abrir os adicionais pausa o áudio principal, as faixas e a rolagem. Posição, velocidade, ordem dos loops e repetição atual são preservadas. Fechar o diálogo interrompe o adicional; o usuário retoma a música quando desejar. Atalhos de fundo ficam suspensos durante o diálogo.
 
 ## Persistência e processamento
 
-`song_audio_attachments` guarda o nome, arquivo, URL original e estado da importação. O caminho é `<equipe>/<música>/additional/<id>.<extensão>`. Upload, renomeação e remoção são salvos imediatamente, sem depender de “Salvar” no formulário da música.
+`song_audio_attachments` guarda nome, arquivo, URL e estado da importação. Cada arquivo usa `<equipe>/<música>/additional/<id>.<extensão>`. As alterações são salvas imediatamente, sem depender de “Salvar” no formulário da música.
 
-Não há escrita em `songs.audio_path`, `media_url`, `segment_timestamps`, `song_tracks` ou `song_loop_points` no fluxo dos adicionais. A função `import-song-audio` autentica o usuário, verifica a leitura da música e `member_can(..., 'musicas', 'editar')`, valida o vídeo e enfileira o adicional. A fila é a própria tabela de adicionais, separada de `yt_import_jobs`: um worker antigo nunca recebe esses itens.
+O fluxo não escreve em `songs.audio_path`, `media_url`, `segment_timestamps`, `song_tracks` ou `song_loop_points`. A função `import-song-audio` autentica o usuário, verifica a leitura da música e a RPC `can_edit_song_audio`, valida o vídeo e enfileira o adicional. Essa RPC usa `member_can` quando existe, respeitando permissões específicas; somente na base legada usa `can_edit_team`. A mesma regra determina os controles de edição na interface e as políticas de escrita da tabela. A fila é separada de `yt_import_jobs`, impedindo que um worker antigo trate o adicional como áudio principal.
 
-O worker consulta `claim_song_audio_import`, reutiliza o cache do YouTube quando disponível ou usa o mesmo download existente. A conclusão é condicional: se o adicional foi removido durante o processamento, o arquivo novo é descartado. A capa principal também é preservada. Trabalhos interrompidos por mais de quinze minutos são marcados com erro quando o worker volta a consultar a fila.
+O worker consulta `claim_song_audio_import`, reutiliza o cache do YouTube quando disponível e conclui pela função `complete_song_audio_import`. Se o adicional foi removido durante o processamento, o novo arquivo é descartado. A capa principal é preservada. Importações interrompidas por mais de quinze minutos são marcadas com erro na próxima consulta do worker.
 
-A leitura segue as políticas da música, incluindo compartilhamentos explícitos já existentes. Arquivos continuam no bucket privado `audio`, com URLs assinadas. Permissões de coluna impedem clientes autenticados de alterar status ou destino da fila diretamente. O banco valida que cada arquivo pertence ao seu próprio adicional.
+A leitura acompanha as políticas da música. Os arquivos ficam no bucket privado `audio`, com URLs assinadas. Permissões de coluna impedem clientes autenticados de alterar status e destinos da fila; o banco valida o caminho exclusivo de cada adicional.
 
-## Validação local
+## Validação da integração
 
-- Vitest: 98 testes (68 existentes, 30 novos), incluindo importação, validação de links, upload e compensação de falhas, remoção, reprodução exclusiva, permissões da interface e fechamento do player.
-- Python: sete regressões do worker sem rede, cobrindo cache, download, erros, remoção durante processamento e preservação do fluxo principal.
-- PostgreSQL via PGlite: 25 verificações com a migration real, permissões de editor/leitor/equipe externa/compartilhamento, caminhos, fila, expiração e integridade da música principal.
-- Chromium: componentes reais com dados sintéticos e backend simulado, em 320, 390 e 1280 pixels. Sem overflow horizontal ou controles cortados; formulário, upload, importação do YouTube, reprodução no resumo e acesso ao último de 40 loops conferidos.
-- Ensaio no navegador: áudio principal reproduziu, pausou ao abrir os adicionais, conservou exatamente fonte/posição/loop, bloqueou atalhos de fundo, trocou entre adicionais e retomou depois de fechar.
-- Build Vite/PWA aprovado. ESLint dos arquivos novos e `git diff --check` aprovados; nenhuma ocorrência nova de lint nos arquivos legados editados.
-- `typecheck` geral continua com os mesmos 14 diagnósticos da base `990c695`, fora desta alteração. Comparação feita em uma cópia limpa da base; nenhum diagnóstico novo.
-
-Comandos de verificação:
+- Vitest: **89 testes aprovados**, incluindo sequência de loops, pausa/retomada dos adicionais na segunda repetição e em velocidade reduzida, correção aos 1:09, upload, importação, permissões e limpeza do player.
+- Python: **7 testes aprovados** do worker, sem rede, cobrindo cache, download, erros, remoção concorrente e preservação do fluxo principal.
+- PostgreSQL/PGlite: **61 verificações aprovadas** (28 no modelo legado e 33 no modelo de permissões granulares, incluindo concessões e bloqueios explícitos), usando a migration real em memória: permissões de editor/leitor/equipe externa/compartilhamento, caminhos, fila, expiração e preservação da música principal.
+- TypeScript e build Vite/PWA aprovados. Arquivos novos sem erros de ESLint; os arquivos legados editados mantêm os mesmos 41 diagnósticos anteriores.
+- Chromium com componentes reais, dados sintéticos e backend simulado em **320, 390 e 1280 px**: layout sem overflow, upload isolado, player no resumo, fechamento do áudio e acesso ao último de 40 loops.
+- Reprodução nativa no navegador: o áudio principal toca, pausa para os adicionais, preserva fonte/posição/loop, bloqueia os atalhos de fundo e retoma ao fechar. Capturas e scripts em `/tmp/maislouvor-merge-20260926`.
 
 ```sh
 npm test
+./node_modules/.bin/tsc --noEmit -p tsconfig.app.json
 npm run build
 python3 -m unittest discover -s worker-gpu -p 'test_*.py' -v
-python3 -m py_compile worker-gpu/worker.py
-bash -n worker-gpu/run-worker.sh
 ```
 
-O teste SQL usa um banco em memória e não recebe URL/credenciais de produção. Instale `@electric-sql/pglite` em uma pasta temporária e indique o módulo, ou disponibilize-o no ambiente Node:
+O teste SQL usa um banco isolado em memória, sem credenciais externas:
 
 ```sh
 PGLITE_MODULE=/caminho/node_modules/@electric-sql/pglite/dist/index.js node supabase/tests/song_audio_attachments.mjs
+PERMISSION_MODEL=granular PGLITE_MODULE=/caminho/node_modules/@electric-sql/pglite/dist/index.js node supabase/tests/song_audio_attachments.mjs
 ```
 
-## Publicação pendente
+## Ativação do backend pendente
 
-Não foram feitas alterações no servidor, no banco real ou no worker em execução. A importação real de um vídeo externo não foi executada nesta sessão. As capturas e os scripts da verificação visual estão em `/tmp/maislouvor-additional-qa`.
+O Vite de `localhost:8080` usa o Supabase online definido no ambiente; não é um banco local. Uma consulta de leitura em 26/09/2026 confirmou que `song_audio_attachments` e `import-song-audio` ainda não existem nesse backend. O frontend mostra a indisponibilidade e desabilita novos uploads enquanto a estrutura está ausente, preservando o restante do ensaio.
 
-Ordem de ativação:
+Para testar upload e YouTube de ponta a ponta nesse ambiente:
 
-1. Aplicar **somente** `20260926120000_song_audio_attachments.sql` em uma transação, sobre o esquema integrado que já possui `member_can`. Não executar migrations antigas indiscriminadamente na produção, cuja evolução é diferente da `main`.
-2. Atualizar o worker que importa YouTube com `worker-gpu/worker.py` desta branch, preservando a configuração privada existente e `YT_ENABLED=1`. A base desse worker veio de `main` (`e08b998`, correção já usada na operação); `release/loops-20260921` não a continha.
-3. Publicar `import-song-audio` com verificação JWT e depois o frontend.
-4. Conferir upload e importação reais com uma música de teste, inclusive leitura por outro membro e retomada do ensaio.
+1. Aplicar somente `20260926120000_song_audio_attachments.sql` em uma transação, na base confirmada para a ativação; a autorização se adapta ao modelo existente. Não executar migrations antigas indiscriminadamente.
+2. Publicar `import-song-audio` com verificação JWT.
+3. Atualizar o worker que importa YouTube com `worker-gpu/worker.py`, preservando sua configuração privada e `YT_ENABLED=1`; ele precisa apontar para o mesmo backend do frontend.
+4. Validar com uma música de teste: upload/importação reais, acesso de outro membro e retomada do ensaio.
 
-Antes de publicar a árvore integrada completa, incorporar também os ajustes posteriores da página Download/APK 1.0.1, registrados no BrainHub em 23/09 e ainda fora da branch de integração. Esta tarefa não modifica o APK nem essa página. Clientes APK exigem novo empacotamento para receber a interface.
+Não foram feitos push, publicação, alterações no banco online ou no worker em execução. A migration, função e interface agora atendem tanto ao modelo legado quanto ao modelo de permissões granulares, sem ignorar bloqueios específicos de edição.
 
-Durante esta sessão surgiram alterações locais concorrentes na `main` original em `LoopPanel`, `Presentation` e novos arquivos de sequência de loops/UX. Elas não foram feitas, descartadas ou integradas por esta tarefa. Conferi-las na integração da release para preservar esse trabalho.
+### Divergência de ambiente confirmada em 26/09/2026
+
+A autorização para ativação foi recebida. Entretanto, o localhost usa o projeto Supabase Cloud `hhqzapwtuyzchismcuie`, que não está entre os projetos acessíveis à conta autenticada no CLI e no painel. O worker ativo, gerenciado pelo LaunchAgent `com.maislouvor.worker`, usa `https://api.maislouvor.com`, na VPS acessível por `louvor-vps`. Essa produção possui `member_can` e não contém o repertório `7e6bcb37-9a56-420f-9160-473196ffada8` do link solicitado.
+
+Foi pedida uma definição de destino: manter a base antiga com acesso administrativo, ou usar a produção e alinhar a configuração local. Até essa definição, os dois backends e o worker permanecem sem alterações. As consultas à VPS foram de leitura; as novas verificações SQL rodaram apenas no PGlite isolado.

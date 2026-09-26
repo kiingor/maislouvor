@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 const { PGlite } = await import(process.env.PGLITE_MODULE || '@electric-sql/pglite');
 const db = new PGlite();
+const granular = process.env.PERMISSION_MODEL === 'granular';
 const team = '10000000-0000-4000-8000-000000000001';
 const song = '20000000-0000-4000-8000-000000000001';
 const audio = '30000000-0000-4000-8000-000000000001';
@@ -24,14 +25,14 @@ try {
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS
       $$ SELECT nullif(current_setting('test.uid', true), '')::uuid $$;
     CREATE TABLE public.songs(id uuid PRIMARY KEY, team_id uuid, audio_path text, segment_timestamps jsonb);
-    CREATE TABLE public.members(user_id uuid, team_id uuid, can_edit boolean);
+    CREATE TABLE public.members(user_id uuid, team_id uuid, can_edit boolean, music_edit_override boolean);
     CREATE TABLE public.read_shares(user_id uuid, song_id uuid);
-    CREATE FUNCTION public.member_can(uuid, uuid, text, text) RETURNS boolean
+    CREATE FUNCTION public.can_edit_team(uuid, uuid) RETURNS boolean
       LANGUAGE sql SECURITY DEFINER SET search_path = '' AS
-      $$ SELECT EXISTS(SELECT 1 FROM public.members m WHERE m.user_id = $1 AND m.team_id = $2 AND ($4 = 'ver' OR m.can_edit)) $$;
+      $$ SELECT EXISTS(SELECT 1 FROM public.members m WHERE m.user_id = $1 AND m.team_id = $2 AND m.can_edit) $$;
     ALTER TABLE public.songs ENABLE ROW LEVEL SECURITY;
     CREATE POLICY read_song ON public.songs FOR SELECT TO authenticated USING (
-      public.member_can(auth.uid(), team_id, 'musicas', 'ver') OR EXISTS (
+      EXISTS (SELECT 1 FROM public.members m WHERE m.user_id = auth.uid() AND m.team_id = songs.team_id) OR EXISTS (
         SELECT 1 FROM public.read_shares r WHERE r.user_id = auth.uid() AND r.song_id = songs.id
       )
     );
@@ -40,13 +41,31 @@ try {
     ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
     GRANT SELECT ON storage.objects TO authenticated;
     INSERT INTO public.songs VALUES ('${song}', '${team}', '${team}/${song}.mp3', '[0, 15, 30]');
-    INSERT INTO public.members VALUES ('${user}', '${team}', true);
+    INSERT INTO public.members (user_id, team_id, can_edit) VALUES ('${user}', '${team}', true);
+  `);
+  if (granular) await db.exec(`
+    CREATE FUNCTION public.member_can(uuid, uuid, text, text) RETURNS boolean
+      LANGUAGE sql SECURITY DEFINER SET search_path = '' AS
+      $$ SELECT COALESCE((SELECT COALESCE(m.music_edit_override, m.can_edit)
+        FROM public.members m WHERE m.user_id = $1 AND m.team_id = $2
+        AND $3 = 'musicas' AND $4 = 'editar'), false) $$;
   `);
   await db.exec(await readFile(new URL('../migrations/20260926120000_song_audio_attachments.sql', import.meta.url), 'utf8'));
   await db.exec(`SET ROLE authenticated; SELECT set_config('test.uid', '${user}', false)`);
   await db.exec(`INSERT INTO public.song_audio_attachments (id, song_id, title, audio_path) VALUES ('${audio}', '${song}', 'Contralto', '${path}')`);
   await db.exec(`UPDATE public.song_audio_attachments SET title = 'Kit contralto' WHERE id = '${audio}'`);
   check((await rows('SELECT title FROM public.song_audio_attachments'))[0].title, 'Kit contralto');
+  check((await rows(`SELECT public.can_edit_song_audio('${song}') AS allowed`))[0].allowed, true);
+  await db.exec('RESET ROLE; SET ROLE anon');
+  await fails(`SELECT public.can_edit_song_audio('${song}')`, '42501');
+  await db.exec('RESET ROLE; SET ROLE authenticated');
+  if (granular) {
+    await db.exec('RESET ROLE; UPDATE public.members SET music_edit_override = false; SET ROLE authenticated');
+    check((await rows(`SELECT public.can_edit_song_audio('${song}') AS allowed`))[0].allowed, false);
+    check((await rows(`UPDATE public.song_audio_attachments SET title = 'Denied override' RETURNING id`)).length, 0);
+    await fails(`INSERT INTO public.song_audio_attachments (id, song_id, title, audio_path) VALUES ('${yt}', '${song}', 'Denied override', '${team}/${song}/additional/${yt}.mp3')`, '42501');
+    await db.exec('RESET ROLE; UPDATE public.members SET music_edit_override = NULL; SET ROLE authenticated');
+  }
   await fails(`UPDATE public.song_audio_attachments SET status = 'queued' WHERE id = '${audio}'`, '42501');
   await fails(`SELECT public.claim_song_audio_import()`, '42501');
   await fails(`INSERT INTO public.song_audio_attachments (song_id, title, audio_path) VALUES ('${song}', 'Wrong path', '${team}/${song}.mp3')`, '23514');
@@ -58,6 +77,12 @@ try {
   check((await rows(`DELETE FROM public.song_audio_attachments WHERE id = '${audio}' RETURNING id`)).length, 0);
   check((await rows(`UPDATE public.song_audio_attachments SET title = 'Denied' RETURNING id`)).length, 0);
   await fails(`INSERT INTO public.song_audio_attachments (id, song_id, title, audio_path) VALUES ('${yt}', '${song}', 'Denied', '${team}/${song}/additional/${yt}.mp3')`, '42501');
+  if (granular) {
+    await db.exec('RESET ROLE; UPDATE public.members SET music_edit_override = true; SET ROLE authenticated');
+    check((await rows(`SELECT public.can_edit_song_audio('${song}') AS allowed`))[0].allowed, true);
+    check((await rows(`UPDATE public.song_audio_attachments SET title = 'Allowed override' RETURNING id`)).length, 1);
+    await db.exec('RESET ROLE; UPDATE public.members SET music_edit_override = NULL; SET ROLE authenticated');
+  }
   await db.exec(`RESET ROLE; DELETE FROM public.members; SET ROLE authenticated`);
   check((await rows('SELECT id FROM public.song_audio_attachments')).length, 0);
   check((await rows('SELECT name FROM storage.objects')).length, 0);
@@ -65,6 +90,7 @@ try {
   check((await rows('SELECT id FROM public.song_audio_attachments')).length, 1);
   check((await rows('SELECT name FROM storage.objects')).map(x => x.name), [path]);
   check((await rows('DELETE FROM public.song_audio_attachments RETURNING id')).length, 0);
+  check((await rows(`SELECT public.can_edit_song_audio('${song}') AS allowed`))[0].allowed, false);
   await db.exec(`RESET ROLE; INSERT INTO public.song_audio_attachments (id, song_id, title, youtube_url, status) VALUES ('${yt}', '${song}', 'Tenor', 'https://www.youtube.com/watch?v=abcdefghijk', 'queued')`);
   await fails(`INSERT INTO public.song_audio_attachments (song_id, title, youtube_url, status) VALUES ('${song}', 'Invalid URL', 'https://evilyoutube.com/watch?v=abcdefghijk', 'queued')`, '23514');
   await db.exec('SET ROLE service_role');
@@ -81,5 +107,5 @@ try {
   check((await rows(`SELECT status FROM public.song_audio_attachments WHERE id = '${yt}'`))[0].status, 'error');
   await db.exec(`DELETE FROM public.songs WHERE id = '${song}'`);
   check((await rows('SELECT id FROM public.song_audio_attachments')).length, 0);
-  console.log(`${checks} PostgreSQL checks passed: RLS, read shares, paths, queue isolation, retries and parent preservation.`);
+  console.log(`${checks} PostgreSQL checks passed (${granular ? 'granular' : 'legacy'}): RLS, overrides, read shares, paths, queue isolation and parent preservation.`);
 } finally { await db.close(); }
