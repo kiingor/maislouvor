@@ -1,23 +1,93 @@
-import { useState, useMemo } from "react";
+import { warmPresentation } from "@/lib/routeLoaders";
+import { useEffect, useState, useMemo, type ReactNode } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
-import { GlassCard } from "@/components/GlassCard";
-import { SongCard } from "@/components/SongCard";
+import { SongCard, SongList, SongSearchField } from "@/components/SongCard";
 import { AddSongModal } from "@/components/AddSongModal";
 import { SetlistGeneratorModal } from "@/components/SetlistGeneratorModal";
 import { RepertorioBulkBar } from "@/components/RepertorioBulkBar";
+import { PageHeader } from "@/components/shell/PageHeader";
+import { ToolbarButton } from "@/components/shell/ToolbarButton";
 import { Button } from "@/components/ui/button";
-import { GlassInput } from "@/components/GlassInput";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Music, Plus, Search, Trash2, X, Share2, Loader2, MonitorPlay, GripVertical, Tags, CheckCircle2, CheckSquare, Sparkles } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  Music, Plus, Trash2, X, Share, Loader2, Play, Menu, Tags, CheckCircle2, CircleCheck, Sparkles,
+  MoreHorizontal, ChevronDown, ListMusic, Check, type LucideIcon,
+} from "lucide-react";
+
+/** Estado vazio (spec §5): símbolo 28pt terciário, título Body secundário e ações. */
+function EmptyState({ icon: Icon, title, description, children }: { icon: LucideIcon; title: string; description?: string; children?: ReactNode }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-card bg-card px-6 py-10 text-center">
+      <Icon className="mb-3 h-7 w-7 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+      <h3 className="text-body text-muted-foreground">{title}</h3>
+      {description && <p className="mt-1 max-w-xs text-footnote text-muted-foreground">{description}</p>}
+      {children && <div className="mt-5 flex flex-wrap justify-center gap-2">{children}</div>}
+    </div>
+  );
+}
+
+/** Linhas-fantasma da lista de músicas enquanto carrega. */
+function SongRowsSkeleton() {
+  return (
+    <div className="overflow-hidden rounded-card bg-card" aria-hidden="true">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="relative flex min-h-[64px] items-center gap-3 py-2.5 pl-4 pr-3">
+          {i > 1 && <span className="absolute left-[104px] right-0 top-0 border-t border-separator" />}
+          <span className="w-5 shrink-0" />
+          <span className="h-11 w-11 shrink-0 animate-pulse rounded-[10px] bg-fill-tertiary" />
+          <span className="flex-1 space-y-1.5">
+            <span className="block h-4 w-2/5 animate-pulse rounded-full bg-fill-tertiary" />
+            <span className="block h-3 w-1/4 animate-pulse rounded-full bg-fill-quaternary" />
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Pílula de filtro (pull-down/alternância) — compacta 36pt com área de toque de 44pt. */
+const chipClass = (active: boolean) =>
+  cn(
+    "relative inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-subhead font-medium transition-colors",
+    "after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']",
+    "[&_svg]:h-[15px] [&_svg]:w-[15px] [&_svg]:shrink-0",
+    active ? "bg-prominent text-prominent-foreground" : "bg-fill-tertiary text-foreground active:bg-fill-secondary",
+  );
+
+/** Círculo de seleção do modo de edição (iOS). */
+function SelectionCircle({ checked }: { checked: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full border-2 transition-colors",
+        checked ? "border-transparent bg-prominent text-prominent-foreground" : "border-label-tertiary",
+      )}
+    >
+      {checked && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+    </span>
+  );
+}
 
 export default function RepertorioDetail() {
+  // Baixa o Modo ensaio em segundo plano: tocar em "Ensaio" abre sem espera.
+  useEffect(warmPresentation, []);
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { can } = useTeam();
@@ -55,7 +125,7 @@ export default function RepertorioDetail() {
     enabled: !!id,
   });
 
-  const { data: songs = [] } = useQuery({
+  const { data: songs = [], isLoading: songsLoading } = useQuery({
     queryKey: ["repertorio-songs", id],
     queryFn: async () => {
       const { data } = await supabase
@@ -146,20 +216,27 @@ export default function RepertorioDetail() {
 
   if (isLoading) {
     return (
-      <div className="animate-in-up space-y-4">
-        <div className="h-8 w-48 bg-accent rounded-lg animate-pulse" />
-        <GlassCard className="h-32 animate-pulse" />
+      <div className="animate-in-up" aria-busy="true">
+        {/* Título real para leitores de tela (e Voltar no shell); visualmente, um marcador. */}
+        <PageHeader title="Repertório" back="/app/repertorios" className="sr-only" />
+        <div aria-hidden="true">
+          <div className="mb-4 h-[41px] w-56 max-w-[70%] animate-pulse rounded-full bg-fill-tertiary" />
+          <div className="mb-6 h-[88px] animate-pulse rounded-card bg-card" />
+          <SongRowsSkeleton />
+        </div>
       </div>
     );
   }
 
   if (!repertorio) {
     return (
-      <div className="animate-in-up text-center py-16">
-        <p className="text-muted-foreground">Repertório não encontrado.</p>
-        <Button variant="outline" className="mt-4 rounded-xl" onClick={() => navigate("/app/repertorios")}>
-          Voltar
-        </Button>
+      <div className="animate-in-up">
+        <PageHeader title="Repertório" back="/app/repertorios" />
+        <EmptyState icon={ListMusic} title="Repertório não encontrado.">
+          <Button variant="secondary" onClick={() => navigate("/app/repertorios")}>
+            Voltar
+          </Button>
+        </EmptyState>
       </div>
     );
   }
@@ -169,319 +246,320 @@ export default function RepertorioDetail() {
     .map((rs: any) => rs.song_id ?? rs.songs?.id)
     .filter(Boolean);
 
-  return (
-    <div className="animate-in-up pb-24">
-      <div className="mb-8">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <button
-              onClick={() => navigate("/app/repertorios")}
-              aria-label="Voltar"
-              title="Voltar"
-              className="shrink-0 -ml-1.5 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <div className="min-w-0">
-              <h1 className="text-2xl font-semibold tracking-tight truncate">{repertorio.name}</h1>
-              <p className="text-muted-foreground text-sm mt-1">
-                Criado em {new Date(repertorio.created_at).toLocaleDateString("pt-BR")}
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2 justify-end shrink-0">
+  const handleShare = async () => {
+    if (!repertorio) return;
+    setSharing(true);
+    try {
+      let publicToken = (repertorio as any).public_token;
+      if (!(repertorio as any).is_public || !publicToken) {
+        publicToken = crypto.randomUUID();
+        const { error } = await supabase
+          .from("repertorios")
+          .update({ is_public: true, public_token: publicToken } as any)
+          .eq("id", repertorio.id);
+        if (error) throw error;
+        queryClient.invalidateQueries({ queryKey: ["repertorio", id] });
+      }
+      const url = `${window.location.origin}/playlist/${publicToken}`;
+      await navigator.clipboard.writeText(url);
+      toast({ title: "Link copiado!", description: "Compartilhe com quem quiser." });
+    } catch {
+      toast({ title: "Erro ao compartilhar", variant: "destructive" });
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const keyOptions = [...new Set(songs.map((rs: any) => rs.songs?.key_current).filter(Boolean))].sort() as string[];
+  const themeOptions = [...new Set(songs.map((rs: any) => rs.songs?.theme).filter(Boolean))].sort() as string[];
+  const clearFilters = () => { setSearch(""); setFilterKey(""); setFilterTheme(""); setFilterTags([]); setReadyOnly(false); };
+
+  // Barra superior (HIG > Toolbars): no modo de seleção fica só a saída do modo.
+  const actions = selectionMode ? (
+    <ToolbarButton label="Cancelar seleção" onClick={exitSelection} />
+  ) : (
+    <>
+      <ToolbarButton
+        icon={sharing ? <Loader2 className="animate-spin" /> : <Share />}
+        aria-label="Compartilhar"
+        title="Compartilhar link"
+        disabled={sharing}
+        onClick={handleShare}
+      />
+      {canEdit && (
+        <ToolbarButton icon={<Plus strokeWidth={2.25} />} aria-label="Adicionar música" title="Adicionar música" onClick={() => setAddSongOpen(true)} />
+      )}
+      {canEdit && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <ToolbarButton icon={<MoreHorizontal />} aria-label="Mais ações" title="Mais ações" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" sideOffset={8}>
+            <DropdownMenuItem onClick={() => setGenerateOpen(true)}>
+              <Sparkles />
+              Gerar setlist
+            </DropdownMenuItem>
             {songs.length > 0 && (
-              <>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="rounded-xl sm:hidden h-9 w-9"
-                  onClick={() => navigate(`/app/repertorios/${id}/present`)}
-                  title="Iniciar ensaio"
-                >
-                  <MonitorPlay className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  className="rounded-xl gap-2 hidden sm:inline-flex"
-                  onClick={() => navigate(`/app/repertorios/${id}/present`)}
-                >
-                  <MonitorPlay className="h-4 w-4" /> Ensaio
-                </Button>
-              </>
+              <DropdownMenuItem onClick={() => setSelectionMode(true)}>
+                <CircleCheck />
+                Selecionar
+              </DropdownMenuItem>
             )}
-            <Button
-              variant="outline"
-              size="icon"
-              className="rounded-xl h-9 w-9"
-              disabled={sharing}
-              onClick={async () => {
-                if (!repertorio) return;
-                setSharing(true);
-                try {
-                  let publicToken = (repertorio as any).public_token;
-                  if (!(repertorio as any).is_public || !publicToken) {
-                    publicToken = crypto.randomUUID();
-                    const { error } = await supabase
-                      .from("repertorios")
-                      .update({ is_public: true, public_token: publicToken } as any)
-                      .eq("id", repertorio.id);
-                    if (error) throw error;
-                    queryClient.invalidateQueries({ queryKey: ["repertorio", id] });
-                  }
-                  const url = `${window.location.origin}/playlist/${publicToken}`;
-                  await navigator.clipboard.writeText(url);
-                  toast({ title: "Link copiado!", description: "Compartilhe com quem quiser." });
-                } catch {
-                  toast({ title: "Erro ao compartilhar", variant: "destructive" });
-                } finally {
-                  setSharing(false);
-                }
-              }}
-            >
-              {sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
-            </Button>
-            {canEdit && (
-              <>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="rounded-xl sm:hidden h-9 w-9"
-                  onClick={() => setGenerateOpen(true)}
-                  title="Gerar setlist"
-                >
-                  <Sparkles className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  className="rounded-xl gap-2 hidden sm:inline-flex"
-                  onClick={() => setGenerateOpen(true)}
-                >
-                  <Sparkles className="h-4 w-4" /> Gerar setlist
-                </Button>
-                <Button onClick={() => setAddSongOpen(true)} size="icon" className="rounded-xl sm:hidden h-9 w-9">
-                  <Plus className="h-4 w-4" />
-                </Button>
-                <Button onClick={() => setAddSongOpen(true)} className="rounded-xl gap-2 hidden sm:inline-flex">
-                  <Plus className="h-4 w-4" /> Adicionar música
-                </Button>
-              </>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </>
+  );
+
+  return (
+    <div className="animate-in-up">
+      <PageHeader title={repertorio.name} back="/app/repertorios" actions={actions} />
+
+      {/* Resumo: contagem, data e a ação principal (Ensaio) — como o cabeçalho de playlist do Música. */}
+      <section className="mb-6 flex flex-col gap-4 rounded-card bg-card p-4 sm:flex-row sm:items-center" aria-label="Resumo do repertório">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <span className="grid h-14 w-14 shrink-0 place-items-center rounded-[14px] bg-fill-tertiary text-muted-foreground">
+            <ListMusic className="h-6 w-6" strokeWidth={2} aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            {songsLoading ? (
+              <span className="my-[3px] block h-4 w-24 animate-pulse rounded-full bg-fill-tertiary" aria-hidden="true" />
+            ) : (
+              <p className="text-headline text-foreground">
+                {songs.length} música{songs.length !== 1 ? "s" : ""}
+              </p>
             )}
+            <p className="text-footnote text-muted-foreground">
+              Criado em {new Date(repertorio.created_at).toLocaleDateString("pt-BR")}
+            </p>
           </div>
         </div>
-      </div>
+        {songs.length > 0 && (
+          <Button
+            className="w-full sm:w-auto sm:min-w-[180px]"
+            onClick={() => navigate(`/app/repertorios/${id}/present`)}
+            title="Iniciar ensaio"
+          >
+            <Play className="fill-current" aria-hidden="true" /> Ensaio
+          </Button>
+        )}
+      </section>
 
-      {/* Filters + selection toggle */}
+      {/* Busca + filtros (pull-downs em pílulas roláveis) */}
       {songs.length > 0 && (
-        <div className="mb-4 space-y-2">
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <GlassInput
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar música ou artista..."
-                className="pl-9"
-              />
-              {search && (
-                <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <X className="h-3.5 w-3.5 text-muted-foreground" />
+        <div className="mb-4 space-y-2.5">
+          <SongSearchField value={search} onChange={setSearch} placeholder="Buscar música ou artista..." />
+
+          <div className="hide-scrollbar -mx-4 overflow-x-auto min-[430px]:-mx-5 lg:mx-0 lg:overflow-visible">
+            <div className="flex w-max gap-2 px-4 py-1 min-[430px]:px-5 lg:w-auto lg:flex-wrap lg:px-0">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className={chipClass(!!filterKey)}>
+                    {filterKey ? `Tom ${filterKey}` : "Tom"}
+                    <ChevronDown strokeWidth={2.5} aria-hidden="true" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="max-h-[50vh] overflow-y-auto">
+                  <DropdownMenuRadioGroup value={filterKey || "all"} onValueChange={(v) => setFilterKey(v === "all" ? "" : v)}>
+                    <DropdownMenuRadioItem value="all">Todos os tons</DropdownMenuRadioItem>
+                    {keyOptions.map((k) => (
+                      <DropdownMenuRadioItem key={k} value={k}>{k}</DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className={chipClass(!!filterTheme)}>
+                    <span className="max-w-[10rem] truncate">{filterTheme || "Tema"}</span>
+                    <ChevronDown strokeWidth={2.5} aria-hidden="true" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="max-h-[50vh] overflow-y-auto">
+                  <DropdownMenuRadioGroup value={filterTheme || "all"} onValueChange={(v) => setFilterTheme(v === "all" ? "" : v)}>
+                    <DropdownMenuRadioItem value="all">Todos os temas</DropdownMenuRadioItem>
+                    {themeOptions.map((t) => (
+                      <DropdownMenuRadioItem key={t} value={t}>{t}</DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {allTags.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button type="button" className={chipClass(filterTags.length > 0)}>
+                      <Tags aria-hidden="true" />
+                      Tags
+                      {filterTags.length > 0 && (
+                        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-prominent-foreground/20 px-1.5 text-caption2 font-semibold tabular-nums">
+                          {filterTags.length}
+                        </span>
+                      )}
+                      <ChevronDown strokeWidth={2.5} aria-hidden="true" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="max-h-[50vh] w-60 overflow-y-auto">
+                    <DropdownMenuLabel className="text-footnote font-normal text-muted-foreground">Filtrar por tag</DropdownMenuLabel>
+                    {allTags.map((tag) => (
+                      <DropdownMenuCheckboxItem
+                        key={tag}
+                        checked={filterTags.includes(tag)}
+                        onCheckedChange={() => toggleTag(tag)}
+                        onSelect={(e) => e.preventDefault()}
+                      >
+                        <span className="truncate">{tag}</span>
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                    {filterTags.length > 0 && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => setFilterTags([])}>
+                          <X />
+                          Limpar tags
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+
+              <button
+                type="button"
+                className={chipClass(readyOnly)}
+                aria-pressed={readyOnly}
+                onClick={() => setReadyOnly((v) => !v)}
+                title="Música com cifra e áudio"
+              >
+                <CheckCircle2 aria-hidden="true" /> Pronta pra tocar
+              </button>
+
+              {filtersActive && (
+                <button type="button" className={cn(chipClass(false), "text-muted-foreground")} onClick={clearFilters}>
+                  <X aria-hidden="true" /> Limpar filtros
                 </button>
               )}
             </div>
-            <Select value={filterKey || "all"} onValueChange={(v) => setFilterKey(v === "all" ? "" : v)}>
-              <SelectTrigger className="w-full sm:w-32 rounded-xl">
-                <SelectValue placeholder="Tom" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os tons</SelectItem>
-                {[...new Set(songs.map((rs: any) => rs.songs?.key_current).filter(Boolean))].sort().map((k: string) => (
-                  <SelectItem key={k} value={k}>{k}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={filterTheme || "all"} onValueChange={(v) => setFilterTheme(v === "all" ? "" : v)}>
-              <SelectTrigger className="w-full sm:w-36 rounded-xl">
-                <SelectValue placeholder="Tema" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os temas</SelectItem>
-                {[...new Set(songs.map((rs: any) => rs.songs?.theme).filter(Boolean))].sort().map((t: string) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
-
-          {/* Tag filter + ready toggle + selection mode */}
-          <div className="flex flex-wrap items-center gap-2">
-            {allTags.length > 0 && (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="rounded-xl gap-1.5">
-                    <Tags className="h-3.5 w-3.5" />
-                    Tags
-                    {filterTags.length > 0 && (
-                      <span className="ml-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">
-                        {filterTags.length}
-                      </span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="start" className="w-[calc(100vw-2rem)] max-w-[14rem] p-2">
-                  <p className="text-xs text-muted-foreground px-1 pb-1.5">Filtrar por tag</p>
-                  <div className="space-y-0.5 max-h-60 overflow-auto">
-                    {allTags.map((tag) => (
-                      <button
-                        key={tag}
-                        onClick={() => toggleTag(tag)}
-                        className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded-lg hover:bg-accent transition-colors text-sm"
-                      >
-                        <Checkbox checked={filterTags.includes(tag)} className="pointer-events-none" />
-                        <span className="truncate">{tag}</span>
-                      </button>
-                    ))}
-                  </div>
-                  {filterTags.length > 0 && (
-                    <Button variant="ghost" size="sm" className="w-full mt-1 rounded-lg" onClick={() => setFilterTags([])}>
-                      Limpar tags
-                    </Button>
-                  )}
-                </PopoverContent>
-              </Popover>
-            )}
-
-            <Button
-              variant={readyOnly ? "default" : "outline"}
-              size="sm"
-              className="rounded-xl gap-1.5"
-              onClick={() => setReadyOnly((v) => !v)}
-              title="Música com cifra e áudio"
-            >
-              <CheckCircle2 className="h-3.5 w-3.5" /> Pronta pra tocar
-            </Button>
-
-            {filtersActive && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="rounded-xl gap-1.5 text-muted-foreground"
-                onClick={() => { setSearch(""); setFilterKey(""); setFilterTheme(""); setFilterTags([]); setReadyOnly(false); }}
-              >
-                <X className="h-3.5 w-3.5" /> Limpar filtros
-              </Button>
-            )}
-
-            {canEdit && (
-              <Button
-                variant={selectionMode ? "default" : "outline"}
-                size="sm"
-                className="rounded-xl gap-1.5 sm:ml-auto"
-                onClick={() => (selectionMode ? exitSelection() : setSelectionMode(true))}
-              >
-                <CheckSquare className="h-3.5 w-3.5" /> {selectionMode ? "Cancelar seleção" : "Selecionar"}
-              </Button>
-            )}
-          </div>
-
-          {dragEnabled && songs.length > 1 && (
-            <p className="text-[11px] text-muted-foreground">Arraste as músicas para reordenar.</p>
-          )}
         </div>
       )}
 
-      {songs.length === 0 ? (
-        <GlassCard className="p-12 flex flex-col items-center justify-center text-center">
-          <div className="h-16 w-16 rounded-2xl bg-accent flex items-center justify-center mb-4">
-            <Music className="h-7 w-7 text-muted-foreground" />
-          </div>
-          <h3 className="text-lg font-medium mb-1">Nenhuma música</h3>
-          <p className="text-muted-foreground text-sm max-w-xs">
-            {canEdit ? "Adicione músicas a este repertório." : "Nenhuma música foi adicionada ainda."}
-          </p>
+      {songsLoading ? (
+        <SongRowsSkeleton />
+      ) : songs.length === 0 ? (
+        <EmptyState
+          icon={Music}
+          title="Nenhuma música"
+          description={canEdit ? "Adicione músicas a este repertório." : "Nenhuma música foi adicionada ainda."}
+        >
           {canEdit && (
-            <div className="mt-6 flex gap-2">
-              <Button className="rounded-xl gap-2" onClick={() => setAddSongOpen(true)}>
-                <Plus className="h-4 w-4" /> Adicionar música
+            <>
+              <Button onClick={() => setAddSongOpen(true)}>
+                <Plus aria-hidden="true" /> Adicionar música
               </Button>
-              <Button variant="outline" className="rounded-xl gap-2" onClick={() => setGenerateOpen(true)}>
-                <Sparkles className="h-4 w-4" /> Gerar setlist
+              <Button variant="secondary" onClick={() => setGenerateOpen(true)}>
+                <Sparkles aria-hidden="true" /> Gerar setlist
               </Button>
-            </div>
+            </>
           )}
-        </GlassCard>
+        </EmptyState>
       ) : filtered.length === 0 ? (
-        <div className="py-8 text-center text-sm text-muted-foreground">
+        <div className="rounded-card bg-card px-6 py-10 text-center text-body text-muted-foreground">
           Nenhuma música encontrada com os filtros aplicados.
         </div>
       ) : (
-        <div className="space-y-2">
-          {filtered.map((rs: any, idx: number) => {
-            const s = rs.songs;
-            const isSelected = selectedRsIds.includes(rs.id);
-            return (
-              <div
-                key={rs.id}
-                draggable={dragEnabled}
-                onDragStart={dragEnabled ? handleDragStart(idx) : undefined}
-                onDragOver={dragEnabled ? handleDragOver(idx) : undefined}
-                onDrop={dragEnabled ? () => handleDrop(idx) : undefined}
-                onDragEnd={dragEnabled ? handleDragEnd : undefined}
-                className={`relative group rounded-xl transition-all ${
-                  dragIdx === idx ? "opacity-40" : ""
-                } ${overIdx === idx && dragIdx !== idx ? "ring-2 ring-primary/40 ring-offset-1" : ""}`}
-              >
-                <div className="flex items-center gap-2">
-                  {dragEnabled && (
-                    <div className="shrink-0 cursor-grab active:cursor-grabbing touch-none text-muted-foreground hover:text-foreground transition-colors">
-                      <GripVertical className="h-4 w-4" />
-                    </div>
+        <section aria-label="Músicas do repertório">
+          <SongList>
+            {filtered.map((rs: any, idx: number) => {
+              const s = rs.songs;
+              const isSelected = selectedRsIds.includes(rs.id);
+              return (
+                <div
+                  key={rs.id}
+                  draggable={dragEnabled}
+                  onDragStart={dragEnabled ? handleDragStart(idx) : undefined}
+                  onDragOver={dragEnabled ? handleDragOver(idx) : undefined}
+                  onDrop={dragEnabled ? () => handleDrop(idx) : undefined}
+                  onDragEnd={dragEnabled ? handleDragEnd : undefined}
+                  className={cn(
+                    "relative transition-opacity",
+                    dragIdx === idx && "opacity-40",
+                    overIdx === idx && dragIdx !== idx && "ring-2 ring-inset ring-primary/40",
                   )}
-                  {selectionMode && (
-                    <div className="shrink-0 pl-1">
-                      <Checkbox checked={isSelected} onCheckedChange={() => toggleSelect(rs.id)} />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <SongCard
-                      song={s || { id: rs.song_id, title: "—" }}
-                      index={idx}
-                      onClick={
-                        selectionMode
-                          ? () => toggleSelect(rs.id)
-                          : () => navigate(`/app/songs/${s?.id || rs.song_id}`)
-                      }
-                      actions={
-                        canEdit && !selectionMode ? (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteTarget({ rsId: rs.id, songTitle: s?.title || "esta música" });
-                            }}
-                            className="shrink-0 p-2 rounded-xl bg-destructive/10 text-destructive opacity-0 group-hover:opacity-100 hover:bg-destructive/20 transition-all"
-                            title="Remover do repertório"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        ) : undefined
-                      }
-                    />
-                  </div>
+                >
+                  <SongCard
+                    variant="row"
+                    song={s || { id: rs.song_id, title: "—" }}
+                    index={idx}
+                    leading={selectionMode ? <SelectionCircle checked={isSelected} /> : undefined}
+                    selected={selectionMode ? isSelected : undefined}
+                    chevron={!selectionMode && !dragEnabled}
+                    onClick={
+                      selectionMode
+                        ? () => toggleSelect(rs.id)
+                        : () => navigate(`/app/songs/${s?.id || rs.song_id}`)
+                    }
+                    actions={
+                      canEdit && !selectionMode ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label={`Mais ações para ${s?.title || "esta música"}`}
+                              title="Mais ações"
+                              className="grid h-11 w-11 place-items-center rounded-full text-muted-foreground transition-colors active:bg-fill-tertiary"
+                            >
+                              <MoreHorizontal className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              className="text-ios-red focus:text-ios-red"
+                              onClick={() => setDeleteTarget({ rsId: rs.id, songTitle: s?.title || "esta música" })}
+                            >
+                              <Trash2 />
+                              Remover do repertório
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : undefined
+                    }
+                    trailing={
+                      dragEnabled ? (
+                        // Alça de reordenar na borda direita; substitui o chevron (padrão iOS).
+                        <span
+                          className="grid h-11 w-8 cursor-grab place-items-center text-label-tertiary active:cursor-grabbing"
+                          title="Arraste para reordenar"
+                          aria-hidden="true"
+                        >
+                          <Menu className="h-[18px] w-[18px]" strokeWidth={2.25} />
+                        </span>
+                      ) : undefined
+                    }
+                  />
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </SongList>
+          {dragEnabled && songs.length > 1 && (
+            <p className="mx-4 mt-1.5 text-footnote text-muted-foreground">Arraste as músicas para reordenar.</p>
+          )}
+        </section>
       )}
 
-      {selectionMode && selectedRsIds.length > 0 && (
-        <RepertorioBulkBar
-          selectedRsIds={selectedRsIds}
-          selectedSongIds={selectedSongIds}
-          currentRepertorioId={id!}
-          onClearSelection={exitSelection}
-          onDone={exitSelection}
-        />
+      {selectionMode && (
+        <>
+          {/* Espaço para a barra de ações flutuante não cobrir a última linha. */}
+          <div className="h-20" aria-hidden="true" />
+          <RepertorioBulkBar
+            selectedRsIds={selectedRsIds}
+            selectedSongIds={selectedSongIds}
+            currentRepertorioId={id!}
+            onClearSelection={exitSelection}
+            onDone={exitSelection}
+          />
+        </>
       )}
 
       <AddSongModal open={addSongOpen} onOpenChange={setAddSongOpen} repertorioId={id!} />
@@ -496,9 +574,9 @@ export default function RepertorioDetail() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
                 if (!deleteTarget) return;
                 const { error } = await supabase

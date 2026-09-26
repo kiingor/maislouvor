@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   Loader2,
   Music,
   Clock,
-  CalendarDays,
+  CalendarX2,
   Users,
   ChevronDown,
+  Timer,
 } from "lucide-react";
+import { ScrollEdge } from "@/components/shell/ScrollEdge";
 
 interface SongItem {
   type: "song";
@@ -54,14 +56,33 @@ export default function PublicCulto() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openSong, setOpenSong] = useState<number | null>(null);
+  // Título grande → título inline na barra quando ele passa por baixo dela (HIG > Navigation bars).
+  // O tema segue o sistema (classe .dark aplicada em main.tsx); esta página não força mais o escuro.
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
-  // Tema escuro nesta página pública.
   useEffect(() => {
-    document.documentElement.classList.add("dark");
-    return () => {
-      document.documentElement.classList.remove("dark");
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      const title = titleRef.current;
+      const bar = barRef.current;
+      setScrolled(window.scrollY > 2);
+      if (!title || !bar) return;
+      setCollapsed(title.getBoundingClientRect().bottom < bar.getBoundingClientRect().bottom + 4);
     };
-  }, []);
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(check); };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    check();
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [data]);
 
   useEffect(() => {
     if (!token) return;
@@ -103,84 +124,82 @@ export default function PublicCulto() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex min-h-[100dvh] items-center justify-center bg-background">
+        <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" aria-label="Carregando" />
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <p className="text-muted-foreground">{error || "Erro ao carregar roteiro."}</p>
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 bg-background px-8 text-center">
+        <CalendarX2 className="h-[52px] w-[52px] text-label-tertiary" strokeWidth={1.75} aria-hidden="true" />
+        <p className="text-title3 text-foreground">{error || "Erro ao carregar roteiro."}</p>
       </div>
     );
   }
 
   const lineupEntries = Object.entries(data.lineup || {});
+  const rowSeparator = "before:absolute before:right-0 before:top-0 before:border-t before:border-separator";
 
   return (
-    <div className="min-h-screen bg-background text-foreground relative">
-      {/* Gradiente de fundo */}
+    <div className="min-h-[100dvh] bg-background text-foreground">
+      {/* Barra superior: título inline quando o grande sai de vista + borda de rolagem progressiva */}
+      <ScrollEdge position="top" active={scrolled} className="fixed top-0 h-[calc(env(safe-area-inset-top)+64px)]" />
       <div
-        className="fixed inset-0 pointer-events-none z-0"
-        style={{
-          background: `radial-gradient(ellipse at 25% 20%, hsl(var(--primary) / 0.18) 0%, transparent 55%),
-                       radial-gradient(ellipse at 80% 70%, hsl(var(--primary) / 0.08) 0%, transparent 55%)`,
-        }}
-      />
+        ref={barRef}
+        className="fixed inset-x-0 top-0 z-40 flex h-[calc(env(safe-area-inset-top)+44px)] items-end justify-center px-12 pb-2.5"
+        aria-hidden={!collapsed}
+      >
+        <p className={`inline-title truncate text-headline ${collapsed ? "on" : ""}`}>{data.name}</p>
+      </div>
 
-      <div className="relative z-10 max-w-2xl mx-auto px-4 py-8 sm:py-12">
+      <div className="mx-auto max-w-2xl px-4 pb-[calc(env(safe-area-inset-bottom)+32px)] pt-[calc(env(safe-area-inset-top)+52px)] min-[430px]:px-5">
         {/* Cabeçalho */}
-        <header className="mb-8 text-center">
-          <div className="inline-flex h-12 w-12 rounded-2xl bg-primary/15 items-center justify-center mb-4">
-            <CalendarDays className="h-5 w-5 text-primary" />
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{data.name}</h1>
+        <header className="mb-7 px-0.5">
+          <h1 ref={titleRef} className="text-large-title break-words">{data.name}</h1>
           {formattedDate && (
-            <p className="text-sm text-muted-foreground mt-1 capitalize">{formattedDate}</p>
+            <p className="mt-0.5 text-subhead text-muted-foreground first-letter:uppercase">{formattedDate}</p>
           )}
           {data.description && (
-            <p className="text-sm text-muted-foreground mt-3 max-w-md mx-auto">{data.description}</p>
+            <p className="mt-3 text-body text-muted-foreground">{data.description}</p>
           )}
           {totalSeconds > 0 && (
-            <div className="inline-flex items-center gap-1.5 mt-4 text-xs font-medium text-muted-foreground bg-accent/40 px-3 py-1.5 rounded-full">
-              <Clock className="h-3.5 w-3.5" />
+            <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-fill-tertiary py-1 pl-2 pr-2.5 text-footnote font-medium">
+              <Clock className="h-[15px] w-[15px] text-muted-foreground" strokeWidth={2.25} aria-hidden="true" />
               Duração estimada: {formatDuration(totalSeconds)}
             </div>
           )}
         </header>
 
         {/* Roteiro */}
-        <section className="mb-10">
-          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Roteiro</h2>
+        <section className="mb-7">
+          <h2 className="mx-1 mb-2 text-title3">Roteiro</h2>
           {data.items.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-6">Nenhum item no roteiro.</p>
+            <div className="flex items-center gap-3 rounded-card bg-card p-4">
+              <Music className="h-7 w-7 shrink-0 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+              <p className="text-body text-muted-foreground">Nenhum item no roteiro.</p>
+            </div>
           ) : (
-            <div className="space-y-2">
+            <div className="overflow-hidden rounded-card bg-card">
               {data.items.map((it, idx) => {
+                const separator = idx > 0 ? `${rowSeparator} before:left-[58px]` : "";
                 if (it.type === "block") {
+                  const detail = [it.kind && it.kind !== "moment" ? it.kind : null, it.duration_min ? `${it.duration_min} min` : null]
+                    .filter(Boolean)
+                    .join(" · ");
                   return (
-                    <div
-                      key={`block-${idx}`}
-                      className="rounded-2xl border border-border/50 bg-card/40 backdrop-blur p-4"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="font-medium text-sm">{it.title}</p>
-                          {it.kind && it.kind !== "moment" && (
-                            <span className="text-[10px] font-medium uppercase tracking-wider text-primary/80">{it.kind}</span>
-                          )}
-                        </div>
-                        {!!it.duration_min && (
-                          <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
-                            <Clock className="h-3 w-3" /> {it.duration_min} min
-                          </span>
+                    <div key={`block-${idx}`} className={`relative flex min-h-[52px] items-start gap-3 px-4 py-2.5 ${separator}`}>
+                      <span className="mt-px grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[8px] bg-fill-tertiary text-muted-foreground">
+                        <Timer className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
+                      </span>
+                      <div className="min-w-0 flex-1 py-0.5">
+                        <p className="break-words text-body">{it.title}</p>
+                        {detail && <p className="text-subhead text-muted-foreground">{detail}</p>}
+                        {it.notes && (
+                          <p className="mt-1 whitespace-pre-wrap text-footnote text-muted-foreground">{it.notes}</p>
                         )}
                       </div>
-                      {it.notes && (
-                        <p className="text-xs text-muted-foreground mt-2 italic whitespace-pre-wrap">{it.notes}</p>
-                      )}
                     </div>
                   );
                 }
@@ -188,42 +207,42 @@ export default function PublicCulto() {
                 const isOpen = openSong === idx;
                 const hasDetail = !!(it.cifra_text || it.lyrics_text);
                 return (
-                  <div
-                    key={`song-${idx}`}
-                    className="rounded-2xl border border-border/50 bg-card/60 backdrop-blur overflow-hidden"
-                  >
+                  <div key={`song-${idx}`} className={`relative ${separator}`}>
                     <button
                       type="button"
                       disabled={!hasDetail}
+                      aria-expanded={hasDetail ? isOpen : undefined}
                       onClick={() => setOpenSong(isOpen ? null : idx)}
-                      className="w-full flex items-center gap-3 p-4 text-left"
+                      className="flex min-h-[52px] w-full items-center gap-3 px-4 py-2.5 text-left transition-colors enabled:active:bg-fill-tertiary disabled:cursor-default"
                     >
-                      <div className="h-9 w-9 rounded-lg bg-accent/60 flex items-center justify-center shrink-0">
-                        <Music className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{it.title}</p>
-                        {it.artist && <p className="text-xs text-muted-foreground truncate">{it.artist}</p>}
-                      </div>
+                      <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[8px] bg-fill-tertiary text-muted-foreground">
+                        <Music className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-body">{it.title}</span>
+                        {it.artist && <span className="block truncate text-subhead text-muted-foreground">{it.artist}</span>}
+                      </span>
                       {it.key && (
-                        <span className="text-[11px] font-bold bg-primary/15 text-primary px-2 py-0.5 rounded-md shrink-0">
+                        <span className="shrink-0 rounded-full bg-fill-tertiary px-2 py-0.5 text-footnote font-semibold tabular-nums">
                           {it.key}
                         </span>
                       )}
                       {hasDetail && (
                         <ChevronDown
-                          className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                          className={`h-4 w-4 shrink-0 text-label-tertiary transition-transform duration-200 motion-reduce:transition-none ${isOpen ? "rotate-180" : ""}`}
+                          strokeWidth={2.75}
+                          aria-hidden="true"
                         />
                       )}
                     </button>
 
                     {it.notes && (
-                      <p className="text-xs text-muted-foreground px-4 pb-3 -mt-1 italic whitespace-pre-wrap">{it.notes}</p>
+                      <p className="-mt-1.5 whitespace-pre-wrap pb-2.5 pl-[58px] pr-4 text-footnote text-muted-foreground">{it.notes}</p>
                     )}
 
                     {isOpen && hasDetail && (
-                      <div className="border-t border-border/50 px-4 py-3 bg-background/40">
-                        <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground/90 overflow-x-auto max-w-full">
+                      <div className="mx-3 mb-3 overflow-x-auto rounded-[16px] bg-grouped-tertiary px-3.5 py-3">
+                        <pre className={`${it.cifra_text ? "whitespace-pre" : "whitespace-pre-wrap"} font-mono text-footnote text-foreground`}>
                           {it.cifra_text || it.lyrics_text}
                         </pre>
                       </div>
@@ -237,27 +256,23 @@ export default function PublicCulto() {
 
         {/* Escala */}
         {lineupEntries.length > 0 && (
-          <section className="mb-10">
-            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <Users className="h-3.5 w-3.5" /> Escala
+          <section className="mb-7">
+            <h2 className="mx-1 mb-2 flex items-center gap-2 text-title3">
+              <Users className="h-5 w-5 text-muted-foreground" strokeWidth={2.25} aria-hidden="true" /> Escala
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {lineupEntries.map(([instrument, names]) => (
-                <div key={instrument} className="rounded-2xl border border-border/50 bg-card/40 backdrop-blur p-3">
-                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">{instrument}</p>
-                  <div className="space-y-0.5">
-                    {names.map((n, i) => (
-                      <p key={i} className="text-sm font-medium truncate">{n}</p>
-                    ))}
-                  </div>
+            <div className="overflow-hidden rounded-card bg-card">
+              {lineupEntries.map(([instrument, names], idx) => (
+                <div key={instrument} className={`relative px-4 py-2.5 ${idx > 0 ? `${rowSeparator} before:left-4` : ""}`}>
+                  <p className="text-footnote text-muted-foreground">{instrument}</p>
+                  <p className="text-body">{names.join(", ")}</p>
                 </div>
               ))}
             </div>
           </section>
         )}
 
-        <footer className="text-center pt-4">
-          <p className="text-xs text-muted-foreground/60">Feito com +Louvor</p>
+        <footer className="pt-2 text-center">
+          <p className="text-footnote text-muted-foreground">Feito com +Louvor</p>
         </footer>
       </div>
     </div>

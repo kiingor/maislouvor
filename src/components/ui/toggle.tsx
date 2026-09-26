@@ -4,18 +4,26 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
+/** Botão de alternância iOS: cápsula; ligado = preenchimento cinza com texto em label. */
 const toggleVariants = cva(
-  "inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors hover:bg-muted hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=on]:bg-accent data-[state=on]:text-accent-foreground",
+  [
+    "relative inline-flex select-none items-center justify-center gap-1.5 rounded-full text-subhead font-medium text-primary",
+    "transition-[transform,background-color,color] duration-200 active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100",
+    "hover:bg-fill-quaternary disabled:pointer-events-none disabled:opacity-40",
+    "data-[state=on]:bg-fill-secondary data-[state=on]:text-foreground",
+    "[-webkit-tap-highlight-color:transparent] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:size-[1.1em]",
+  ].join(" "),
   {
     variants: {
       variant: {
         default: "bg-transparent",
-        outline: "border border-input bg-transparent hover:bg-accent hover:text-accent-foreground",
+        outline: "bg-fill-tertiary hover:bg-fill-secondary",
       },
       size: {
-        default: "h-10 px-3",
-        sm: "h-9 px-2.5",
-        lg: "h-11 px-5",
+        default: "h-11 min-w-11 px-4",
+        // 36px visíveis, alvo de toque de 44px.
+        sm: "h-9 min-w-9 px-3 before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2",
+        lg: "h-[50px] min-w-[50px] px-5",
       },
     },
     defaultVariants: {

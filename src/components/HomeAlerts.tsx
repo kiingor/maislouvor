@@ -1,7 +1,6 @@
 import { useNavigate } from "react-router-dom";
-import { GlassCard } from "@/components/GlassCard";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, BellRing, CheckCircle2, CalendarX, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CalendarX } from "lucide-react";
 import { differenceInCalendarDays, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -29,17 +28,19 @@ interface HomeAlertsProps {
 
 const parseDate = (d: string) => new Date(d + "T12:00:00");
 const fmt = (d: string) => format(parseDate(d), "EEEE, dd 'de' MMMM", { locale: ptBR });
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 /**
- * Smart alerts for the Home dashboard:
+ * Pure alert computation, shared by HomeAlerts and the Home "Tudo certo" row:
  *  (a) Cultos within <=3 days where my lineup is still 'pending' → "Confirme sua presença".
  *  (b) Conflicts according to the team's active availability workflow.
- * Renders nothing-but-a-discreet "tudo certo" when there are no alerts.
  */
-export function HomeAlerts({ lineups, availabilityByDate, availabilityMode, onConfirm }: HomeAlertsProps) {
-  const navigate = useNavigate();
-  const today = new Date();
-
+export function getHomeAlerts(
+  lineups: HomeAlertLineup[],
+  availabilityByDate: Record<string, AvailabilityStatus>,
+  availabilityMode: AvailabilityMode,
+  today: Date = new Date(),
+) {
   const withCulto = lineups.filter((l) => l.culto?.date);
 
   // (a) Confirm-soon: pending lineups for cultos within the next 3 days.
@@ -56,96 +57,51 @@ export function HomeAlerts({ lineups, availabilityByDate, availabilityMode, onCo
       hasAvailabilityConflict(availabilityMode, availabilityByDate[l.culto!.date]),
   );
 
-  const hasAlerts = confirmSoon.length > 0 || conflicts.length > 0;
+  return { confirmSoon, conflicts, hasAlerts: confirmSoon.length > 0 || conflicts.length > 0 };
+}
 
-  if (!hasAlerts) {
-    return (
-      <GlassCard
-        variant="subtle"
-        className="p-3 flex items-center gap-2 text-sm text-muted-foreground"
-      >
-        <ShieldCheck className="h-4 w-4 text-green-500 shrink-0" />
-        Tudo certo — sem pendências ou conflitos.
-      </GlassCard>
-    );
-  }
+/**
+ * Smart alerts for the Home dashboard, as an inset grouped list (iOS).
+ * Renders nothing when there are no alerts — Home then shows the "Tudo certo"
+ * row inside the profile card (see getHomeAlerts).
+ */
+export function HomeAlerts({ lineups, availabilityByDate, availabilityMode, onConfirm }: HomeAlertsProps) {
+  const navigate = useNavigate();
+  const today = new Date();
+  const { confirmSoon, conflicts, hasAlerts } = getHomeAlerts(lineups, availabilityByDate, availabilityMode, today);
+
+  if (!hasAlerts) return null;
 
   return (
-    <div>
-      <h2 className="text-sm font-medium text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
-        <BellRing className="h-3.5 w-3.5" /> Alertas
+    <section aria-labelledby="home-alerts-title">
+      <h2 id="home-alerts-title" className="text-title3 text-foreground mx-1 mb-2">
+        Alertas
       </h2>
-      <div className="space-y-2">
-        {confirmSoon.map((l) => {
+      <div className="rounded-card bg-card overflow-hidden">
+        {confirmSoon.map((l, i) => {
           const days = differenceInCalendarDays(parseDate(l.culto!.date), today);
           const when = days === 0 ? "hoje" : days === 1 ? "amanhã" : `em ${days} dias`;
           return (
-            <GlassCard
-              key={`confirm-${l.id}`}
-              className="p-4 border border-yellow-500/30 bg-yellow-500/[0.04]"
-            >
-              <div className="flex items-start gap-3">
-                <div className="h-9 w-9 rounded-xl bg-yellow-500/10 flex items-center justify-center shrink-0">
-                  <AlertTriangle className="h-4.5 w-4.5 text-yellow-500" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">Confirme sua presença</p>
-                  <p className="text-xs text-muted-foreground capitalize">
-                    {l.culto!.name} · {fmt(l.culto!.date)} ({when}) · {l.instrument}
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-2 mt-2.5">
-                    <Button
-                      size="sm"
-                      className="rounded-xl gap-1.5 h-8 w-full sm:w-auto"
-                      onClick={() => onConfirm(l.id)}
-                    >
-                      <CheckCircle2 className="h-3.5 w-3.5" /> Confirmar
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="rounded-xl h-8 w-full sm:w-auto"
-                      onClick={() => navigate(`/app/cultos/${l.culto!.id}`)}
-                    >
-                      Ver culto
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </GlassCard>
-          );
-        })}
-
-        {conflicts.map((l) => (
-          <GlassCard
-            key={`conflict-${l.id}`}
-            className="p-4 border border-red-500/30 bg-red-500/[0.04]"
-          >
-            <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-                <CalendarX className="h-4.5 w-4.5 text-red-500" />
-              </div>
+            <div key={`confirm-${l.id}`} className="relative flex items-start gap-3 px-4 py-3">
+              {i > 0 && <Separator />}
+              <span
+                aria-hidden="true"
+                className="mt-0.5 grid place-items-center h-[30px] w-[30px] shrink-0 rounded-[8px] bg-ios-orange/15 text-ios-orange"
+              >
+                <AlertTriangle className="h-4 w-4" strokeWidth={2.25} />
+              </span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium">Conflito de disponibilidade</p>
-                <p className="text-xs text-muted-foreground capitalize">
-                  Você está escalado em {l.culto!.name} ({fmt(l.culto!.date)}), mas {" "}
-                  {availabilityByDate[l.culto!.date] === "unavailable"
-                    ? "marcou indisponibilidade nesse dia."
-                    : "não marcou disponibilidade nesse dia."}
+                <p className="text-headline text-foreground">Confirme sua presença</p>
+                <p className="text-subhead text-muted-foreground break-words">
+                  {l.culto!.name} · {cap(fmt(l.culto!.date))} ({when}) · {l.instrument}
                 </p>
-                <div className="flex flex-col sm:flex-row gap-2 mt-2.5">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="rounded-xl h-8 w-full sm:w-auto"
-                    onClick={() => navigate("/app/disponibilidades")}
-                  >
-                    Revisar disponibilidade
+                <div className="flex flex-wrap gap-2 mt-2.5">
+                  <Button size="sm" onClick={() => onConfirm(l.id)}>
+                    <CheckCircle2 className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" /> Confirmar
                   </Button>
                   <Button
+                    variant="secondary"
                     size="sm"
-                    variant="ghost"
-                    className="rounded-xl h-8 w-full sm:w-auto"
                     onClick={() => navigate(`/app/cultos/${l.culto!.id}`)}
                   >
                     Ver culto
@@ -153,9 +109,51 @@ export function HomeAlerts({ lineups, availabilityByDate, availabilityMode, onCo
                 </div>
               </div>
             </div>
-          </GlassCard>
+          );
+        })}
+
+        {conflicts.map((l, i) => (
+          <div key={`conflict-${l.id}`} className="relative flex items-start gap-3 px-4 py-3">
+            {(confirmSoon.length > 0 || i > 0) && <Separator />}
+            <span
+              aria-hidden="true"
+              className="mt-0.5 grid place-items-center h-[30px] w-[30px] shrink-0 rounded-[8px] bg-ios-red/15 text-ios-red"
+            >
+              <CalendarX className="h-4 w-4" strokeWidth={2.25} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-headline text-foreground">Conflito de disponibilidade</p>
+              <p className="text-subhead text-muted-foreground break-words">
+                Você está escalado em {l.culto!.name} ({fmt(l.culto!.date)}), mas {" "}
+                {availabilityByDate[l.culto!.date] === "unavailable"
+                  ? "marcou indisponibilidade nesse dia."
+                  : "não marcou disponibilidade nesse dia."}
+              </p>
+              <div className="flex flex-wrap gap-2 mt-2.5">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => navigate("/app/disponibilidades")}
+                >
+                  Revisar disponibilidade
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate(`/app/cultos/${l.culto!.id}`)}
+                >
+                  Ver culto
+                </Button>
+              </div>
+            </div>
+          </div>
         ))}
       </div>
-    </div>
+    </section>
   );
+}
+
+/** Separador hairline recuado até o texto (58px = margem 16 + ícone 30 + espaço 12). */
+function Separator() {
+  return <span aria-hidden="true" className="absolute top-0 left-[58px] right-0 border-t border-separator" />;
 }

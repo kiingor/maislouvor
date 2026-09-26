@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Smile } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface Props {
@@ -47,26 +46,28 @@ export function ChatEmojiPicker({ onSelect, disabled }: Props) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
+        <button
           type="button"
-          size="icon"
-          variant="ghost"
           disabled={disabled}
-          className="rounded-xl h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+          // Mantém o teclado aberto enquanto o seletor abre.
+          onMouseDown={(e) => e.preventDefault()}
+          aria-label="Inserir emoji"
+          title="Inserir emoji"
+          className="relative z-[4] before:absolute before:-inset-1 before:rounded-full before:content-[''] grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:text-foreground active:bg-fill-tertiary disabled:pointer-events-none disabled:opacity-40 data-[state=open]:text-foreground"
         >
-          <Smile className="h-5 w-5" />
-        </Button>
+          <Smile className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+        </button>
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="glass w-72 max-h-72 overflow-y-auto rounded-2xl border-0 p-3 space-y-3"
+        side="top"
+        sideOffset={12}
+        className="w-[min(308px,calc(100vw-32px))] max-h-80 overflow-y-auto overscroll-contain p-3 space-y-3"
       >
         {CATEGORIES.map((cat) => (
-          <div key={cat.label}>
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-              {cat.label}
-            </p>
-            <div className="grid grid-cols-8 gap-0.5">
+          <section key={cat.label} aria-label={cat.label}>
+            <p className="relative z-[4] text-footnote font-semibold text-muted-foreground mb-1 px-1">{cat.label}</p>
+            <div className="relative z-[4] grid grid-cols-7">
               {cat.emojis.map((emoji) => (
                 <button
                   key={emoji}
@@ -75,13 +76,13 @@ export function ChatEmojiPicker({ onSelect, disabled }: Props) {
                     onSelect(emoji);
                     setOpen(false);
                   }}
-                  className="h-8 w-8 flex items-center justify-center rounded-lg text-lg hover:bg-accent transition-colors"
+                  className="grid h-10 w-full place-items-center rounded-[10px] text-[24px] leading-none transition-colors hover:bg-fill-tertiary active:bg-fill-secondary"
                 >
                   {emoji}
                 </button>
               ))}
             </div>
-          </div>
+          </section>
         ))}
       </PopoverContent>
     </Popover>

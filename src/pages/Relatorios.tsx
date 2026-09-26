@@ -1,12 +1,11 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { format, subDays, subMonths, startOfYear } from "date-fns";
 import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -14,7 +13,7 @@ import {
 } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
-import { GlassCard } from "@/components/GlassCard";
+import { PageHeader } from "@/components/shell/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -27,10 +26,14 @@ import {
   Repeat,
   TrendingUp,
   Users,
+  XCircle,
+  type LucideIcon,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { compareInstruments, instrumentIcon } from "@/data/instruments";
 
-const chartColors = ["hsl(var(--primary))", "hsl(var(--muted-foreground))"];
+// Uma série por gráfico → uma cor só para todas as barras (tinta da marca; clara no modo escuro).
+const chartColor = "hsl(var(--primary))";
 
 const PRESETS = [
   { key: "30d", label: "30 dias", from: () => format(subDays(new Date(), 30), "yyyy-MM-dd") },
@@ -42,89 +45,92 @@ const PRESETS = [
 
 const todayStr = () => format(new Date(), "yyyy-MM-dd");
 
+/** Resumo no estilo das listas inteligentes do Lembretes (protótipo `.stat`). */
 function StatTile({
   icon: Icon,
   value,
   label,
   hint,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: LucideIcon;
   value: string | number;
   label: string;
   hint?: string;
 }) {
   return (
-    <GlassCard className="p-5">
-      <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center mb-3">
-        <Icon className="h-4 w-4 text-muted-foreground" />
+    <div className="rounded-card bg-card flex min-h-[92px] flex-col gap-2 px-3.5 py-3">
+      <div className="flex items-start justify-between gap-2">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-prominent text-prominent-foreground" aria-hidden="true">
+          <Icon className="h-[17px] w-[17px]" strokeWidth={2} />
+        </span>
+        <strong className="text-title1 text-foreground">{value}</strong>
       </div>
-      <p className="text-2xl font-semibold leading-none">{value}</p>
-      <p className="text-xs text-muted-foreground mt-1.5">{label}</p>
-      {hint && <p className="text-[11px] text-muted-foreground/70 mt-0.5">{hint}</p>}
-    </GlassCard>
+      <p className="text-subhead font-semibold text-muted-foreground">
+        {label}
+        {hint && <small className="block text-footnote font-normal">{hint}</small>}
+      </p>
+    </div>
   );
 }
 
+const axisTick = { fontSize: 12, fill: "hsl(var(--muted-foreground))" };
+
 function ChartCard({
   title,
-  icon: Icon,
   data,
   horizontal,
 }: {
   title: string;
-  icon: React.ComponentType<{ className?: string }>;
   data: { name: string; value: number }[];
   horizontal?: boolean;
 }) {
   return (
-    <GlassCard className="p-5">
-      <h3 className="font-medium mb-4 flex items-center gap-2 text-sm">
-        <Icon className="h-4 w-4 text-muted-foreground" /> {title}
-      </h3>
+    <section className="rounded-card bg-card p-4">
+      <h3 className="mb-3 text-headline text-foreground">{title}</h3>
       {data.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nenhum dado no período.</p>
+        <p className="text-subhead text-muted-foreground">Nenhum dado no período.</p>
       ) : (
         <ResponsiveContainer width="100%" height={250}>
-          <BarChart data={data} layout={horizontal ? "vertical" : undefined}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+          <BarChart data={data} layout={horizontal ? "vertical" : undefined} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+            {/* Grade só no eixo de valor: hairline sólida, recessiva. */}
+            <CartesianGrid stroke="hsl(var(--border))" horizontal={!horizontal} vertical={!!horizontal} />
             {horizontal ? (
               <>
-                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  width={110}
-                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
-                />
+                <XAxis type="number" allowDecimals={false} tick={axisTick} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="name" width={110} tick={axisTick} axisLine={false} tickLine={false} />
               </>
             ) : (
               <>
-                <XAxis dataKey="name" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
+                <XAxis dataKey="name" tick={axisTick} axisLine={false} tickLine={false} />
+                <YAxis allowDecimals={false} tick={axisTick} axisLine={false} tickLine={false} width={32} />
               </>
             )}
             <Tooltip
-              cursor={{ fill: "hsl(var(--accent))", fillOpacity: 0.4 }}
+              cursor={{ fill: "var(--fill-quaternary)" }}
+              separator=""
+              formatter={(v: any) => [v, ""]}
               contentStyle={{
                 background: "hsl(var(--card))",
-                border: "1px solid hsl(var(--border))",
-                borderRadius: 8,
+                border: "none",
+                borderRadius: 12,
+                boxShadow: "0 8px 24px -8px rgba(0,0,0,0.25), 0 0 0 0.5px hsl(var(--border))",
                 fontSize: 13,
+                color: "hsl(var(--foreground))",
               }}
+              labelStyle={{ color: "hsl(var(--muted-foreground))", marginBottom: 2 }}
+              itemStyle={{ color: "hsl(var(--foreground))", fontWeight: 600, padding: 0 }}
             />
-            <Bar dataKey="value" radius={horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]} fillOpacity={0.8}>
-              {data.map((_, i) => (
-                <Cell key={i} fill={i === 0 ? chartColors[0] : chartColors[1]} />
-              ))}
-            </Bar>
+            <Bar dataKey="value" fill={chartColor} maxBarSize={24} radius={horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       )}
-    </GlassCard>
+    </section>
   );
 }
 
 export default function Relatorios() {
+  // Voltar pelo histórico quando houver (tela aberta pelo menu ≡); senão, Início.
+  const backTarget: string | true = useLocation().key !== "default" ? true : "/app/home";
   const { currentTeam, can, loading: teamLoading } = useTeam();
   const navigate = useNavigate();
   const canSee = can("cultos", "editar");
@@ -317,14 +323,15 @@ export default function Relatorios() {
   if (!canSee) {
     return (
       <div className="animate-in-up">
-        <GlassCard className="p-12 text-center">
-          <BarChart3 className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-          <h3 className="text-lg font-medium mb-1">Sem acesso</h3>
-          <p className="text-muted-foreground text-sm">Só quem gerencia cultos vê os relatórios da equipe.</p>
-          <Button variant="outline" className="mt-5 rounded-xl" onClick={() => navigate("/app/home")}>
+        <PageHeader title="Relatórios" back={backTarget} />
+        <div className="rounded-card bg-card px-6 py-10 flex flex-col items-center text-center gap-2">
+          <BarChart3 className="h-7 w-7 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+          <h2 className="text-body text-muted-foreground">Sem acesso</h2>
+          <p className="text-footnote text-muted-foreground max-w-xs">Só quem gerencia cultos vê os relatórios da equipe.</p>
+          <Button variant="secondary" className="mt-3 rounded-full" onClick={() => navigate("/app/home")}>
             Voltar
           </Button>
-        </GlassCard>
+        </div>
       </div>
     );
   }
@@ -332,9 +339,11 @@ export default function Relatorios() {
   if (!currentTeam) {
     return (
       <div className="animate-in-up">
-        <GlassCard className="p-12 text-center">
-          <p className="text-muted-foreground text-sm">Entre em uma equipe para ver os relatórios.</p>
-        </GlassCard>
+        <PageHeader title="Relatórios" back={backTarget} />
+        <div className="rounded-card bg-card px-6 py-10 flex flex-col items-center text-center gap-2">
+          <Users className="h-7 w-7 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+          <p className="text-body text-muted-foreground">Entre em uma equipe para ver os relatórios.</p>
+        </div>
       </div>
     );
   }
@@ -342,75 +351,99 @@ export default function Relatorios() {
   const fmtDate = (d: string | null) =>
     d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "—";
 
-  return (
-    <div className="max-w-6xl mx-auto animate-in-up">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Relatórios</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Escalas e repertório da equipe no período escolhido.
-        </p>
-      </div>
+  const dateInput =
+    "h-9 rounded-[8px] border-0 bg-fill-tertiary px-2.5 text-body text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ios-blue/40";
+  const rowSeparator =
+    "relative before:absolute before:top-0 before:right-0 before:left-4 before:border-t before:border-border first:before:hidden";
+  const showMoreButton =
+    "flex w-full min-h-[44px] items-center justify-center border-t border-border px-4 text-subhead font-medium text-primary transition-colors active:bg-fill-tertiary";
 
-      {/* Filtro de período */}
-      <GlassCard variant="subtle" className="p-3 mb-6 flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex rounded-xl glass-subtle p-1 gap-0.5 overflow-x-auto hide-scrollbar">
-          {PRESETS.map((p) => (
-            <button
-              key={p.key}
-              onClick={() => {
-                setPreset(p.key);
-                setCustomFrom("");
-                setCustomTo("");
-              }}
-              className={`text-xs px-3 py-1.5 rounded-lg whitespace-nowrap transition-colors ${
-                !customFrom && !customTo && preset === p.key
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
+  const visibleMembers = showAllMembers ? escalaStats.memberRows : escalaStats.memberRows.slice(0, 10);
+  const visibleSongs = showAllSongs ? repertorioStats.rows : repertorioStats.rows.slice(0, 10);
+
+  const roleChips = (roles: Map<string, number>) =>
+    Array.from(roles.entries())
+      .sort((a, b) => b[1] - a[1] || compareInstruments(a[0], b[0]))
+      .map(([role, n]) => {
+        const Icon = instrumentIcon(role);
+        return (
+          <span
+            key={role}
+            className="inline-flex items-center gap-1 rounded-full bg-fill-tertiary px-2 py-0.5 text-caption1 text-muted-foreground"
+          >
+            <Icon className="h-3 w-3" strokeWidth={2.25} aria-hidden="true" />
+            {role} · {n}
+          </span>
+        );
+      });
+
+  return (
+    <div className="animate-in-up">
+      <PageHeader title="Relatórios" subtitle="Escalas e repertório da equipe no período escolhido." back={backTarget} />
+
+      {/* Filtro de período: atalhos em cápsula + intervalo personalizado */}
+      <section aria-label="Período" className="rounded-card bg-card overflow-hidden">
+        <div className="flex flex-wrap gap-2 px-4 py-3">
+          {PRESETS.map((p) => {
+            const active = !customFrom && !customTo && preset === p.key;
+            return (
+              <button
+                key={p.key}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  setPreset(p.key);
+                  setCustomFrom("");
+                  setCustomTo("");
+                }}
+                className={cn(
+                  "relative h-9 shrink-0 whitespace-nowrap rounded-full px-4 text-subhead font-medium transition-colors before:absolute before:inset-x-0 before:-inset-y-1",
+                  active ? "bg-prominent text-prominent-foreground" : "bg-fill-tertiary text-foreground active:bg-fill-secondary",
+                )}
+              >
+                {p.label}
+              </button>
+            );
+          })}
         </div>
-        <div className="flex items-center gap-2 sm:ml-auto">
+        <label className="relative flex min-h-[52px] items-center justify-between gap-3 px-4 py-2 before:absolute before:top-0 before:right-0 before:left-4 before:border-t before:border-border">
+          <span className="text-body text-foreground">De</span>
           <input
             type="date"
             value={customFrom || (preset === "tudo" ? "" : from)}
             onChange={(e) => setCustomFrom(e.target.value)}
-            className="h-9 rounded-lg glass-input border-0 px-2.5 text-xs"
+            className={dateInput}
           />
-          <span className="text-xs text-muted-foreground">até</span>
+        </label>
+        <label className="relative flex min-h-[52px] items-center justify-between gap-3 px-4 py-2 before:absolute before:top-0 before:right-0 before:left-4 before:border-t before:border-border">
+          <span className="text-body text-foreground">Até</span>
           <input
             type="date"
             value={customTo || to}
             onChange={(e) => setCustomTo(e.target.value)}
-            className="h-9 rounded-lg glass-input border-0 px-2.5 text-xs"
+            className={dateInput}
           />
-        </div>
-      </GlassCard>
+        </label>
+      </section>
 
       {isLoading && cultos.length === 0 && lineup.length === 0 ? (
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-6 grid gap-2.5 grid-cols-2 lg:grid-cols-4" aria-busy="true">
           {[0, 1, 2, 3].map((i) => (
-            <GlassCard key={i} className="p-6 h-24 animate-pulse" />
+            <div key={i} className="rounded-card bg-card h-[92px] animate-pulse" />
           ))}
         </div>
       ) : (
         // Aba controlada + árvore preservada: trocar o período não pode jogar
         // o usuário de volta para "Escalas" nem piscar a página inteira.
-        <Tabs value={tab} onValueChange={setTab} className={isLoading ? "opacity-60 transition-opacity" : ""}>
-          <TabsList className="mb-4">
-            <TabsTrigger value="escalas" className="gap-1.5">
-              <Users className="h-3.5 w-3.5" /> Escalas
-            </TabsTrigger>
-            <TabsTrigger value="repertorio" className="gap-1.5">
-              <Music className="h-3.5 w-3.5" /> Repertório
-            </TabsTrigger>
+        <Tabs value={tab} onValueChange={setTab} className={cn("mt-6", isLoading && "opacity-60 transition-opacity")}>
+          <TabsList className="mb-4 grid w-full grid-cols-2 sm:max-w-sm">
+            <TabsTrigger value="escalas">Escalas</TabsTrigger>
+            <TabsTrigger value="repertorio">Repertório</TabsTrigger>
           </TabsList>
 
           {/* ===================== ESCALAS ===================== */}
           <TabsContent value="escalas" className="space-y-4 mt-0">
-            <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-2.5 grid-cols-2 lg:grid-cols-4">
               <StatTile icon={CalendarDays} value={escalaStats.totalCultos} label="Cultos no período" />
               <StatTile icon={Users} value={escalaStats.totalSlots} label="Escalações" hint={`${escalaStats.peopleCount} integrantes`} />
               <StatTile
@@ -431,62 +464,86 @@ export default function Relatorios() {
               />
             </div>
 
-            <ChartCard title="Escalações por função" icon={Users} data={escalaStats.instrumentChart} horizontal />
+            <ChartCard title="Escalações por função" data={escalaStats.instrumentChart} horizontal />
 
-            <GlassCard className="p-5">
-              <h3 className="font-medium mb-4 flex items-center gap-2 text-sm">
-                <Users className="h-4 w-4 text-muted-foreground" /> Escalas por integrante
-              </h3>
+            <section className="rounded-card bg-card overflow-hidden">
+              <h3 className="px-4 pt-4 pb-2 text-headline text-foreground">Escalas por integrante</h3>
               {escalaStats.memberRows.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhuma escala no período.</p>
+                <p className="px-4 pb-4 text-subhead text-muted-foreground">Nenhuma escala no período.</p>
               ) : (
                 <>
-                  <div className="overflow-x-auto">
-                    <Table className="text-xs sm:text-sm">
+                  {/* Celular: lista agrupada (nenhuma coluna escondida) */}
+                  <ul className="md:hidden">
+                    {visibleMembers.map((m, i) => (
+                      <li key={`${m.name}-${i}`} className={cn(rowSeparator, "px-4 py-2.5")}>
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className="min-w-0 truncate text-body text-foreground">{m.name}</span>
+                          <span className="shrink-0 text-body tabular-nums text-foreground">
+                            {m.total}
+                            <span className="sr-only"> escalas</span>
+                          </span>
+                        </div>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-footnote tabular-nums text-muted-foreground">
+                          <span className="inline-flex items-center gap-1">
+                            <CheckCircle2 className="h-[13px] w-[13px] text-ios-green" strokeWidth={2.25} aria-hidden="true" />
+                            {m.accepted}
+                            <span className="sr-only"> confirmadas</span>
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <XCircle className="h-[13px] w-[13px] text-ios-red" strokeWidth={2.25} aria-hidden="true" />
+                            {m.declined}
+                            <span className="sr-only"> recusadas</span>
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <Clock className="h-[13px] w-[13px] text-ios-orange" strokeWidth={2.25} aria-hidden="true" />
+                            {m.pending}
+                            <span className="sr-only"> pendentes</span>
+                          </span>
+                          <span>Última {fmtDate(m.last)}</span>
+                        </div>
+                        {m.roles.size > 0 && <div className="mt-1.5 flex flex-wrap gap-1">{roleChips(m.roles)}</div>}
+                      </li>
+                    ))}
+                  </ul>
+
+                  {/* Tablet/desktop: tabela */}
+                  <div className="hidden md:block px-2 pb-1">
+                    <Table className="text-subhead">
                       <TableHeader>
-                        <TableRow>
-                          <TableHead>Integrante</TableHead>
-                          <TableHead className="text-right">Escalas</TableHead>
-                          <TableHead className="text-right hidden sm:table-cell">Confirmou</TableHead>
-                          <TableHead className="text-right hidden sm:table-cell">Recusou</TableHead>
-                          <TableHead className="text-right hidden md:table-cell">Pendente</TableHead>
-                          <TableHead className="hidden md:table-cell">Funções</TableHead>
-                          <TableHead className="text-right hidden lg:table-cell">Última</TableHead>
+                        <TableRow className="border-border hover:bg-transparent">
+                          <TableHead className="h-9 px-2 text-footnote">Integrante</TableHead>
+                          <TableHead className="h-9 px-2 text-right text-footnote">Escalas</TableHead>
+                          <TableHead className="h-9 px-2 text-right text-footnote">
+                            <span className="inline-flex items-center gap-1">
+                              <CheckCircle2 className="h-[13px] w-[13px] text-ios-green" strokeWidth={2.25} aria-hidden="true" /> Confirmou
+                            </span>
+                          </TableHead>
+                          <TableHead className="h-9 px-2 text-right text-footnote">
+                            <span className="inline-flex items-center gap-1">
+                              <XCircle className="h-[13px] w-[13px] text-ios-red" strokeWidth={2.25} aria-hidden="true" /> Recusou
+                            </span>
+                          </TableHead>
+                          <TableHead className="h-9 px-2 text-right text-footnote">
+                            <span className="inline-flex items-center gap-1">
+                              <Clock className="h-[13px] w-[13px] text-ios-orange" strokeWidth={2.25} aria-hidden="true" /> Pendente
+                            </span>
+                          </TableHead>
+                          <TableHead className="h-9 px-2 text-footnote">Funções</TableHead>
+                          <TableHead className="h-9 px-2 text-right text-footnote hidden lg:table-cell">Última</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {(showAllMembers ? escalaStats.memberRows : escalaStats.memberRows.slice(0, 10)).map((m, i) => (
-                          <TableRow key={`${m.name}-${i}`}>
-                            <TableCell className="font-medium">{m.name}</TableCell>
-                            <TableCell className="text-right tabular-nums">{m.total}</TableCell>
-                            <TableCell className="text-right tabular-nums hidden sm:table-cell text-green-600 dark:text-green-400">
-                              {m.accepted}
+                        {visibleMembers.map((m, i) => (
+                          <TableRow key={`${m.name}-${i}`} className="border-border hover:bg-transparent">
+                            <TableCell className="px-2 py-2.5 font-medium text-foreground">{m.name}</TableCell>
+                            <TableCell className="px-2 py-2.5 text-right tabular-nums">{m.total}</TableCell>
+                            <TableCell className="px-2 py-2.5 text-right tabular-nums">{m.accepted}</TableCell>
+                            <TableCell className="px-2 py-2.5 text-right tabular-nums">{m.declined}</TableCell>
+                            <TableCell className="px-2 py-2.5 text-right tabular-nums">{m.pending}</TableCell>
+                            <TableCell className="px-2 py-2.5">
+                              <div className="flex flex-wrap gap-1">{roleChips(m.roles)}</div>
                             </TableCell>
-                            <TableCell className="text-right tabular-nums hidden sm:table-cell text-red-600 dark:text-red-400">
-                              {m.declined}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums hidden md:table-cell text-yellow-600 dark:text-yellow-400">
-                              {m.pending}
-                            </TableCell>
-                            <TableCell className="hidden md:table-cell">
-                              <div className="flex flex-wrap gap-1">
-                                {Array.from(m.roles.entries())
-                                  .sort((a, b) => b[1] - a[1] || compareInstruments(a[0], b[0]))
-                                  .map(([role, n]) => {
-                                    const Icon = instrumentIcon(role);
-                                    return (
-                                      <span
-                                        key={role}
-                                        className="text-[10px] bg-accent text-muted-foreground px-1.5 py-0.5 rounded-full inline-flex items-center gap-1"
-                                      >
-                                        <Icon className="h-2.5 w-2.5" />
-                                        {role} · {n}
-                                      </span>
-                                    );
-                                  })}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right text-muted-foreground hidden lg:table-cell">
+                            <TableCell className="px-2 py-2.5 text-right text-muted-foreground tabular-nums hidden lg:table-cell">
                               {fmtDate(m.last)}
                             </TableCell>
                           </TableRow>
@@ -495,23 +552,18 @@ export default function Relatorios() {
                     </Table>
                   </div>
                   {escalaStats.memberRows.length > 10 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="mt-2 text-xs"
-                      onClick={() => setShowAllMembers((v) => !v)}
-                    >
+                    <button type="button" className={showMoreButton} onClick={() => setShowAllMembers((v) => !v)}>
                       {showAllMembers ? "Mostrar menos" : `Ver todos (${escalaStats.memberRows.length})`}
-                    </Button>
+                    </button>
                   )}
                 </>
               )}
-            </GlassCard>
+            </section>
           </TabsContent>
 
           {/* ===================== REPERTÓRIO ===================== */}
           <TabsContent value="repertorio" className="space-y-4 mt-0">
-            <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-2.5 grid-cols-2 lg:grid-cols-4">
               <StatTile icon={Music} value={repertorioStats.distinct} label="Músicas tocadas" />
               <StatTile icon={Repeat} value={repertorioStats.executions} label="Execuções" />
               <StatTile icon={TrendingUp} value={repertorioStats.avgPerCulto} label="Músicas por culto" />
@@ -524,52 +576,65 @@ export default function Relatorios() {
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
-              <ChartCard title="Por tema" icon={Music} data={repertorioStats.themeChart} horizontal />
-              <ChartCard title="Tons mais tocados" icon={BarChart3} data={repertorioStats.keyChart} />
+              <ChartCard title="Por tema" data={repertorioStats.themeChart} horizontal />
+              <ChartCard title="Tons mais tocados" data={repertorioStats.keyChart} />
             </div>
 
-            <GlassCard className="p-5">
-              <h3 className="font-medium mb-4 flex items-center gap-2 text-sm">
-                <Repeat className="h-4 w-4 text-muted-foreground" /> Músicas mais tocadas
-              </h3>
+            <section className="rounded-card bg-card overflow-hidden">
+              <h3 className="px-4 pt-4 pb-2 text-headline text-foreground">Músicas mais tocadas</h3>
               {repertorioStats.rows.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhuma música tocada no período.</p>
+                <p className="px-4 pb-4 text-subhead text-muted-foreground">Nenhuma música tocada no período.</p>
               ) : (
                 <>
-                  <div className="overflow-x-auto">
-                    <Table className="text-xs sm:text-sm">
+                  <ul className="md:hidden">
+                    {visibleSongs.map((s, i) => (
+                      <li key={`${s.title}-${i}`} className={cn(rowSeparator, "flex items-center gap-3 px-4 py-2.5")}>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-body text-foreground">{s.title}</span>
+                          <span className="block truncate text-footnote text-muted-foreground">
+                            {[s.artist, s.theme].filter(Boolean).join(" · ") || "—"} · Última {fmtDate(s.last)}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-body tabular-nums text-foreground">
+                          {s.count}
+                          <span className="sr-only"> vezes</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="hidden md:block px-2 pb-1">
+                    <Table className="text-subhead">
                       <TableHeader>
-                        <TableRow>
-                          <TableHead>Música</TableHead>
-                          <TableHead className="hidden sm:table-cell">Artista</TableHead>
-                          <TableHead className="hidden md:table-cell">Tema</TableHead>
-                          <TableHead className="text-right">Vezes</TableHead>
-                          <TableHead className="text-right hidden sm:table-cell">Última</TableHead>
+                        <TableRow className="border-border hover:bg-transparent">
+                          <TableHead className="h-9 px-2 text-footnote">Música</TableHead>
+                          <TableHead className="h-9 px-2 text-footnote">Artista</TableHead>
+                          <TableHead className="h-9 px-2 text-footnote">Tema</TableHead>
+                          <TableHead className="h-9 px-2 text-right text-footnote">Vezes</TableHead>
+                          <TableHead className="h-9 px-2 text-right text-footnote">Última</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {(showAllSongs ? repertorioStats.rows : repertorioStats.rows.slice(0, 10)).map((s, i) => (
-                          <TableRow key={`${s.title}-${i}`}>
-                            <TableCell className="font-medium">{s.title}</TableCell>
-                            <TableCell className="hidden sm:table-cell text-muted-foreground">{s.artist ?? "—"}</TableCell>
-                            <TableCell className="hidden md:table-cell text-muted-foreground">{s.theme ?? "—"}</TableCell>
-                            <TableCell className="text-right tabular-nums">{s.count}</TableCell>
-                            <TableCell className="text-right text-muted-foreground hidden sm:table-cell">
-                              {fmtDate(s.last)}
-                            </TableCell>
+                        {visibleSongs.map((s, i) => (
+                          <TableRow key={`${s.title}-${i}`} className="border-border hover:bg-transparent">
+                            <TableCell className="px-2 py-2.5 font-medium text-foreground">{s.title}</TableCell>
+                            <TableCell className="px-2 py-2.5 text-muted-foreground">{s.artist ?? "—"}</TableCell>
+                            <TableCell className="px-2 py-2.5 text-muted-foreground">{s.theme ?? "—"}</TableCell>
+                            <TableCell className="px-2 py-2.5 text-right tabular-nums">{s.count}</TableCell>
+                            <TableCell className="px-2 py-2.5 text-right text-muted-foreground tabular-nums">{fmtDate(s.last)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
                   </div>
                   {repertorioStats.rows.length > 10 && (
-                    <Button variant="ghost" size="sm" className="mt-2 text-xs" onClick={() => setShowAllSongs((v) => !v)}>
+                    <button type="button" className={showMoreButton} onClick={() => setShowAllSongs((v) => !v)}>
                       {showAllSongs ? "Mostrar menos" : `Ver todas (${repertorioStats.rows.length})`}
-                    </Button>
+                    </button>
                   )}
                 </>
               )}
-            </GlassCard>
+            </section>
           </TabsContent>
         </Tabs>
       )}

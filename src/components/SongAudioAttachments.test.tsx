@@ -105,6 +105,8 @@ describe("additional audio interface", () => {
   it("unmounts the player on close and when switching songs", async () => {
     const props = { open: true, onOpenChange: vi.fn(), songId: "song", songTitle: "Música" };
     const { rerender } = render(<SongAudioAttachmentsDialog {...props} />, { wrapper });
+    expect(screen.getByRole("dialog", { name: "Áudios adicionais" })).toHaveAccessibleDescription("Música");
+    expect(screen.getAllByRole("heading", { name: /Áudios adicionais/ })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Ouvir Contralto" }));
     await screen.findByLabelText("Reproduzir Contralto");
     rerender(<SongAudioAttachmentsDialog {...props} songId="another-song" />);

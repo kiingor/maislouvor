@@ -19,22 +19,26 @@ import NotFound from "./pages/NotFound";
 // As demais páginas são carregadas sob demanda. Antes, as 21 telas iam num único
 // chunk de 1,93 MB — a tela de login baixava o player, os gráficos e o motor de
 // áudio antes de desenhar qualquer coisa.
+import {
+  loadChangePassword, loadChat, loadCultoDetail, loadCultos, loadDisponibilidades, loadHome,
+  loadPresentation, loadRelatorios, loadRepertorioDetail, loadRepertorios, loadSongEditor, loadTeamSettings,
+} from "./lib/routeLoaders";
 const AuthCallback = lazy(() => import("./pages/AuthCallback"));
 const Download = lazy(() => import("./pages/Download"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const SignUp = lazy(() => import("./pages/SignUp"));
-const Repertorios = lazy(() => import("./pages/Repertorios"));
-const RepertorioDetail = lazy(() => import("./pages/RepertorioDetail"));
-const Cultos = lazy(() => import("./pages/Cultos"));
-const CultoDetail = lazy(() => import("./pages/CultoDetail"));
-const SongEditor = lazy(() => import("./pages/SongEditor"));
-const Presentation = lazy(() => import("./pages/Presentation"));
-const TeamSettings = lazy(() => import("./pages/TeamSettings"));
-const Disponibilidades = lazy(() => import("./pages/Disponibilidades"));
-const ChangePassword = lazy(() => import("./pages/ChangePassword"));
-const Home = lazy(() => import("./pages/Home"));
-const Chat = lazy(() => import("./pages/Chat"));
-const Relatorios = lazy(() => import("./pages/Relatorios"));
+const Repertorios = lazy(loadRepertorios);
+const RepertorioDetail = lazy(loadRepertorioDetail);
+const Cultos = lazy(loadCultos);
+const CultoDetail = lazy(loadCultoDetail);
+const SongEditor = lazy(loadSongEditor);
+const Presentation = lazy(loadPresentation);
+const TeamSettings = lazy(loadTeamSettings);
+const Disponibilidades = lazy(loadDisponibilidades);
+const ChangePassword = lazy(loadChangePassword);
+const Home = lazy(loadHome);
+const Chat = lazy(loadChat);
+const Relatorios = lazy(loadRelatorios);
 const AcceptInvite = lazy(() => import("./pages/AcceptInvite"));
 const PublicPlaylist = lazy(() => import("./pages/PublicPlaylist"));
 const PublicCulto = lazy(() => import("./pages/PublicCulto"));
@@ -51,7 +55,8 @@ function RouteFallback() {
         alignItems: "center",
         justifyContent: "center",
         color: "hsl(var(--muted-foreground))",
-        fontSize: "0.9rem",
+        fontSize: "13px",
+        letterSpacing: "-0.08px",
       }}
     >
       Carregando…
@@ -117,7 +122,8 @@ const App = () => {
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      {/* v7_startTransition: a tela atual fica visível até a próxima estar pronta (sem piscar o shell). */}
+      <BrowserRouter future={{ v7_startTransition: true }}>
         <NativeAuthHandler />
         <Suspense fallback={<RouteFallback />}>
         <Routes>

@@ -1,11 +1,9 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { GlassCard } from "@/components/GlassCard";
-import { GlassInput } from "@/components/GlassInput";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, ArrowLeft } from "lucide-react";
+import { PageHeader } from "@/components/shell/PageHeader";
+import { AuthField, AuthFieldGroup, PasswordToggle, ProminentButton } from "./Login";
 
 export default function ChangePassword() {
   const [currentPassword, setCurrentPassword] = useState("");
@@ -63,66 +61,63 @@ export default function ChangePassword() {
     setLoading(false);
   };
 
+  // Rótulos longos ("Confirmar nova senha") quebram em duas linhas dentro da coluna;
+  // py-1.5 mantém essa linha com os mesmos 52pt das demais (2 × 20pt + 12pt).
+  const labelClassName = "w-[6.75rem] py-1.5 leading-5";
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-sm animate-in-up">
-        <div className="flex items-center gap-3 mb-6">
-          <button onClick={() => navigate(-1)} className="text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <h1 className="text-xl font-semibold">Alterar senha</h1>
-        </div>
+    <div className="max-w-xl">
+      <PageHeader title="Alterar senha" back />
 
-        <GlassCard className="p-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Senha atual</label>
-              <div className="relative">
-                <GlassInput
-                  type={showCurrent ? "text" : "password"}
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  required
-                />
-                <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" onClick={() => setShowCurrent(!showCurrent)}>
-                  {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
+      <form onSubmit={handleSubmit}>
+        <AuthFieldGroup>
+          <AuthField
+            id="current-password"
+            label="Senha atual"
+            labelClassName={labelClassName}
+            type={showCurrent ? "text" : "password"}
+            autoComplete="current-password"
+            placeholder="••••••••"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            required
+            trailing={<PasswordToggle shown={showCurrent} onToggle={() => setShowCurrent(!showCurrent)} />}
+          />
+        </AuthFieldGroup>
 
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Nova senha</label>
-              <div className="relative">
-                <GlassInput
-                  type={showNew ? "text" : "password"}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                  minLength={6}
-                />
-                <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" onClick={() => setShowNew(!showNew)}>
-                  {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
+        <AuthFieldGroup className="mt-6">
+          <AuthField
+            id="new-password"
+            label="Nova senha"
+            labelClassName={labelClassName}
+            type={showNew ? "text" : "password"}
+            autoComplete="new-password"
+            placeholder="••••••••"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            required
+            minLength={6}
+            trailing={<PasswordToggle shown={showNew} onToggle={() => setShowNew(!showNew)} />}
+          />
+          <AuthField
+            id="confirm-password"
+            label="Confirmar nova senha"
+            labelClassName={labelClassName}
+            type="password"
+            autoComplete="new-password"
+            placeholder="••••••••"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            minLength={6}
+          />
+        </AuthFieldGroup>
+        <p className="mx-4 mt-2 text-footnote text-muted-foreground">Mínimo 6 caracteres.</p>
 
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Confirmar nova senha</label>
-              <GlassInput
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                minLength={6}
-              />
-            </div>
-
-            <Button type="submit" disabled={loading} className="w-full h-11 rounded-xl text-sm font-semibold">
-              {loading ? <div className="h-4 w-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" /> : "Alterar senha"}
-            </Button>
-          </form>
-        </GlassCard>
-      </div>
+        <ProminentButton type="submit" disabled={loading} loading={loading} className="mt-6">
+          Alterar senha
+        </ProminentButton>
+      </form>
     </div>
   );
 }

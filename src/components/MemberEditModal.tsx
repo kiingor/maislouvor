@@ -1,14 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { GlassInput } from "@/components/GlassInput";
-import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogToolbar } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, EyeOff, Users, ShieldCheck, KeyRound, Music, User } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { instrumentIcon } from "@/data/instruments";
 import { InstrumentPicker } from "@/components/InstrumentPicker";
 import { cn } from "@/lib/utils";
@@ -48,6 +56,8 @@ interface Props {
   /** Quem está editando pode definir/alterar a senha do membro. */
   canSetPassword: boolean;
   onSaved: () => void;
+  /** Remove o membro da equipe atual (mostra a linha destrutiva no fim da folha, com confirmação). */
+  onRemove?: () => void;
 }
 
 const LEVELS = [
@@ -55,6 +65,25 @@ const LEVELS = [
   { value: "intermediario", label: "Intermediário" },
   { value: "avancado", label: "Avançado" },
 ];
+
+/* Grupos dentro da folha: a folha já redefine --card (claro: branco; escuro: #2C2C2E). */
+const GROUP = "overflow-hidden rounded-card bg-card";
+const GROUP_LABEL = "mx-4 mb-1.5 text-footnote text-muted-foreground";
+const GROUP_FOOTER = "mx-4 mt-1.5 text-footnote text-muted-foreground";
+const INPUT =
+  "h-[52px] min-w-0 flex-1 bg-transparent text-body text-foreground placeholder:text-label-tertiary focus-visible:outline-offset-[-3px]";
+
+function FieldRow({ id, label, trailing, children }: { id: string; label: ReactNode; trailing?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="ml-4 flex min-h-[52px] items-center gap-3 pr-4">
+      <label htmlFor={id} className="w-[7.5rem] shrink-0 py-2 text-body leading-[20px]">
+        {label}
+      </label>
+      {children}
+      {trailing}
+    </div>
+  );
+}
 
 export function MemberEditModal({
   open,
@@ -64,6 +93,7 @@ export function MemberEditModal({
   adminTeams,
   canSetPassword,
   onSaved,
+  onRemove,
 }: Props) {
   const { toast } = useToast();
 
@@ -226,154 +256,204 @@ export function MemberEditModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass rounded-2xl border-0 sm:max-w-lg p-0">
-        <DialogHeader className="p-5 pb-3">
-          <DialogTitle className="text-lg font-semibold">Editar {name}</DialogTitle>
-        </DialogHeader>
+      <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
+        <DialogToolbar
+          title={`Editar ${name}`}
+          confirm={{ label: "Salvar", onClick: handleSave, disabled: saving || loading, loading: saving }}
+        />
 
-        <Tabs defaultValue="geral" className="px-5">
-          <TabsList className="w-full">
-            <TabsTrigger value="geral" className="flex-1 gap-1.5">
-              <User className="h-3.5 w-3.5" /> Geral
-            </TabsTrigger>
-            <TabsTrigger value="permissoes" className="flex-1 gap-1.5">
-              <ShieldCheck className="h-3.5 w-3.5" /> Permissões
-            </TabsTrigger>
-            <TabsTrigger value="instrumentos" className="flex-1 gap-1.5">
-              <Music className="h-3.5 w-3.5" /> Instrumentos
-            </TabsTrigger>
+        <Tabs defaultValue="geral" className="min-w-0">
+          <TabsList className="flex w-full">
+            <TabsTrigger value="geral" className="flex-1">Geral</TabsTrigger>
+            <TabsTrigger value="permissoes" className="flex-1">Permissões</TabsTrigger>
+            <TabsTrigger value="instrumentos" className="flex-1">Instrumentos</TabsTrigger>
           </TabsList>
 
-          <ScrollArea className="max-h-[60vh] mt-4">
+          {/* A própria folha rola (sem área de rolagem aninhada). */}
+          <div className="pb-2 pt-5">
             {/* ===== ABA: GERAL ===== */}
-            <TabsContent value="geral" className="mt-0 space-y-6 pb-1">
-              {/* Dados */}
-              <section className="space-y-3">
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Nome completo
-                  </label>
-                  <GlassInput value={fullName} onChange={(e) => setFullName(e.target.value)} />
-                </div>
+            <TabsContent value="geral" className="mt-0 space-y-6">
+              <section>
+                <div className={cn(GROUP, "divide-y divide-separator")}>
+                  <FieldRow id="member-edit-name" label="Nome completo">
+                    <input
+                      id="member-edit-name"
+                      className={INPUT}
+                      autoComplete="off"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                    />
+                  </FieldRow>
 
-                {canSetPassword && (
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                      <KeyRound className="h-3 w-3" /> Nova senha (opcional)
-                    </label>
-                    <div className="relative">
-                      <GlassInput
+                  {canSetPassword && (
+                    <FieldRow
+                      id="member-edit-password"
+                      label={
+                        <>
+                          Nova senha
+                          <span className="block text-footnote text-muted-foreground">(opcional)</span>
+                        </>
+                      }
+                      trailing={
+                        <button
+                          type="button"
+                          aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                          aria-pressed={showPassword}
+                          className="-mr-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+                          onClick={() => setShowPassword(!showPassword)}
+                        >
+                          {showPassword ? <EyeOff className="h-[18px] w-[18px]" aria-hidden="true" /> : <Eye className="h-[18px] w-[18px]" aria-hidden="true" />}
+                        </button>
+                      }
+                    >
+                      <input
+                        id="member-edit-password"
+                        className={INPUT}
                         type={showPassword ? "text" : "password"}
-                        placeholder="Deixe vazio para manter"
+                        autoComplete="new-password"
+                        aria-describedby="member-edit-password-hint"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
                         minLength={6}
                       />
-                      <button
-                        type="button"
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                        onClick={() => setShowPassword(!showPassword)}
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
-                  </div>
+                    </FieldRow>
+                  )}
+                </div>
+                {canSetPassword && (
+                  <p id="member-edit-password-hint" className={GROUP_FOOTER}>
+                    Deixe vazio para manter a senha atual.
+                  </p>
                 )}
               </section>
 
               {/* Tipo / grupo */}
-              <section className="space-y-2">
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Tipo (grupo de permissões)
-                </label>
-                <Select value={role} onValueChange={handleRoleChange}>
-                  <SelectTrigger className="h-11 rounded-xl glass-input border-0">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">{ROLE_LABELS.admin} — acesso total</SelectItem>
-                    <SelectItem value="editor">{ROLE_LABELS.editor} — edita conteúdo</SelectItem>
-                    <SelectItem value="viewer">{ROLE_LABELS.viewer} — só visualiza</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground">
-                  Trocar o tipo redefine as permissões (aba <strong>Permissões</strong>) para o padrão dele. Depois você pode personalizar.
+              <section>
+                <p id="member-edit-role-label" className={GROUP_LABEL}>Tipo (grupo de permissões)</p>
+                <div className={GROUP}>
+                  <Select value={role} onValueChange={handleRoleChange}>
+                    <SelectTrigger
+                      aria-labelledby="member-edit-role-label"
+                      className="h-[52px] rounded-none bg-transparent px-4 active:bg-fill-quaternary data-[state=open]:bg-fill-quaternary"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">{ROLE_LABELS.admin} — acesso total</SelectItem>
+                      <SelectItem value="editor">{ROLE_LABELS.editor} — edita conteúdo</SelectItem>
+                      <SelectItem value="viewer">{ROLE_LABELS.viewer} — só visualiza</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className={GROUP_FOOTER}>
+                  Trocar o tipo redefine as permissões (aba <strong className="font-semibold">Permissões</strong>) para o padrão dele. Depois você pode personalizar.
                 </p>
               </section>
 
               {/* Equipes */}
               {showTeams && (
-                <section className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                    <Users className="h-3 w-3" /> Equipes
-                  </label>
-                  <p className="text-[11px] text-muted-foreground">
-                    Marque as equipes das quais este membro participa. Ele verá apenas as equipes marcadas.
-                  </p>
-                  <div className="space-y-1.5">
+                <section>
+                  <p className={GROUP_LABEL}>Equipes</p>
+                  <div className={cn(GROUP, "divide-y divide-separator")}>
                     {adminTeams.map((t) => {
                       const isCurrent = t.id === currentTeamId;
                       return (
                         <label
                           key={t.id}
-                          className="flex items-center gap-3 rounded-xl glass-input px-3 py-2.5 cursor-pointer"
+                          className={cn(
+                            "ml-4 flex min-h-[48px] items-center gap-3 py-2 pr-4",
+                            isCurrent || loading ? "cursor-default" : "cursor-pointer",
+                          )}
                         >
+                          <span className="min-w-0 flex-1 text-body">{t.name}</span>
+                          {isCurrent && <span className="text-footnote text-muted-foreground">(atual)</span>}
                           <Checkbox
                             checked={selectedTeams.has(t.id)}
                             disabled={isCurrent || loading}
                             onCheckedChange={() => toggleTeam(t.id)}
                           />
-                          <span className="text-sm flex-1">{t.name}</span>
-                          {isCurrent && <span className="text-[10px] text-muted-foreground">(atual)</span>}
                         </label>
                       );
                     })}
                   </div>
+                  <p className={GROUP_FOOTER}>
+                    Marque as equipes das quais este membro participa. Ele verá apenas as equipes marcadas.
+                  </p>
                 </section>
+              )}
+
+              {onRemove && (
+                <div className={cn(GROUP, "mt-8")}>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <button
+                        type="button"
+                        disabled={saving || loading}
+                        className="flex min-h-[50px] w-full items-center justify-center px-4 text-body text-ios-red transition-[background-color,opacity] active:bg-fill-quaternary disabled:opacity-40"
+                      >
+                        Remover membro
+                      </button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Remover membro?</AlertDialogTitle>
+                        <AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-ios-red text-white hover:bg-ios-red/90"
+                          onClick={() => { onRemove(); onOpenChange(false); }}
+                        >
+                          Remover
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
               )}
             </TabsContent>
 
             {/* ===== ABA: PERMISSÕES ===== */}
-            <TabsContent value="permissoes" className="mt-0 space-y-2 pb-1">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Permissões de {ROLE_LABELS[role]}
-                </label>
+            <TabsContent value="permissoes" className="mt-0">
+              <div className="mx-4 mb-1.5 flex items-end justify-between gap-3">
+                <p className="text-footnote text-muted-foreground">Permissões de {ROLE_LABELS[role]}</p>
                 {!isAdminRole && (
-                  <div className="flex gap-4 text-[10px] font-medium text-muted-foreground uppercase tracking-wider pr-1">
-                    <span className="w-10 text-center">Ver</span>
-                    <span className="w-10 text-center">Editar</span>
+                  <div className="flex shrink-0 gap-2 text-footnote text-muted-foreground" aria-hidden="true">
+                    <span className="w-11 text-center">Ver</span>
+                    <span className="w-11 text-center">Editar</span>
                   </div>
                 )}
               </div>
 
               {isAdminRole ? (
-                <div className="rounded-xl glass-input px-4 py-4 text-sm text-muted-foreground">
-                  Líder tem acesso total a tudo. Para limitar, mude o <strong>Tipo</strong> (aba Geral) para <strong>Editor</strong> ou <strong>Membro</strong>.
+                <div className={cn(GROUP, "px-4 py-3.5 text-subhead text-muted-foreground")}>
+                  Líder tem acesso total a tudo. Para limitar, mude o <strong className="font-semibold text-foreground">Tipo</strong> (aba Geral) para <strong className="font-semibold text-foreground">Editor</strong> ou <strong className="font-semibold text-foreground">Membro</strong>.
                 </div>
               ) : (
-                <div className="space-y-1">
+                <div className={cn(GROUP, "divide-y divide-separator")}>
                   {RESOURCES.map((r) => (
-                    <div key={r.key} className="flex items-center gap-2 rounded-xl glass-input px-3 py-2.5">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium leading-tight">{r.label}</p>
-                        <p className="text-[10px] text-muted-foreground leading-tight">
+                    <div key={r.key} className="ml-4 flex min-h-[56px] items-center gap-2 py-2 pr-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-body">{r.label}</p>
+                        <p className="text-footnote text-muted-foreground">
                           {r.showVer ? `${r.verLabel} · ` : ""}{r.editarLabel}
                         </p>
                       </div>
-                      <div className="flex gap-4 items-center">
-                        <div className="w-10 flex justify-center">
+                      <div className="flex shrink-0 items-center gap-2">
+                        <div className="flex w-11 justify-center">
                           {r.showVer ? (
                             <Checkbox
+                              aria-label={`${r.verLabel} ${r.label}`}
                               checked={matrix[r.key].ver}
                               onCheckedChange={() => toggleCell(r.key, "ver")}
                             />
                           ) : (
-                            <span className="text-muted-foreground/40 text-xs">—</span>
+                            <span className="text-footnote text-label-tertiary" aria-hidden="true">—</span>
                           )}
                         </div>
-                        <div className="w-10 flex justify-center">
+                        <div className="flex w-11 justify-center">
                           <Checkbox
+                            aria-label={`${r.editarLabel} ${r.label}`}
                             checked={matrix[r.key].editar}
                             onCheckedChange={() => toggleCell(r.key, "editar")}
                           />
@@ -386,48 +466,51 @@ export function MemberEditModal({
             </TabsContent>
 
             {/* ===== ABA: INSTRUMENTOS ===== */}
-            <TabsContent value="instrumentos" className="mt-0 space-y-3 pb-1">
-              <InstrumentPicker selected={instruments} onToggle={toggleInstrument} />
+            <TabsContent value="instrumentos" className="mt-0">
+              <div className={cn(GROUP, "p-4")}>
+                <InstrumentPicker selected={instruments} onToggle={toggleInstrument} />
+              </div>
 
               {instruments.length > 0 ? (
-                <div className="space-y-2 pt-2 border-t border-border/50">
-                  <p className="text-xs text-muted-foreground">Nível em cada função:</p>
-                  {instruments.map((inst) => {
-                    const Icon = instrumentIcon(inst);
-                    return (
-                      <div key={inst} className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium flex items-center gap-1.5 min-w-0">
-                          <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                          <span className="truncate">{inst}</span>
-                        </span>
-                        <Select value={instrumentLevels[inst] ?? ""} onValueChange={(v) => setLevel(inst, v)}>
-                          <SelectTrigger className="h-9 w-36 rounded-lg text-xs shrink-0">
-                            <SelectValue placeholder="Nível" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {LEVELS.map((l) => (
-                              <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    );
-                  })}
-                </div>
+                <section className="mt-6">
+                  <p className={GROUP_LABEL}>Nível em cada função</p>
+                  <div className={GROUP}>
+                    {instruments.map((inst) => {
+                      const Icon = instrumentIcon(inst);
+                      return (
+                        <div key={inst} className="group/row flex items-center gap-3 pl-4">
+                          <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] bg-fill-tertiary text-muted-foreground">
+                            <Icon className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
+                          </span>
+                          <div className="flex min-h-[52px] min-w-0 flex-1 items-center gap-2 border-t border-separator py-1 pr-2 group-first/row:border-t-0">
+                            <span className="min-w-0 flex-1 truncate text-body">{inst}</span>
+                            <Select value={instrumentLevels[inst] ?? ""} onValueChange={(v) => setLevel(inst, v)}>
+                              <SelectTrigger
+                                aria-label={`Nível em ${inst}`}
+                                className="h-11 w-auto shrink-0 bg-transparent pl-2 pr-2 text-muted-foreground active:bg-fill-quaternary data-[state=open]:bg-fill-quaternary data-[placeholder]:text-label-tertiary"
+                              >
+                                <SelectValue placeholder="Nível" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {LEVELS.map((l) => (
+                                  <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
               ) : (
-                <p className="text-xs text-muted-foreground pt-1">
+                <p className={GROUP_FOOTER}>
                   Selecione as vozes e os instrumentos que este membro faz.
                 </p>
               )}
             </TabsContent>
-          </ScrollArea>
+          </div>
         </Tabs>
-
-        <div className="p-5 pt-3">
-          <Button onClick={handleSave} disabled={saving || loading} className="w-full h-11 rounded-xl text-sm font-semibold">
-            {saving ? <div className="h-4 w-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" /> : "Salvar"}
-          </Button>
-        </div>
       </DialogContent>
     </Dialog>
   );

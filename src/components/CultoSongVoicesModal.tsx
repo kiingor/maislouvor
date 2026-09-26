@@ -2,12 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogToolbar } from "@/components/ui/dialog";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Mic2 } from "lucide-react";
+import { AlertTriangle, Mic2 } from "lucide-react";
 import { VOICE_PARTS, isVocalRole, shortInstrumentLabel } from "@/data/instruments";
 import { MAX_VOICES, escalaVoicePart, voiceLabel } from "@/lib/voices";
 
@@ -24,6 +22,13 @@ interface CultoSongVoicesModalProps {
 }
 
 type Assignment = { voice: number; voicePart: string | null };
+
+// Lista agrupada dentro da folha (protótipo `.group` / `.group-label`).
+// Na folha, --card já vira branco (claro) / #2C2C2E (escuro) — ver ui/dialog.tsx.
+const group = "overflow-hidden rounded-card bg-card";
+const groupLabel = "mx-4 mb-1.5 block text-footnote text-muted-foreground";
+const row = "relative flex min-h-[52px] items-center gap-3 px-4";
+const rowSeparator = "before:absolute before:top-0 before:right-0 before:left-4 before:border-t before:border-border";
 
 /**
  * Define, para uma canção do roteiro, qual VOZ (1ª/2ª/3ª...) cada vocalista
@@ -181,67 +186,85 @@ export function CultoSongVoicesModal({
     onOpenChange(false);
   };
 
+  const canSave = canEdit && vocalists.length > 0;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass sm:rounded-2xl border-0 max-w-sm sm:max-w-lg max-h-[85vh] p-0">
-        <DialogHeader className="p-5 pb-2">
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <Mic2 className="h-4 w-4" /> Vozes da canção
-          </DialogTitle>
-          {songTitle && <p className="text-xs text-muted-foreground truncate">{songTitle}</p>}
-        </DialogHeader>
+      <DialogContent className="sm:max-w-lg">
+        {canSave ? (
+          <DialogToolbar
+            title="Vozes da canção"
+            confirm={{ label: "Salvar vozes", onClick: handleSave, disabled: saving, loading: saving }}
+          />
+        ) : (
+          <DialogHeader>
+            <DialogTitle>Vozes da canção</DialogTitle>
+          </DialogHeader>
+        )}
+        {songTitle && <p className="-mt-2 truncate text-center text-footnote text-muted-foreground">{songTitle}</p>}
 
-        <ScrollArea className="max-h-[55vh] px-5">
-          {isLoading ? (
-            <div className="space-y-2 pb-4">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="h-14 rounded-xl glass-subtle animate-pulse" />
-              ))}
-            </div>
-          ) : vocalists.length === 0 ? (
-            <p className="text-sm text-muted-foreground pb-6">
+        {isLoading ? (
+          <div className="space-y-3" aria-busy="true">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className={`${group} h-[104px] animate-pulse`} />
+            ))}
+          </div>
+        ) : vocalists.length === 0 ? (
+          <div className={`${group} flex items-start gap-3 p-4`}>
+            <Mic2 className="mt-0.5 h-6 w-6 shrink-0 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+            <p className="text-subhead text-muted-foreground">
               Nenhum vocalista na escala deste culto ainda. Monte a escala com as funções de voz
               (Ministrante, Soprano, Contralto…) para poder distribuir as vozes das canções.
             </p>
-          ) : (
-            <div className="space-y-2 pb-4">
-              {orphanCount > 0 && (
-                <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-2.5 text-[11px] text-amber-700 dark:text-amber-300">
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {orphanCount > 0 && (
+              <div className={`${group} flex items-start gap-3 px-4 py-3`} role="status">
+                <AlertTriangle className="mt-px h-[17px] w-[17px] shrink-0 text-ios-orange" strokeWidth={2.25} aria-hidden="true" />
+                <p className="text-footnote text-foreground">
                   {orphanCount === 1
                     ? "1 pessoa que tinha voz nesta canção saiu da escala vocal do culto — ela será removida ao salvar."
                     : `${orphanCount} pessoas que tinham voz nesta canção saíram da escala vocal do culto — serão removidas ao salvar.`}
                 </p>
-              )}
-              {vocalists.map((v) => {
-                const a = assignments[v.memberId];
-                const escalaPart = escalaVoicePart(v.roles);
-                return (
-                  <div key={v.memberId} className="rounded-xl glass-subtle p-3 space-y-2">
-                    <div className="flex items-center gap-2.5">
-                      <Avatar className="h-7 w-7">
-                        {v.avatar && <AvatarImage src={v.avatar} />}
-                        <AvatarFallback className="text-[10px] bg-accent">
-                          {v.name[0]?.toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium truncate leading-tight">{v.name}</p>
-                        <p className="text-[10px] text-muted-foreground leading-tight">
-                          escala: {v.roles.map(shortInstrumentLabel).join(", ")}
-                        </p>
-                      </div>
+              </div>
+            )}
+            {vocalists.map((v) => {
+              const a = assignments[v.memberId];
+              const escalaPart = escalaVoicePart(v.roles);
+              const segment = (selected: boolean) =>
+                `relative min-w-0 rounded-full px-1 text-footnote font-medium transition-[background-color,box-shadow] duration-200 disabled:cursor-default ${
+                  selected ? "bg-card text-foreground shadow dark:bg-prominent" : "text-foreground"
+                }`;
+              return (
+                <div key={v.memberId} className={group}>
+                  <div className="flex items-center gap-3 px-4 pt-3">
+                    <Avatar className="h-8 w-8">
+                      {v.avatar && <AvatarImage src={v.avatar} />}
+                      <AvatarFallback className="text-footnote">{v.name[0]?.toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-body text-foreground">{v.name}</p>
+                      <p className="truncate text-footnote text-muted-foreground">
+                        escala: {v.roles.map(shortInstrumentLabel).join(", ")}
+                      </p>
                     </div>
+                  </div>
 
-                    <div className="flex flex-wrap gap-1">
+                  {/* Controle segmentado: Não canta | 1ª | 2ª | 3ª | 4ª */}
+                  <div className="px-4 py-3">
+                    <div
+                      role="radiogroup"
+                      aria-label={`Voz de ${v.name}`}
+                      className="grid h-9 grid-cols-[1.7fr_repeat(4,minmax(0,1fr))] gap-0.5 rounded-full bg-fill-tertiary p-0.5"
+                    >
                       <button
                         type="button"
+                        role="radio"
+                        aria-checked={!a}
                         disabled={!canEdit}
                         onClick={() => setVoice(v.memberId, null)}
-                        className={`text-[11px] px-2 py-1 rounded-lg border transition-colors ${
-                          !a
-                            ? "bg-accent text-foreground border-border"
-                            : "bg-transparent text-muted-foreground border-border/60 hover:border-primary/50"
-                        }`}
+                        className={segment(!a)}
                       >
                         Não canta
                       </button>
@@ -249,79 +272,69 @@ export function CultoSongVoicesModal({
                         <button
                           key={n}
                           type="button"
+                          role="radio"
+                          aria-checked={a?.voice === n}
+                          aria-label={voiceLabel(n)}
                           disabled={!canEdit}
                           onClick={() => setVoice(v.memberId, n)}
-                          className={`text-[11px] px-2 py-1 rounded-lg border transition-colors ${
-                            a?.voice === n
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-transparent text-muted-foreground border-border/60 hover:border-primary/50"
-                          }`}
+                          className={segment(a?.voice === n)}
                         >
-                          {voiceLabel(n)}
+                          {n}ª
                         </button>
                       ))}
                     </div>
-
-                    {a && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider shrink-0">
-                          Naipe
-                        </span>
-                        <Select
-                          value={a.voicePart ?? "__escala__"}
-                          disabled={!canEdit}
-                          onValueChange={(val) => setVoicePart(v.memberId, val === "__escala__" ? null : val)}
-                        >
-                          <SelectTrigger className="h-8 rounded-lg text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__escala__" className="text-xs">
-                              {escalaPart ? `Da escala (${shortInstrumentLabel(escalaPart)})` : "Da escala"}
-                            </SelectItem>
-                            {VOICE_PARTS.map((p) => (
-                              <SelectItem key={p} value={p} className="text-xs">
-                                {shortInstrumentLabel(p)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
                   </div>
-                );
-              })}
 
-              {grouped.length > 0 && (
-                <div className="rounded-xl border border-primary/25 bg-primary/5 p-3 space-y-1">
-                  <p className="text-[10px] font-medium text-primary uppercase tracking-wider">Resumo</p>
-                  {grouped.map(([voice, people]) => (
-                    <p key={voice} className="text-xs">
-                      <span className="font-semibold">{voiceLabel(voice)}</span>{" "}
-                      <span className="text-muted-foreground">
+                  {a && (
+                    <div className={`${row} ${rowSeparator} justify-between`}>
+                      <span className="text-body text-foreground" id={`naipe-${v.memberId}`}>Naipe</span>
+                      <Select
+                        value={a.voicePart ?? "__escala__"}
+                        disabled={!canEdit}
+                        onValueChange={(val) => setVoicePart(v.memberId, val === "__escala__" ? null : val)}
+                      >
+                        <SelectTrigger
+                          aria-labelledby={`naipe-${v.memberId}`}
+                          className="h-9 w-auto max-w-[60%] rounded-full pl-3.5 pr-2.5 text-subhead disabled:opacity-100"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__escala__">
+                            {escalaPart ? `Da escala (${shortInstrumentLabel(escalaPart)})` : "Da escala"}
+                          </SelectItem>
+                          {VOICE_PARTS.map((p) => (
+                            <SelectItem key={p} value={p}>
+                              {shortInstrumentLabel(p)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {grouped.length > 0 && (
+              <div className="pt-3">
+                <p className={groupLabel}>Resumo</p>
+                <ul className={group}>
+                  {grouped.map(([voice, people], i) => (
+                    <li key={voice} className={`relative px-4 py-2.5 ${i > 0 ? rowSeparator : ""}`}>
+                      <p className="text-headline text-foreground">{voiceLabel(voice)}</p>
+                      <p className="text-subhead text-muted-foreground">
                         {people
                           .map((p) => (p.part ? `${p.name} (${shortInstrumentLabel(p.part)})` : p.name))
                           .join(", ")}
-                      </span>
-                    </p>
+                      </p>
+                    </li>
                   ))}
-                </div>
-              )}
-            </div>
-          )}
-        </ScrollArea>
-
-        <div className="flex justify-end gap-2 p-5 pt-3 border-t border-border/40">
-          <Button variant="outline" className="rounded-xl" onClick={() => onOpenChange(false)}>
-            {canEdit ? "Cancelar" : "Fechar"}
-          </Button>
-          {canEdit && vocalists.length > 0 && (
-            <Button className="rounded-xl" onClick={handleSave} disabled={saving}>
-              {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              Salvar vozes
-            </Button>
-          )}
-        </div>
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

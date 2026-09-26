@@ -3,9 +3,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { createPortal } from "react-dom";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ArrowRight, Copy, Trash2, Loader2, X } from "lucide-react";
 
 interface Props {
@@ -15,6 +20,7 @@ interface Props {
   selectedSongIds: string[];
   currentRepertorioId: string;
   onDone: () => void;
+  /** Sair do modo de seleção. No celular a saída fica na barra superior; no desktop, também aqui. */
   onClearSelection: () => void;
 }
 
@@ -120,65 +126,77 @@ export function RepertorioBulkBar({
   };
 
   const noTargets = repertorios.length === 0;
+  const moveCopyDisabled = busy || count === 0 || noTargets;
 
-  return (
-    <div className="sticky bottom-24 z-20 mx-auto max-w-2xl">
-      <div className="glass rounded-2xl p-3 flex flex-wrap items-center gap-2 shadow-lg border border-border/50">
-        <div className="flex items-center gap-2 mr-auto">
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl" onClick={onClearSelection} title="Cancelar">
-            <X className="h-4 w-4" />
-          </Button>
-          <span className="text-sm font-medium">{count} selecionada(s)</span>
-          {busy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+  // Item da barra: ícone sobre rótulo curto, alvo de 44pt (kit iOS 27 > Toolbar – Bottom).
+  const itemClass =
+    "relative z-[4] flex h-[54px] min-w-[60px] flex-col items-center justify-center gap-0.5 rounded-[27px] px-2 text-caption2 font-semibold transition-colors active:bg-fill-tertiary disabled:pointer-events-none disabled:opacity-35 [&_svg]:h-[22px] [&_svg]:w-[22px]";
+
+  const targetMenu = (label: string, onPick: (id: string) => void) => (
+    <DropdownMenuContent align="end" side="top" sideOffset={10} className="max-h-[50vh] w-64 overflow-y-auto">
+      <DropdownMenuLabel className="text-footnote font-normal text-muted-foreground">{label}</DropdownMenuLabel>
+      {repertorios.map((r: any) => (
+        <DropdownMenuItem key={r.id} onSelect={() => onPick(r.id)}>
+          <span className="truncate">{r.name}</span>
+        </DropdownMenuItem>
+      ))}
+    </DropdownMenuContent>
+  );
+
+  const bar = (
+    <div
+      role="toolbar"
+      aria-label="Ações da seleção"
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(max(env(safe-area-inset-bottom),8px)+78px)] z-40 flex justify-center px-[17px] lg:bottom-6 lg:left-72 lg:px-8"
+    >
+      <div className="liquid-glass-thick pointer-events-auto flex h-[62px] w-full max-w-xl items-center gap-0.5 rounded-full p-1">
+        {/* Sair da seleção: no desktop as ações do cabeçalho rolam com a página, então a barra
+            flutuante precisa da própria saída. No celular ela já fica fixa na barra superior. */}
+        <button
+          type="button"
+          onClick={onClearSelection}
+          aria-label="Cancelar seleção"
+          title="Cancelar"
+          className="relative z-[4] hidden h-[54px] w-[54px] shrink-0 place-items-center rounded-full bg-fill-tertiary text-foreground transition-colors active:bg-fill-secondary lg:grid"
+        >
+          <X className="h-5 w-5" strokeWidth={2.4} aria-hidden="true" />
+        </button>
+        <div className="relative z-[4] flex min-w-0 flex-1 items-center gap-1.5 pl-3 pr-1 lg:pl-2" aria-live="polite">
+          <span className="truncate text-subhead font-semibold text-foreground">{count} selecionada(s)</span>
+          {busy && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />}
         </div>
 
-        {/* Move */}
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="rounded-xl gap-1.5" disabled={busy || count === 0 || noTargets}>
-              <ArrowRight className="h-3.5 w-3.5" /> Mover
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-[calc(100vw-2rem)] max-w-[14rem] p-2">
-            <p className="text-xs text-muted-foreground px-1 pb-1.5">Mover para…</p>
-            <Select onValueChange={handleMove}>
-              <SelectTrigger className="rounded-xl"><SelectValue placeholder="Escolher repertório" /></SelectTrigger>
-              <SelectContent className="max-h-[50vh]">
-                {repertorios.map((r: any) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </PopoverContent>
-        </Popover>
+        {/* Mover */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className={itemClass} disabled={moveCopyDisabled}>
+              <ArrowRight strokeWidth={2} aria-hidden="true" />
+              Mover
+            </button>
+          </DropdownMenuTrigger>
+          {targetMenu("Mover para…", handleMove)}
+        </DropdownMenu>
 
-        {/* Copy */}
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="rounded-xl gap-1.5" disabled={busy || count === 0 || noTargets}>
-              <Copy className="h-3.5 w-3.5" /> Copiar
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-[calc(100vw-2rem)] max-w-[14rem] p-2">
-            <p className="text-xs text-muted-foreground px-1 pb-1.5">Copiar para…</p>
-            <Select onValueChange={handleCopy}>
-              <SelectTrigger className="rounded-xl"><SelectValue placeholder="Escolher repertório" /></SelectTrigger>
-              <SelectContent className="max-h-[50vh]">
-                {repertorios.map((r: any) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </PopoverContent>
-        </Popover>
+        {/* Copiar */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className={itemClass} disabled={moveCopyDisabled}>
+              <Copy strokeWidth={2} aria-hidden="true" />
+              Copiar
+            </button>
+          </DropdownMenuTrigger>
+          {targetMenu("Copiar para…", handleCopy)}
+        </DropdownMenu>
 
-        {/* Remove */}
-        <Button
-          variant="outline"
-          size="sm"
-          className="rounded-xl gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
-          disabled={busy || count === 0}
-          onClick={handleRemove}
-        >
-          <Trash2 className="h-3.5 w-3.5" /> Remover
-        </Button>
+        {/* Remover */}
+        <button type="button" className={`${itemClass} text-ios-red`} disabled={busy || count === 0} onClick={handleRemove}>
+          <Trash2 strokeWidth={2} aria-hidden="true" />
+          Remover
+        </button>
       </div>
     </div>
   );
+
+  // Portal: a barra flutua sobre o conteúdo, acima da barra de abas (spec §9).
+  return typeof document !== "undefined" ? createPortal(bar, document.body) : bar;
 }

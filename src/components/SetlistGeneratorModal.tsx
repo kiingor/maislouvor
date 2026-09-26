@@ -3,13 +3,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { GlassInput } from "@/components/GlassInput";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Music, Loader2, Sparkles, Shuffle } from "lucide-react";
+import { Dialog, DialogContent, DialogToolbar } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
+import { ChevronsUpDown, Shuffle } from "lucide-react";
 
 interface Props {
   open: boolean;
@@ -167,131 +171,167 @@ export function SetlistGeneratorModal({ open, onOpenChange, repertorioId, onGene
 
   const totalMin = Math.round(selection.acc / 60);
 
+  const group = "overflow-hidden rounded-card bg-card";
+  const groupLabel = "mx-4 mb-1.5 block text-footnote text-muted-foreground";
+  const row = "relative flex min-h-[52px] items-center gap-3 px-4 py-1.5";
+  const sep = <span aria-hidden="true" className="pointer-events-none absolute left-4 right-0 top-0 border-t border-separator" />;
+  const pullDown =
+    "-mr-2 inline-flex h-11 min-w-0 max-w-[60%] items-center gap-1 rounded-full px-2 text-body text-muted-foreground transition-colors active:bg-fill-tertiary";
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="glass sm:rounded-2xl border-0 sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" /> Gerar setlist
-          </DialogTitle>
-        </DialogHeader>
+      <DialogContent className="sm:max-w-lg">
+        <DialogToolbar
+          title="Gerar setlist"
+          confirm={{
+            label: "Gerar",
+            onClick: handleGenerate,
+            disabled: loading || selection.picked.length === 0,
+            loading,
+            icon: "none",
+          }}
+        />
 
-        <div className="space-y-4 pt-1">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Tema</label>
-              <Select value={theme || "all"} onValueChange={(v) => setTheme(v === "all" ? "" : v)}>
-                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Qualquer" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Qualquer tema</SelectItem>
-                  {themes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                </SelectContent>
-              </Select>
+        <div className="min-w-0 space-y-6 pb-2">
+          {/* Critérios */}
+          <div className={group}>
+            <div className={row}>
+              <span className="flex-1 text-body text-foreground">Tema</span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className={pullDown}>
+                    <span className="truncate">{theme || "Qualquer tema"}</span>
+                    <ChevronsUpDown className="h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden="true" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="max-h-[50vh] overflow-y-auto">
+                  <DropdownMenuRadioGroup value={theme || "all"} onValueChange={(v) => setTheme(v === "all" ? "" : v)}>
+                    <DropdownMenuRadioItem value="all">Qualquer tema</DropdownMenuRadioItem>
+                    {themes.map((t) => <DropdownMenuRadioItem key={t} value={t}>{t}</DropdownMenuRadioItem>)}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Tom</label>
-              <Select value={key || "all"} onValueChange={(v) => setKey(v === "all" ? "" : v)}>
-                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Qualquer" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Qualquer tom</SelectItem>
-                  {keys.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}
-                </SelectContent>
-              </Select>
+            <div className={row}>
+              {sep}
+              <span className="flex-1 text-body text-foreground">Tom</span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className={pullDown}>
+                    <span className="truncate">{key || "Qualquer tom"}</span>
+                    <ChevronsUpDown className="h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden="true" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="max-h-[50vh] overflow-y-auto">
+                  <DropdownMenuRadioGroup value={key || "all"} onValueChange={(v) => setKey(v === "all" ? "" : v)}>
+                    <DropdownMenuRadioItem value="all">Qualquer tom</DropdownMenuRadioItem>
+                    {keys.map((k) => <DropdownMenuRadioItem key={k} value={k}>{k}</DropdownMenuRadioItem>)}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Duração (min)</label>
-              <GlassInput
+            <label className={row}>
+              {sep}
+              <span className="flex-1 text-body text-foreground">Duração (min)</span>
+              <input
                 type="number"
+                inputMode="numeric"
                 min={1}
                 value={targetMinutes}
                 onChange={(e) => setTargetMinutes(e.target.value)}
                 placeholder="30"
+                className="h-11 w-20 bg-transparent text-right text-body tabular-nums text-muted-foreground placeholder:text-label-tertiary outline-none focus-visible:outline-none focus:text-foreground"
               />
+            </label>
+            <div className={row}>
+              {sep}
+              <label htmlFor="setlist-shuffle" className="flex flex-1 items-center gap-2 text-body text-foreground">
+                <Shuffle className="h-[17px] w-[17px] text-muted-foreground" strokeWidth={2} aria-hidden="true" />
+                Embaralhar seleção
+              </label>
+              <Switch id="setlist-shuffle" checked={shuffle} onCheckedChange={(c) => setShuffle(!!c)} />
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShuffle((s) => !s)}
-            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <Checkbox checked={shuffle} onCheckedChange={(c) => setShuffle(!!c)} className="pointer-events-none" />
-            <Shuffle className="h-3.5 w-3.5" /> Embaralhar seleção
-          </button>
-
           {/* Preview */}
-          <div className="rounded-xl bg-accent/40 p-3">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-muted-foreground">
-                Prévia · {selection.picked.length} música(s) · ~{totalMin} min
-              </p>
-            </div>
-            {selection.picked.length === 0 ? (
-              <p className="text-xs text-muted-foreground py-2 text-center">
-                Nenhuma música corresponde aos filtros.
-              </p>
-            ) : (
-              <ScrollArea className="max-h-40">
-                <div className="space-y-1 pr-2">
+          <div>
+            <p className={groupLabel} aria-live="polite">
+              Prévia · {selection.picked.length} música(s) · ~{totalMin} min
+            </p>
+            <div className={group}>
+              {selection.picked.length === 0 ? (
+                <p className="px-4 py-6 text-center text-footnote text-muted-foreground">
+                  Nenhuma música corresponde aos filtros.
+                </p>
+              ) : (
+                <ol className="max-h-60 overflow-y-auto overscroll-contain">
                   {selection.picked.map((s: any, i: number) => (
-                    <div key={s.id} className="flex items-center gap-2 text-sm">
-                      <span className="w-5 text-center text-xs text-muted-foreground shrink-0">{i + 1}</span>
-                      <Music className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <span className="truncate flex-1">{s.title}</span>
+                    <li key={s.id} className="relative flex min-h-11 items-center gap-3 px-4 py-2">
+                      {i > 0 && <span aria-hidden="true" className="pointer-events-none absolute left-[52px] right-0 top-0 border-t border-separator" />}
+                      <span className="w-6 shrink-0 text-center text-footnote tabular-nums text-muted-foreground">{i + 1}</span>
+                      <span className="min-w-0 flex-1 truncate text-body text-foreground">{s.title}</span>
                       {s.key_current && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground shrink-0">
+                        <span className="shrink-0 text-subhead tabular-nums text-muted-foreground">
+                          <span className="sr-only">Tom </span>
                           {s.key_current}
                         </span>
                       )}
-                    </div>
+                    </li>
                   ))}
-                </div>
-              </ScrollArea>
-            )}
+                </ol>
+              )}
+            </div>
           </div>
 
           {/* Destination */}
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">Destino</label>
+          <div>
             {repertorioId && (
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={destination === "current" ? "default" : "outline"}
-                  size="sm"
-                  className="rounded-xl flex-1"
-                  onClick={() => setDestination("current")}
+              <>
+                <span className={groupLabel} id="setlist-destination-label">Destino</span>
+                <div
+                  role="radiogroup"
+                  aria-labelledby="setlist-destination-label"
+                  className="grid grid-cols-2 gap-0.5 rounded-full bg-fill-tertiary p-0.5"
                 >
-                  Este repertório
-                </Button>
-                <Button
-                  type="button"
-                  variant={destination === "new" ? "default" : "outline"}
-                  size="sm"
-                  className="rounded-xl flex-1"
-                  onClick={() => setDestination("new")}
-                >
-                  Novo repertório
-                </Button>
-              </div>
+                  {([
+                    ["current", "Este repertório"],
+                    ["new", "Novo repertório"],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={destination === value}
+                      onClick={() => setDestination(value)}
+                      className={cn(
+                        "relative min-h-8 rounded-full px-3 py-1 text-subhead font-medium text-foreground transition-[background-color,box-shadow] duration-200",
+                        "before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2",
+                        destination === value && "bg-card shadow dark:bg-prominent",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
             {(destination === "new" || !repertorioId) && (
-              <GlassInput
-                placeholder="Nome do novo repertório (opcional)"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-              />
+              <div className={cn(repertorioId && "mt-4")}>
+                <label htmlFor="setlist-new-name" className={groupLabel}>
+                  Nome do novo repertório
+                </label>
+                <div className={group}>
+                  <input
+                    id="setlist-new-name"
+                    placeholder="Opcional"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    autoComplete="off"
+                    className="h-[52px] w-full bg-transparent px-4 text-body text-foreground placeholder:text-label-tertiary outline-none focus-visible:outline-none"
+                  />
+                </div>
+              </div>
             )}
-          </div>
-
-          <div className="flex justify-end gap-2 pt-1">
-            <Button variant="outline" className="rounded-xl" onClick={() => handleClose(false)} disabled={loading}>
-              Cancelar
-            </Button>
-            <Button className="rounded-xl gap-2" onClick={handleGenerate} disabled={loading || selection.picked.length === 0}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              Gerar
-            </Button>
           </div>
         </div>
       </DialogContent>

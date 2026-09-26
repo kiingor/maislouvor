@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as Tone from "tone";
-import { Button } from "@/components/ui/button";
 import { Play, Pause, Minus, Plus } from "lucide-react";
 
 interface MetronomeProps {
@@ -120,55 +119,65 @@ export function Metronome({ initialBpm = 100, onBpmChange, running, className }:
     onBpmChange?.(clamped);
   }, [onBpmChange]);
 
+  const stepHalf =
+    "relative grid h-8 w-[46px] place-items-center text-foreground transition-colors active:bg-fill-tertiary before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2";
+
   return (
-    <div className={`flex flex-col gap-3 ${className ?? ""}`}>
-      <div className="flex items-center justify-center gap-6">
-        <Button
-          size="icon"
+    <div className={`flex flex-col gap-4 ${className ?? ""}`}>
+      <div className="flex items-center gap-4">
+        {/* Play: círculo proeminente (desativado quando segue o play da música) */}
+        <button
+          type="button"
           onClick={toggle}
           disabled={running !== undefined}
-          className="h-11 w-11 rounded-full shrink-0 disabled:opacity-50"
+          className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-prominent text-prominent-foreground shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_4px_12px_-4px_var(--lg-shadow)] transition-transform duration-200 active:scale-95 disabled:opacity-50 motion-reduce:transition-none"
           title={running !== undefined ? "Controlado pelo play da música" : playing ? "Parar" : "Iniciar metrônomo"}
+          aria-label={running !== undefined ? "Controlado pelo play da música" : playing ? "Parar" : "Iniciar metrônomo"}
         >
-          {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
-        </Button>
+          {playing ? <Pause className="h-6 w-6" fill="currentColor" aria-hidden="true" /> : <Play className="ml-0.5 h-6 w-6" fill="currentColor" aria-hidden="true" />}
+        </button>
 
-        <div className="flex items-center gap-1.5">
-          <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg" onClick={() => changeBpm(bpm - 1)}>
-            <Minus className="h-4 w-4" />
-          </Button>
-          <div className="text-center min-w-[64px]">
-            <div className="text-2xl font-bold tabular-nums leading-none">{bpm}</div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wide">BPM</div>
-          </div>
-          <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg" onClick={() => changeBpm(bpm + 1)}>
-            <Plus className="h-4 w-4" />
-          </Button>
+        <div className="min-w-0 flex-1">
+          <div className="text-large-title tabular-nums leading-none">{bpm}</div>
+          <div className="mt-1 text-caption1 font-medium text-muted-foreground">BPM</div>
+        </div>
+
+        {/* Stepper iOS (− | +) */}
+        <div className="flex h-8 shrink-0 items-center overflow-hidden rounded-full bg-fill-tertiary">
+          <button type="button" className={stepHalf} onClick={() => changeBpm(bpm - 1)} aria-label="Diminuir BPM" title="Diminuir BPM">
+            <Minus className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
+          </button>
+          <span className="h-4 w-px bg-separator" aria-hidden="true" />
+          <button type="button" className={stepHalf} onClick={() => changeBpm(bpm + 1)} aria-label="Aumentar BPM" title="Aumentar BPM">
+            <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
+          </button>
         </div>
       </div>
 
       {/* Beat indicator dots */}
-      <div className="flex items-center justify-center gap-2">
+      <div className="flex items-center justify-center gap-3" aria-hidden="true">
         {Array.from({ length: beatsPerMeasure }).map((_, i) => (
           <span
             key={i}
-            className={`h-2.5 w-2.5 rounded-full transition-all ${
+            className={`h-2.5 w-2.5 rounded-full transition-transform duration-100 motion-reduce:transition-none ${
               currentBeat === i
-                ? i === 0 ? "bg-primary scale-150" : "bg-foreground scale-150"
-                : "bg-muted-foreground/30"
+                ? i === 0 ? "scale-150 bg-primary" : "scale-150 bg-foreground"
+                : "bg-label-tertiary"
             }`}
           />
         ))}
       </div>
 
-      {/* Time signature */}
-      <div className="flex items-center justify-center gap-1">
+      {/* Time signature — controle segmentado */}
+      <div role="group" aria-label="Compasso" className="flex h-9 items-center gap-0.5 rounded-full bg-fill-tertiary p-0.5">
         {SIGNATURES.map((s) => (
           <button
             key={s}
+            type="button"
             onClick={() => setBeatsPerMeasure(s)}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-              beatsPerMeasure === s ? "bg-primary text-primary-foreground" : "bg-accent/50 text-muted-foreground hover:bg-accent"
+            aria-pressed={beatsPerMeasure === s}
+            className={`relative h-8 flex-1 rounded-full text-subhead font-medium tabular-nums text-foreground transition-colors duration-200 before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2 motion-reduce:transition-none ${
+              beatsPerMeasure === s ? "bg-card shadow-sm dark:bg-prominent" : ""
             }`}
           >
             {s}/4

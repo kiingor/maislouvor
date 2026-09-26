@@ -2,13 +2,10 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { GlassInput } from "@/components/GlassInput";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogToolbar } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, Copy } from "lucide-react";
 
 interface Props {
   open: boolean;
@@ -16,6 +13,21 @@ interface Props {
   // culto de origem (precisa pelo menos de id, name, date)
   sourceCulto: any | null;
 }
+
+// Formulário agrupado dentro da folha (protótipo `.group` / `.group-label`).
+// Na folha, --card já vira branco (claro) / #2C2C2E (escuro) — ver ui/dialog.tsx.
+const group = "overflow-hidden rounded-card bg-card";
+const groupLabel = "mx-4 mb-1.5 block text-footnote text-muted-foreground";
+const row = "relative flex min-h-[48px] items-center gap-3 px-4";
+const rowSeparator = "before:absolute before:top-0 before:right-0 before:left-4 before:border-t before:border-border";
+const fieldInput = "min-w-0 flex-1 bg-transparent py-3 text-body text-foreground placeholder:text-label-tertiary focus-visible:outline-none";
+// Foco de teclado nas linhas com campo de texto: anel interno na linha inteira (o contorno global
+// de :focus-visible seria cortado pelo overflow do grupo). Some no toque, como a regra global (.pointer-mode).
+const keyboardFocusRow =
+  "[html:not(.pointer-mode)_&:focus-within]:ring-[3px] [html:not(.pointer-mode)_&:focus-within]:ring-inset [html:not(.pointer-mode)_&:focus-within]:ring-ios-blue";
+
+const datePill =
+  "h-9 rounded-[8px] border-0 bg-fill-tertiary px-2.5 text-body text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ios-blue/40";
 
 export function CultoDuplicateModal({ open, onOpenChange, sourceCulto }: Props) {
   const { currentTeam, profileId } = useTeam();
@@ -129,45 +141,66 @@ export function CultoDuplicateModal({ open, onOpenChange, sourceCulto }: Props) 
     }
   };
 
+  const copyOptions = [
+    { id: "dup-copy-songs", label: "Copiar músicas", hint: "tom e notas", value: copySongs, set: setCopySongs },
+    { id: "dup-copy-blocks", label: "Copiar roteiro", hint: "momentos", value: copyBlocks, set: setCopyBlocks },
+    { id: "dup-copy-lineup", label: "Copiar escala", hint: "como pendente", value: copyLineup, set: setCopyLineup },
+  ];
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass rounded-2xl border-0 max-w-sm sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-lg font-semibold flex items-center gap-2">
-            <Copy className="h-4 w-4" /> Duplicar culto
-          </DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Nome</label>
-            <GlassInput placeholder="Nome do novo culto" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Data</label>
-            <GlassInput type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">O que copiar</label>
-            <div className="space-y-2.5 rounded-xl glass-subtle p-3">
-              <label className="flex items-center gap-2.5 cursor-pointer">
-                <Checkbox checked={copySongs} onCheckedChange={(v) => setCopySongs(!!v)} />
-                <span className="text-sm">Copiar músicas <span className="text-muted-foreground text-xs">(tom e notas)</span></span>
-              </label>
-              <label className="flex items-center gap-2.5 cursor-pointer">
-                <Checkbox checked={copyBlocks} onCheckedChange={(v) => setCopyBlocks(!!v)} />
-                <span className="text-sm">Copiar roteiro <span className="text-muted-foreground text-xs">(momentos)</span></span>
-              </label>
-              <label className="flex items-center gap-2.5 cursor-pointer">
-                <Checkbox checked={copyLineup} onCheckedChange={(v) => setCopyLineup(!!v)} />
-                <span className="text-sm">Copiar escala <span className="text-muted-foreground text-xs">(como pendente)</span></span>
-              </label>
+      <DialogContent className="sm:max-w-md">
+        <DialogToolbar
+          title="Duplicar culto"
+          confirm={{
+            label: "Duplicar",
+            type: "submit",
+            form: "culto-duplicate-form",
+            disabled: saving || !name.trim() || !date,
+            loading: saving,
+          }}
+        />
+        <form id="culto-duplicate-form" onSubmit={handleSubmit} className="space-y-6">
+          <div className={group}>
+            <div className={`${row} ${keyboardFocusRow}`}>
+              <label htmlFor="dup-name" className="w-20 shrink-0 text-body text-foreground">Nome</label>
+              <input
+                id="dup-name"
+                placeholder="Nome do novo culto"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                autoFocus
+                className={fieldInput}
+              />
+            </div>
+            <div className={`${row} ${rowSeparator} justify-between`}>
+              <label htmlFor="dup-date" className="text-body text-foreground">Data</label>
+              <input
+                id="dup-date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                required
+                className={datePill}
+              />
             </div>
           </div>
 
-          <Button type="submit" disabled={saving || !name.trim() || !date} className="w-full h-11 rounded-xl text-sm font-semibold">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Duplicar"}
-          </Button>
+          <div>
+            <p className={groupLabel} id="dup-copy-label">O que copiar</p>
+            <div className={group} role="group" aria-labelledby="dup-copy-label">
+              {copyOptions.map((o, i) => (
+                <div key={o.id} className={`${row} min-h-[56px] py-2 ${i > 0 ? rowSeparator : ""}`}>
+                  <label htmlFor={o.id} className="min-w-0 flex-1 cursor-pointer">
+                    <span className="block text-body text-foreground">{o.label}</span>
+                    <span className="block text-footnote text-muted-foreground">{o.hint}</span>
+                  </label>
+                  <Switch id={o.id} checked={o.value} onCheckedChange={(v) => o.set(!!v)} />
+                </div>
+              ))}
+            </div>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

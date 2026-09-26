@@ -1,18 +1,21 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 interface Props {
   type: string; // 'text' | 'image' | 'audio'
   content: string | null;
   attachmentPath: string | null;
   isMe: boolean;
+  /** Última bolha de uma sequência do mesmo remetente: canto da "cauda" mais fechado (estilo Mensagens). */
+  tail?: boolean;
 }
 
 /** Validade da URL assinada. Só precisa durar a sessão de leitura da conversa. */
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
-export function ChatMessageBubble({ type, content, attachmentPath, isMe }: Props) {
+export function ChatMessageBubble({ type, content, attachmentPath, isMe, tail = true }: Props) {
   const [lightbox, setLightbox] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
 
@@ -42,24 +45,26 @@ export function ChatMessageBubble({ type, content, attachmentPath, isMe }: Props
     };
   }, [attachmentPath]);
 
+  // Bolha do iOS: raio 18, canto da cauda reduzido na última bolha da sequência.
+  const shape = cn("rounded-[18px]", tail && (isMe ? "rounded-br-[6px]" : "rounded-bl-[6px]"));
+  // Própria = cor proeminente; dos outros = preenchimento cinza do sistema.
+  const tone = isMe ? "bg-prominent text-prominent-foreground" : "bg-fill-secondary text-foreground";
+
   if (type === "image" && url) {
     return (
       <>
         <button
           type="button"
           onClick={() => setLightbox(true)}
-          className="block overflow-hidden rounded-2xl border border-border/40 max-w-[220px]"
+          aria-label="Ampliar imagem"
+          className={cn("block overflow-hidden max-w-[min(240px,100%)] bg-fill-tertiary active:opacity-80 transition-opacity", shape)}
         >
-          <img
-            src={url}
-            alt="Imagem"
-            loading="lazy"
-            className="max-h-60 w-auto object-cover"
-          />
+          <img src={url} alt="Imagem" loading="lazy" className="block max-h-72 w-auto object-cover" />
         </button>
         <Dialog open={lightbox} onOpenChange={setLightbox}>
-          <DialogContent className="glass border-0 rounded-2xl p-2 max-w-2xl">
-            <img src={url} alt="Imagem" className="w-full h-auto rounded-xl" />
+          <DialogContent className="max-w-2xl p-2 sm:p-3">
+            <DialogTitle className="sr-only">Imagem</DialogTitle>
+            <img src={url} alt="Imagem" className="w-full h-auto max-h-[80dvh] object-contain rounded-[18px]" />
           </DialogContent>
         </Dialog>
       </>
@@ -68,27 +73,16 @@ export function ChatMessageBubble({ type, content, attachmentPath, isMe }: Props
 
   if (type === "audio" && url) {
     return (
-      <div
-        className={`px-2 py-1.5 rounded-2xl ${
-          isMe
-            ? "bg-primary/90 rounded-tr-md"
-            : "bg-accent rounded-tl-md"
-        }`}
-      >
-        <audio controls preload="metadata" src={url} className="h-9 max-w-[220px]" />
+      <div className={cn("min-w-0 max-w-full px-2 py-1.5", shape, tone)}>
+        {/* Encolhe com a coluna da bolha em telas estreitas (360pt) em vez de vazar da tela. */}
+        <audio controls preload="metadata" src={url} className="block h-10 w-[240px] max-w-full" />
       </div>
     );
   }
 
   // Fallback: text (or attachment that failed to resolve)
   return (
-    <div
-      className={`px-3 py-1.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words ${
-        isMe
-          ? "bg-primary text-primary-foreground rounded-tr-md"
-          : "bg-accent text-accent-foreground rounded-tl-md"
-      }`}
-    >
+    <div className={cn("px-3 py-[7px] text-body whitespace-pre-wrap break-words [overflow-wrap:anywhere]", shape, tone)}>
       {content ?? (type === "image" ? "[imagem]" : type === "audio" ? "[áudio]" : "")}
     </div>
   );

@@ -1,11 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { GlassCard } from "@/components/GlassCard";
-import { GlassInput } from "@/components/GlassInput";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, EyeOff, KeyRound } from "lucide-react";
+import { KeyRound } from "lucide-react";
+import { AuthAppIcon, AuthField, AuthFieldGroup, AuthScreen, PasswordToggle, ProminentButton } from "./Login";
 
 export default function ResetPassword() {
   const [password, setPassword] = useState("");
@@ -59,88 +57,69 @@ export default function ResetPassword() {
   };
 
   if (!ready) {
+    // Estado de erro no padrão "conteúdo indisponível" do iOS.
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <GlassCard className="p-8 text-center max-w-sm w-full">
-          <KeyRound className="h-10 w-10 mx-auto mb-4 text-muted-foreground" />
-          <h2 className="text-lg font-semibold mb-2">Link inválido ou expirado</h2>
-          <p className="text-sm text-muted-foreground mb-4">
+      <AuthScreen className="items-center text-center">
+        <div className="w-full max-w-sm animate-in-up">
+          <KeyRound className="mx-auto h-14 w-14 text-muted-foreground" strokeWidth={1.75} aria-hidden="true" />
+          <h2 className="mt-5 text-title2">Link inválido ou expirado</h2>
+          <p className="mt-2 text-body text-muted-foreground">
             Solicite um novo link de redefinição de senha na tela de login.
           </p>
-          <Button onClick={() => navigate("/login")} className="w-full rounded-xl">
+          <ProminentButton type="button" onClick={() => navigate("/login")} className="mt-8">
             Voltar ao login
-          </Button>
-        </GlassCard>
-      </div>
+          </ProminentButton>
+        </div>
+      </AuthScreen>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-sm animate-in-up">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="h-10 w-10 rounded-2xl bg-foreground flex items-center justify-center">
-            <KeyRound className="h-5 w-5 text-background" />
-          </div>
-          <h1 className="text-xl font-semibold">Nova senha</h1>
+    <AuthScreen className="items-center">
+      <div className="w-full max-w-[400px] animate-in-up">
+        <div className="flex flex-col items-center text-center">
+          <AuthAppIcon>
+            <KeyRound className="h-10 w-10" strokeWidth={2} aria-hidden="true" />
+          </AuthAppIcon>
+          <h1 className="mt-5 text-large-title">Nova senha</h1>
+          <p className="mt-1 text-body text-muted-foreground">Defina sua nova senha abaixo.</p>
         </div>
 
-        <GlassCard className="p-6">
-          <p className="text-sm text-muted-foreground mb-5">
-            Defina sua nova senha abaixo.
-          </p>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                Nova senha
-              </label>
-              <div className="relative">
-                <GlassInput
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
+        <form onSubmit={handleSubmit} className="mt-8">
+          <AuthFieldGroup>
+            <AuthField
+              id="reset-password"
+              label="Nova senha"
+              labelClassName="w-[8.5rem]"
+              type={showPassword ? "text" : "password"}
+              autoComplete="new-password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+              trailing={<PasswordToggle shown={showPassword} onToggle={() => setShowPassword(!showPassword)} />}
+            />
+            <AuthField
+              id="reset-password-confirm"
+              label="Confirmar senha"
+              labelClassName="w-[8.5rem]"
+              type="password"
+              autoComplete="new-password"
+              placeholder="••••••••"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              minLength={6}
+            />
+          </AuthFieldGroup>
+          <p className="mx-4 mt-2 text-footnote text-muted-foreground">Mínimo 6 caracteres.</p>
 
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                Confirmar senha
-              </label>
-              <GlassInput
-                type="password"
-                placeholder="••••••••"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                minLength={6}
-              />
-            </div>
-
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full h-12 rounded-xl text-sm font-semibold hover-lift mt-2"
-            >
-              {loading ? (
-                <div className="h-4 w-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" />
-              ) : (
-                "Redefinir senha"
-              )}
-            </Button>
-          </form>
-        </GlassCard>
+          <ProminentButton type="submit" disabled={loading} loading={loading} className="mt-6">
+            Redefinir senha
+          </ProminentButton>
+        </form>
       </div>
-    </div>
+    </AuthScreen>
   );
 }

@@ -1,12 +1,10 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { firePush } from "@/lib/push";
 import { useTeam } from "@/contexts/TeamContext";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogToolbar } from "@/components/ui/dialog";
 import { GlassInput } from "@/components/GlassInput";
-import { Loader2, Send } from "lucide-react";
 
 interface SendNotificationModalProps {
   open: boolean;
@@ -19,6 +17,7 @@ export function SendNotificationModal({ open, onOpenChange }: SendNotificationMo
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const fieldId = useId();
 
   const handleSend = async () => {
     if (!currentTeam || !profileId || !title.trim()) return;
@@ -70,36 +69,48 @@ export function SendNotificationModal({ open, onOpenChange }: SendNotificationMo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="rounded-2xl">
-        <DialogHeader>
-          <DialogTitle>Enviar aviso ao time</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 mt-2">
+      <DialogContent aria-describedby={undefined} className="sm:max-w-md">
+        <DialogToolbar
+          title="Enviar aviso ao time"
+          confirm={{
+            // Círculo ✓ (padrão da barra): mantém o título centralizado e sem corte a 360pt.
+            label: sending ? "Enviando..." : "Enviar aviso",
+            onClick: handleSend,
+            disabled: sending || !title.trim(),
+            loading: sending,
+          }}
+        />
+
+        {/* Formulário agrupado (HIG > Sheets): rótulo de grupo + célula. */}
+        <div className="space-y-6 pb-1">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Título</label>
-            <GlassInput
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Ex: Ensaio cancelado"
-            />
+            <label htmlFor={`${fieldId}-title`} className="mx-4 mb-1.5 block text-footnote text-muted-foreground">
+              Título
+            </label>
+            <div className="overflow-hidden rounded-card bg-card">
+              <GlassInput
+                id={`${fieldId}-title`}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Ex: Ensaio cancelado"
+                className="h-[52px] rounded-none bg-transparent focus-visible:ring-0"
+              />
+            </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Mensagem (opcional)</label>
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Detalhes do aviso..."
-              className="w-full min-h-[100px] rounded-xl glass-input p-3 text-sm resize-y placeholder:text-muted-foreground/60 focus-visible:outline-none"
-            />
+            <label htmlFor={`${fieldId}-body`} className="mx-4 mb-1.5 block text-footnote text-muted-foreground">
+              Mensagem (opcional)
+            </label>
+            <div className="overflow-hidden rounded-card bg-card">
+              <textarea
+                id={`${fieldId}-body`}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="Detalhes do aviso..."
+                className="block min-h-[112px] w-full resize-none border-0 bg-transparent px-4 py-[13px] text-body text-foreground caret-primary placeholder:text-label-tertiary focus-visible:outline-none"
+              />
+            </div>
           </div>
-          <Button
-            onClick={handleSend}
-            disabled={sending || !title.trim()}
-            className="w-full rounded-xl gap-2"
-          >
-            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            {sending ? "Enviando..." : "Enviar aviso"}
-          </Button>
         </div>
       </DialogContent>
     </Dialog>

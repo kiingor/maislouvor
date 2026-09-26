@@ -2,24 +2,106 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
 import { useNavigate } from "react-router-dom";
-import { GlassCard } from "@/components/GlassCard";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList,
 } from "recharts";
 import {
-  Music, TrendingUp, EyeOff, AlertTriangle, ChevronDown, ChevronUp, Wand2, Loader2, Pencil,
+  Music, TrendingUp, EyeOff, AlertTriangle, ChevronDown, ChevronUp, ChevronRight, Wand2, Loader2, Pencil,
+  type LucideIcon,
 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, type ReactNode } from "react";
+import { cn } from "@/lib/utils";
 import { format, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { detectKeyFromUrl } from "@/lib/detectKey";
+
+/* ---------- Peças visuais (HIG > Lists, estilo das listas inteligentes do Lembretes) ---------- */
+
+/** Cabeçalho de seção: Title3 + qualificador Subhead secundário + ação "Ver todas" à direita. */
+function Section({ title, qualifier, action, children, className }: { title: string; qualifier?: string; action?: ReactNode; children: ReactNode; className?: string }) {
+  return (
+    <section className={cn("min-w-0", className)}>
+      <div className="mx-1 mb-2 flex items-start justify-between gap-x-3">
+        <h2 className="min-w-0 flex-1 text-title3 text-foreground">
+          {title}
+          {qualifier && <span className="block text-subhead font-normal text-muted-foreground">{qualifier}</span>}
+        </h2>
+        {action && <div className="mt-0.5 flex shrink-0">{action}</div>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ShowAllButton({ expanded, total, onClick }: { expanded: boolean; total: number; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={expanded}
+      className="-my-2.5 -mr-1.5 inline-flex min-h-11 items-center gap-0.5 whitespace-nowrap rounded-[10px] px-1.5 text-subhead font-medium text-primary"
+    >
+      {expanded ? "Mostrar menos" : `Ver todas (${total})`}
+      {expanded ? <ChevronUp className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" /> : <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />}
+    </button>
+  );
+}
+
+function StatTile({ icon: Icon, value, label, tone = "tint" }: { icon: LucideIcon; value: number; label: string; tone?: "tint" | "warning" }) {
+  return (
+    <div className="flex min-h-[92px] flex-col gap-2 rounded-card bg-card px-3.5 py-3">
+      <div className="flex items-start justify-between gap-2">
+        <span
+          className={cn(
+            "grid h-8 w-8 shrink-0 place-items-center rounded-full",
+            tone === "warning" ? "bg-ios-orange text-white" : "bg-prominent text-prominent-foreground",
+          )}
+        >
+          <Icon className="h-[17px] w-[17px]" strokeWidth={2.25} aria-hidden="true" />
+        </span>
+        <span className="text-title1 text-foreground">{value}</span>
+      </div>
+      <span className="text-subhead font-semibold text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
+/** Separador hairline recuado (a primeira linha não tem). */
+function RowSep({ inset }: { inset: string }) {
+  return <span aria-hidden="true" className={cn("pointer-events-none absolute right-0 top-0 border-t border-separator", inset)} />;
+}
+
+/** Dica do gráfico: vidro espesso como os menus; valor em destaque, categoria secundária. */
+function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value?: number; payload?: { name?: string } }>; label?: string }) {
+  if (!active || !payload?.length) return null;
+  const value = Number(payload[0].value ?? 0);
+  const name = label ?? payload[0].payload?.name;
+  return (
+    <div className="liquid-glass-thick rounded-[14px] px-3 py-2">
+      <p className="relative z-[4] text-headline tabular-nums text-foreground">
+        {value} {value === 1 ? "música" : "músicas"}
+      </p>
+      <p className="relative z-[4] text-footnote text-muted-foreground">{name}</p>
+    </div>
+  );
+}
+
+/** Rótulo do eixo de categorias com corte em reticências (nomes de tema longos). */
+function CategoryTick({ x, y, payload }: { x?: number; y?: number; payload?: { value?: string } }) {
+  const full = String(payload?.value ?? "");
+  const text = full.length > 14 ? `${full.slice(0, 13)}…` : full;
+  return (
+    <text x={x} y={y} dy={4} textAnchor="end" fontSize={13} fill="hsl(var(--foreground))">
+      <title>{full}</title>
+      {text}
+    </text>
+  );
+}
+
+const CHART_BAR = "hsl(var(--prominent))";
+const CHART_TEXT = "hsl(var(--muted-foreground))";
 
 export default function RepertorioDashboard() {
   const { currentTeam } = useTeam();
@@ -166,252 +248,177 @@ export default function RepertorioDashboard() {
 
   if (isLoading) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4" aria-busy="true">
         {[1, 2, 3, 4].map((i) => (
-          <GlassCard key={i} className="p-6 h-24 animate-pulse" />
+          <div key={i} className="h-[92px] animate-pulse rounded-card bg-card" />
         ))}
       </div>
     );
   }
 
-  const chartColors = [
-    "hsl(var(--primary))",
-    "hsl(var(--muted-foreground))",
-  ];
+  const reduceMotion = typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const fmt = (d: string) => format(new Date(d), "dd/MM/yyyy", { locale: ptBR });
 
   const topList = showAllTop ? metrics.topPlayed : metrics.topPlayed.slice(0, 10);
   const forgottenList = showAllForgotten ? metrics.forgotten : metrics.forgotten.slice(0, 10);
+  const themeChartHeight = Math.max(110, metrics.themeChartData.length * 30 + 8);
 
   return (
-    <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <GlassCard className="p-5">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center">
-              <Music className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div>
-              <p className="text-2xl font-semibold">{metrics.totalSongs}</p>
-              <p className="text-xs text-muted-foreground">Total de músicas</p>
-            </div>
-          </div>
-        </GlassCard>
-        <GlassCard className="p-5">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center">
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div>
-              <p className="text-2xl font-semibold">{metrics.playedCount}</p>
-              <p className="text-xs text-muted-foreground">Já tocadas</p>
-            </div>
-          </div>
-        </GlassCard>
-        <GlassCard className="p-5">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center">
-              <EyeOff className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div>
-              <p className="text-2xl font-semibold">{metrics.neverPlayedCount}</p>
-              <p className="text-xs text-muted-foreground">Nunca tocadas</p>
-            </div>
-          </div>
-        </GlassCard>
-        <GlassCard className="p-5">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center">
-              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div>
-              <p className="text-2xl font-semibold">{metrics.incompleteCount}</p>
-              <p className="text-xs text-muted-foreground">Incompletas</p>
-            </div>
-          </div>
-        </GlassCard>
+    <div className="space-y-7">
+      {/* Resumo */}
+      <div role="group" className="grid grid-cols-2 gap-2.5 lg:grid-cols-4" aria-label="Resumo do repertório">
+        <StatTile icon={Music} value={metrics.totalSongs} label="Total de músicas" />
+        <StatTile icon={TrendingUp} value={metrics.playedCount} label="Já tocadas" />
+        <StatTile icon={EyeOff} value={metrics.neverPlayedCount} label="Nunca tocadas" />
+        <StatTile icon={AlertTriangle} value={metrics.incompleteCount} label="Incompletas" tone={metrics.incompleteCount > 0 ? "warning" : "tint"} />
       </div>
 
-      {/* Top played */}
-      {metrics.topPlayed.length > 0 && (
-        <GlassCard className="p-5">
-          <h3 className="font-medium mb-4 flex items-center gap-2">
-            <TrendingUp className="h-4 w-4" /> Músicas mais tocadas
-          </h3>
-          <div className="overflow-x-auto">
-            <Table className="text-xs sm:text-sm">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">#</TableHead>
-                  <TableHead>Título</TableHead>
-                  <TableHead className="hidden sm:table-cell">Artista</TableHead>
-                  <TableHead className="text-center">Vezes</TableHead>
-                  <TableHead className="hidden sm:table-cell">Última vez</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+      {(metrics.topPlayed.length > 0 || metrics.forgotten.length > 0) && (
+        <div className="grid gap-7 lg:grid-cols-2 lg:items-start">
+          {/* Top played */}
+          {metrics.topPlayed.length > 0 && (
+            <Section
+              title="Músicas mais tocadas"
+              action={metrics.topPlayed.length > 10 && (
+                <ShowAllButton expanded={showAllTop} total={metrics.topPlayed.length} onClick={() => setShowAllTop(!showAllTop)} />
+              )}
+            >
+              <ul className="overflow-hidden rounded-card bg-card">
                 {topList.map((s, i) => (
-                  <TableRow
-                    key={s.id}
-                    className="cursor-pointer"
-                    onClick={() => navigate(`/app/songs/${s.id}`)}
-                  >
-                    <TableCell className="font-medium text-muted-foreground">{i + 1}</TableCell>
-                    <TableCell className="font-medium">{s.title}</TableCell>
-                    <TableCell className="hidden sm:table-cell text-muted-foreground">{s.artist || "—"}</TableCell>
-                    <TableCell className="text-center">{s.count}</TableCell>
-                    <TableCell className="hidden sm:table-cell text-muted-foreground">
-                      {format(new Date(s.lastDate), "dd/MM/yyyy", { locale: ptBR })}
-                    </TableCell>
-                  </TableRow>
+                  <li key={s.id} className="relative">
+                    {i > 0 && <RowSep inset="left-[52px]" />}
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/app/songs/${s.id}`)}
+                      className="flex min-h-[56px] w-full items-center gap-3 py-2.5 pl-4 pr-3 text-left transition-colors active:bg-fill-tertiary focus-visible:outline-offset-[-3px]"
+                    >
+                      <span className="w-6 shrink-0 text-center text-footnote tabular-nums text-muted-foreground">{i + 1}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-body text-foreground">{s.title}</span>
+                        <span className="block truncate text-footnote text-muted-foreground">
+                          {s.artist || "—"} · Última vez {fmt(s.lastDate)}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-subhead tabular-nums text-muted-foreground">
+                        {s.count} {s.count === 1 ? "vez" : "vezes"}
+                      </span>
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-label-tertiary" strokeWidth={2.5} aria-hidden="true" />
+                    </button>
+                  </li>
                 ))}
-              </TableBody>
-            </Table>
-          </div>
-          {metrics.topPlayed.length > 10 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="mt-2 w-full gap-1"
-              onClick={() => setShowAllTop(!showAllTop)}
-            >
-              {showAllTop ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              {showAllTop ? "Mostrar menos" : `Ver todas (${metrics.topPlayed.length})`}
-            </Button>
+              </ul>
+            </Section>
           )}
-        </GlassCard>
-      )}
 
-      {/* Forgotten songs */}
-      {metrics.forgotten.length > 0 && (
-        <GlassCard className="p-5">
-          <h3 className="font-medium mb-4 flex items-center gap-2">
-            <EyeOff className="h-4 w-4" /> Músicas esquecidas
-          </h3>
-          <p className="text-xs text-muted-foreground mb-3">
-            Nunca tocadas ou há mais de 60 dias sem tocar
-          </p>
-          <div className="overflow-x-auto">
-            <Table className="text-xs sm:text-sm">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Título</TableHead>
-                  <TableHead className="hidden sm:table-cell">Artista</TableHead>
-                  <TableHead>Tom</TableHead>
-                  <TableHead>Última vez</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {forgottenList.map((s) => (
-                  <TableRow
-                    key={s.id}
-                    className="cursor-pointer"
-                    onClick={() => navigate(`/app/songs/${s.id}`)}
-                  >
-                    <TableCell className="font-medium">{s.title}</TableCell>
-                    <TableCell className="hidden sm:table-cell text-muted-foreground">{s.artist || "—"}</TableCell>
-                    <TableCell>{s.key_current || "—"}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {s.lastDate
-                        ? format(new Date(s.lastDate), "dd/MM/yyyy", { locale: ptBR })
-                        : "Nunca"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          {metrics.forgotten.length > 10 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="mt-2 w-full gap-1"
-              onClick={() => setShowAllForgotten(!showAllForgotten)}
+          {/* Forgotten songs */}
+          {metrics.forgotten.length > 0 && (
+            <Section
+              title="Músicas esquecidas"
+              qualifier="Nunca tocadas ou há mais de 60 dias sem tocar"
+              action={metrics.forgotten.length > 10 && (
+                <ShowAllButton expanded={showAllForgotten} total={metrics.forgotten.length} onClick={() => setShowAllForgotten(!showAllForgotten)} />
+              )}
             >
-              {showAllForgotten ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              {showAllForgotten ? "Mostrar menos" : `Ver todas (${metrics.forgotten.length})`}
-            </Button>
+              <ul className="overflow-hidden rounded-card bg-card">
+                {forgottenList.map((s, i) => (
+                  <li key={s.id} className="relative">
+                    {i > 0 && <RowSep inset="left-4" />}
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/app/songs/${s.id}`)}
+                      className="flex min-h-[56px] w-full items-center gap-3 py-2.5 pl-4 pr-3 text-left transition-colors active:bg-fill-tertiary focus-visible:outline-offset-[-3px]"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-body text-foreground">{s.title}</span>
+                        <span className="block truncate text-footnote text-muted-foreground">
+                          {s.artist || "—"} · {s.lastDate ? `Última vez ${fmt(s.lastDate)}` : "Nunca"}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-subhead tabular-nums text-muted-foreground">
+                        {s.key_current ? (
+                          <>
+                            <span className="sr-only">Tom </span>
+                            {s.key_current}
+                          </>
+                        ) : (
+                          <>
+                            <span aria-hidden="true">—</span>
+                            <span className="sr-only">Sem tom</span>
+                          </>
+                        )}
+                      </span>
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-label-tertiary" strokeWidth={2.5} aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </Section>
           )}
-        </GlassCard>
+        </div>
       )}
 
       {/* Charts row */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-7 lg:grid-cols-2 lg:items-start">
         {/* Key distribution */}
-        <GlassCard className="p-5">
-          <h3 className="font-medium mb-4">Distribuição por tom</h3>
-          {metrics.keyChartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={metrics.keyChartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
-                <Tooltip
-                  contentStyle={{
-                    background: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: 8,
-                    fontSize: 13,
-                  }}
-                />
-                <Bar dataKey="value" name="Músicas" radius={[4, 4, 0, 0]}>
-                  {metrics.keyChartData.map((_, i) => (
-                    <Cell key={i} fill={i === 0 ? chartColors[0] : chartColors[1]} fillOpacity={0.8} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-sm text-muted-foreground">Nenhum dado disponível</p>
-          )}
-        </GlassCard>
+        <Section title="Distribuição por tom">
+          <div className="rounded-card bg-card px-3 pb-2 pt-3">
+            {metrics.keyChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={190}>
+                <BarChart data={metrics.keyChartData} margin={{ top: 20, right: 4, bottom: 0, left: 4 }}>
+                  <XAxis
+                    dataKey="name"
+                    interval={0}
+                    tickLine={false}
+                    axisLine={{ stroke: "hsl(var(--border))" }}
+                    tick={{ fontSize: 12, fill: CHART_TEXT }}
+                  />
+                  <YAxis hide allowDecimals={false} domain={[0, "dataMax"]} />
+                  <Tooltip cursor={{ fill: "var(--fill-quaternary)" }} content={<ChartTooltip />} />
+                  <Bar dataKey="value" name="Músicas" fill={CHART_BAR} radius={[4, 4, 0, 0]} maxBarSize={18} isAnimationActive={!reduceMotion}>
+                    <LabelList dataKey="value" position="top" offset={6} fontSize={12} fill={CHART_TEXT} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="px-1 py-6 text-center text-subhead text-muted-foreground">Nenhum dado disponível</p>
+            )}
+          </div>
+        </Section>
 
         {/* Theme distribution */}
-        <GlassCard className="p-5">
-          <h3 className="font-medium mb-4">Distribuição por tema</h3>
-          {metrics.themeChartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={metrics.themeChartData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis
-                  dataKey="name"
-                  type="category"
-                  width={100}
-                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: 8,
-                    fontSize: 13,
-                  }}
-                />
-                <Bar dataKey="value" name="Músicas" radius={[0, 4, 4, 0]}>
-                  {metrics.themeChartData.map((_, i) => (
-                    <Cell key={i} fill={i === 0 ? chartColors[0] : chartColors[1]} fillOpacity={0.8} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-sm text-muted-foreground">Nenhum dado disponível</p>
-          )}
-        </GlassCard>
+        <Section title="Distribuição por tema">
+          <div className="rounded-card bg-card px-3 py-3">
+            {metrics.themeChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={themeChartHeight}>
+                <BarChart data={metrics.themeChartData} layout="vertical" margin={{ top: 0, right: 28, bottom: 0, left: 0 }} barCategoryGap={6}>
+                  <XAxis type="number" hide allowDecimals={false} domain={[0, "dataMax"]} />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    width={112}
+                    interval={0}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={<CategoryTick />}
+                  />
+                  <Tooltip cursor={{ fill: "var(--fill-quaternary)" }} content={<ChartTooltip />} />
+                  <Bar dataKey="value" name="Músicas" fill={CHART_BAR} radius={[0, 4, 4, 0]} maxBarSize={14} isAnimationActive={!reduceMotion}>
+                    <LabelList dataKey="value" position="right" offset={6} fontSize={12} fill={CHART_TEXT} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="px-1 py-6 text-center text-subhead text-muted-foreground">Nenhum dado disponível</p>
+            )}
+          </div>
+        </Section>
       </div>
 
       {/* Incomplete songs */}
       {metrics.incomplete.length > 0 && (
-        <GlassCard className="p-5">
-          <h3 className="font-medium mb-4 flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4" /> Cadastro incompleto
-          </h3>
-          <p className="text-xs text-muted-foreground mb-3">
-            Músicas com dados faltando — use as ações para completar
-          </p>
-          <div className="space-y-2">
-            {metrics.incomplete.map((s: any) => {
+        <Section title="Cadastro incompleto" qualifier="Músicas com dados faltando — use as ações para completar">
+          <ul className="overflow-hidden rounded-card bg-card">
+            {metrics.incomplete.map((s: any, i: number) => {
               const missing: string[] = [];
               if (!s.key_current) missing.push("Tom");
               if (!s.theme) missing.push("Tema");
@@ -420,52 +427,51 @@ export default function RepertorioDashboard() {
               if (!s.lyrics_text) missing.push("Letra");
               const canDetectKey = !s.key_current && !!s.audio_path;
               const needsContent = !s.cifra_text || !s.lyrics_text;
+              const smallButton =
+                "relative inline-flex h-9 items-center gap-1.5 rounded-full bg-fill-secondary px-3.5 text-footnote font-semibold text-foreground transition-colors active:bg-fill disabled:opacity-50 after:absolute after:inset-x-0 after:-inset-y-1 after:content-[''] [&_svg]:h-[15px] [&_svg]:w-[15px]";
               return (
-                <div
-                  key={s.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-accent/50"
-                >
+                <li key={s.id} className="relative px-4 py-3">
+                  {i > 0 && <RowSep inset="left-4" />}
                   <button
-                    className="text-left min-w-0 flex-1 cursor-pointer hover:opacity-80 transition-opacity"
+                    type="button"
+                    className="block w-full min-w-0 rounded-[8px] text-left transition-opacity active:opacity-60"
                     onClick={() => navigate(`/app/songs/${s.id}`)}
                   >
-                    <p className="text-sm font-medium truncate">{s.title}</p>
-                    <p className="text-xs text-muted-foreground truncate">{s.artist || "Sem artista"}</p>
+                    <span className="block truncate text-body text-foreground">{s.title}</span>
+                    <span className="block truncate text-footnote text-muted-foreground">{s.artist || "Sem artista"}</span>
                   </button>
-                  <div className="flex items-center gap-1.5 flex-wrap justify-end shrink-0">
+                  <div role="group" className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Dados faltando">
                     {missing.map((m) => (
-                      <Badge key={m} variant="secondary" className="text-[10px] px-1.5 py-0">
+                      <span key={m} className="rounded-full bg-fill-tertiary px-2 py-0.5 text-caption1 font-medium text-muted-foreground">
                         {m}
-                      </Badge>
+                      </span>
                     ))}
-                    {canDetectKey && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-lg gap-1.5 h-7 text-xs"
-                        disabled={detectingId === s.id}
-                        onClick={() => handleDetectKey(s)}
-                      >
-                        {detectingId === s.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
-                        Detectar tom
-                      </Button>
-                    )}
-                    {needsContent && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-lg gap-1.5 h-7 text-xs"
-                        onClick={() => navigate(`/app/songs/${s.id}`)}
-                      >
-                        <Pencil className="h-3 w-3" /> Editar
-                      </Button>
-                    )}
                   </div>
-                </div>
+                  {(canDetectKey || needsContent) && (
+                    <div className="mt-2.5 flex flex-wrap gap-2">
+                      {canDetectKey && (
+                        <button
+                          type="button"
+                          className={smallButton}
+                          disabled={detectingId === s.id}
+                          onClick={() => handleDetectKey(s)}
+                        >
+                          {detectingId === s.id ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Wand2 aria-hidden="true" />}
+                          Detectar tom
+                        </button>
+                      )}
+                      {needsContent && (
+                        <button type="button" className={smallButton} onClick={() => navigate(`/app/songs/${s.id}`)}>
+                          <Pencil aria-hidden="true" /> Editar
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </li>
               );
             })}
-          </div>
-        </GlassCard>
+          </ul>
+        </Section>
       )}
     </div>
   );

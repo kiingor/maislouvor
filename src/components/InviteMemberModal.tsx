@@ -1,12 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { GlassInput } from "@/components/GlassInput";
-import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogToolbar } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -14,6 +13,27 @@ interface Props {
 }
 
 const ALL_TEAMS = "__all__";
+const FORM_ID = "invite-member-form";
+
+/* Grupos dentro da folha: a folha já redefine --card (claro: branco; escuro: #2C2C2E). */
+const GROUP = "overflow-hidden rounded-card bg-card";
+const GROUP_LABEL = "mx-4 mb-1.5 text-footnote text-muted-foreground";
+const GROUP_FOOTER = "mx-4 mt-1.5 text-footnote text-muted-foreground";
+const INPUT =
+  "h-[52px] min-w-0 flex-1 bg-transparent text-body text-foreground placeholder:text-label-tertiary focus-visible:outline-offset-[-3px]";
+const SELECT_ROW = "h-[52px] rounded-none bg-transparent px-4 active:bg-fill-quaternary data-[state=open]:bg-fill-quaternary";
+
+function FieldRow({ id, label, trailing, children }: { id: string; label: ReactNode; trailing?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="ml-4 flex min-h-[52px] items-center gap-3 pr-4">
+      <label htmlFor={id} className="w-[7.25rem] shrink-0 py-2 text-body leading-[20px]">
+        {label}
+      </label>
+      {children}
+      {trailing}
+    </div>
+  );
+}
 
 export function InviteMemberModal({ open, onOpenChange }: Props) {
   const [email, setEmail] = useState("");
@@ -86,78 +106,117 @@ export function InviteMemberModal({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="glass rounded-2xl border-0 sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-lg font-semibold">Convidar membro</DialogTitle>
-        </DialogHeader>
+      <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+        {/* Confirmar fica fora do <form>: o atributo form mantém a validação nativa e o Enter. */}
+        <DialogToolbar
+          title="Convidar membro"
+          confirm={{ label: "Convidar", type: "submit", form: FORM_ID, disabled: loading, loading }}
+        />
 
-        <form onSubmit={handleInvite} className="space-y-4 mt-2">
+        <form
+          id={FORM_ID}
+          onSubmit={handleInvite}
+          className="min-w-0 space-y-6 pb-2 pt-1"
+        >
           {adminTeams.length > 1 && (
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Equipe</label>
-              <Select value={teamId} onValueChange={setTeamId}>
-                <SelectTrigger className="h-12 rounded-xl glass-input border-0">
-                  <SelectValue placeholder="Selecione a equipe" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_TEAMS}>Todas as equipes</SelectItem>
-                  {adminTeams.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] text-muted-foreground">
+            <section>
+              <p id="invite-team-label" className={GROUP_LABEL}>Equipe</p>
+              <div className={GROUP}>
+                <Select value={teamId} onValueChange={setTeamId}>
+                  <SelectTrigger aria-labelledby="invite-team-label" className={SELECT_ROW}>
+                    <SelectValue placeholder="Selecione a equipe" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_TEAMS}>Todas as equipes</SelectItem>
+                    {adminTeams.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className={GROUP_FOOTER}>
                 {teamId === ALL_TEAMS
                   ? "O membro participará e verá todas as suas equipes."
                   : "O membro participará e verá apenas esta equipe."}
               </p>
-            </div>
+            </section>
           )}
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Nome completo</label>
-            <GlassInput type="text" placeholder="Nome do membro" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Email</label>
-            <GlassInput type="email" placeholder="membro@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Senha inicial</label>
-            <div className="relative">
-              <GlassInput
-                type={showPassword ? "text" : "password"}
-                placeholder="Senha para o membro"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-              />
-              <button
-                type="button"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                onClick={() => setShowPassword(!showPassword)}
+
+          <section>
+            <div className={cn(GROUP, "divide-y divide-separator")}>
+              <FieldRow id="invite-name" label="Nome completo">
+                <input
+                  id="invite-name"
+                  className={INPUT}
+                  type="text"
+                  autoComplete="off"
+                  placeholder="Nome do membro"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                />
+              </FieldRow>
+              <FieldRow id="invite-email" label="Email">
+                <input
+                  id="invite-email"
+                  className={INPUT}
+                  type="email"
+                  inputMode="email"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  placeholder="membro@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </FieldRow>
+              <FieldRow
+                id="invite-password"
+                label="Senha inicial"
+                trailing={
+                  <button
+                    type="button"
+                    aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                    aria-pressed={showPassword}
+                    className="-mr-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff className="h-[18px] w-[18px]" aria-hidden="true" /> : <Eye className="h-[18px] w-[18px]" aria-hidden="true" />}
+                  </button>
+                }
               >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
+                <input
+                  id="invite-password"
+                  className={INPUT}
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  placeholder="Senha para o membro"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                />
+              </FieldRow>
             </div>
-            <p className="text-[11px] text-muted-foreground">O membro poderá alterar a senha depois.</p>
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Função</label>
-            <Select value={role} onValueChange={setRole}>
-              <SelectTrigger className="h-12 rounded-xl glass-input border-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="admin">Líder</SelectItem>
-                <SelectItem value="editor">Editor</SelectItem>
-                <SelectItem value="viewer">Membro</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <Button type="submit" disabled={loading} className="w-full h-11 rounded-xl text-sm font-semibold">
-            {loading ? <div className="h-4 w-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" /> : "Convidar"}
-          </Button>
+            <p className={GROUP_FOOTER}>O membro poderá alterar a senha depois.</p>
+          </section>
+
+          <section>
+            <p id="invite-role-label" className={GROUP_LABEL}>Função</p>
+            <div className={GROUP}>
+              <Select value={role} onValueChange={setRole}>
+                <SelectTrigger aria-labelledby="invite-role-label" className={SELECT_ROW}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Líder</SelectItem>
+                  <SelectItem value="editor">Editor</SelectItem>
+                  <SelectItem value="viewer">Membro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </section>
         </form>
       </DialogContent>
     </Dialog>

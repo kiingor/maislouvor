@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogToolbar } from "@/components/ui/dialog";
 import { instrumentIcon } from "@/data/instruments";
-import { Check, CheckCircle2, XCircle, Loader2, Trash2 } from "lucide-react";
+import { Check, CalendarCheck, CalendarMinus, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 import {
   DEFAULT_AVAILABILITY_MODE,
   defaultAvailabilityStatus,
@@ -31,6 +30,15 @@ interface AvailabilityDayModalProps {
   existing: MyAvailabilityEntry | null;
   onSaved: () => void;
 }
+
+// Grupos da folha (protótipo .sheet .group). A folha redefine --card: branco no claro, #2C2C2E no escuro.
+const group = "rounded-card bg-card overflow-hidden";
+const groupLabel = "text-footnote text-muted-foreground px-4 mb-1.5";
+const SHEET_TITLE: Record<AvailabilityMode, string> = {
+  available_only: "Disponibilidade",
+  unavailable_only: "Indisponibilidade",
+  both: "Minha agenda",
+};
 
 export function AvailabilityDayModal({
   open,
@@ -70,6 +78,7 @@ export function AvailabilityDayModal({
   if (!date) return null;
 
   const dateStr = format(date, "yyyy-MM-dd");
+  const dateLabel = format(date, "EEEE, dd 'de' MMMM", { locale: ptBR });
   const hasMultipleInstruments = myInstruments.length > 1;
 
   const toggleInstrument = (inst: string) => {
@@ -125,156 +134,158 @@ export function AvailabilityDayModal({
     onOpenChange(false);
   };
 
+  // Linha de estado (protótipo .status-row): símbolo 22px colorido + rótulo + explicação.
+  const statusIcon = (s: "available" | "unavailable") =>
+    s === "available" ? (
+      <CalendarCheck className="h-[22px] w-[22px] shrink-0 text-ios-green" strokeWidth={2} aria-hidden="true" />
+    ) : (
+      <CalendarMinus className="h-[22px] w-[22px] shrink-0 text-ios-red" strokeWidth={2} aria-hidden="true" />
+    );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass sm:rounded-2xl border-0 max-w-md">
-        <DialogHeader>
-          <DialogTitle className="capitalize">
-            {format(date, "EEEE, dd 'de' MMMM", { locale: ptBR })}
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            Informe sua disponibilidade para esta data.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="sm:max-w-md">
+        <DialogToolbar
+          title={SHEET_TITLE[availabilityMode]}
+          confirm={{
+            label: "Confirmar",
+            onClick: handleSave,
+            disabled: saving || removing,
+            loading: saving,
+          }}
+        />
+        <DialogDescription className="sr-only">
+          Informe sua disponibilidade para esta data.
+        </DialogDescription>
 
-        <div className="space-y-5 pt-1">
-          {/* Status toggle */}
+        <div className="pb-2">
+          <p className="text-title2 text-foreground mx-1 mb-4">{dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1)}</p>
+
+          {/* Status */}
           {availabilityMode === "both" ? (
-            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Situação no dia">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={status === "available"}
-                onClick={() => setStatus("available")}
-                className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-medium transition-colors ${
-                  status === "available"
-                    ? "bg-green-500/15 border-green-500/50 text-green-600 dark:text-green-400"
-                    : "bg-accent/40 border-border text-muted-foreground hover:border-green-500/40"
-                }`}
-              >
-                <CheckCircle2 className="h-4 w-4" /> Disponível
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={status === "unavailable"}
-                onClick={() => setStatus("unavailable")}
-                className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-medium transition-colors ${
-                  status === "unavailable"
-                    ? "bg-red-500/15 border-red-500/50 text-red-600 dark:text-red-400"
-                    : "bg-accent/40 border-border text-muted-foreground hover:border-red-500/40"
-                }`}
-              >
-                <XCircle className="h-4 w-4" /> Indisponível
-              </button>
+            <div className={group} role="radiogroup" aria-label="Situação no dia">
+              {(["available", "unavailable"] as const).map((s, i) => {
+                const checked = status === s;
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    role="radio"
+                    aria-checked={checked}
+                    onClick={() => setStatus(s)}
+                    className={cn(
+                      "relative flex w-full min-h-[52px] items-center gap-3 px-4 py-2.5 text-left transition-colors active:bg-fill-tertiary",
+                      i > 0 && "before:absolute before:left-[50px] before:right-0 before:top-0 before:border-t before:border-separator before:content-['']",
+                    )}
+                  >
+                    {statusIcon(s)}
+                    <span className="flex-1 text-body text-foreground">{s === "available" ? "Disponível" : "Indisponível"}</span>
+                    <Check
+                      className={cn("h-5 w-5 shrink-0 text-primary", !checked && "invisible")}
+                      strokeWidth={2.5}
+                      aria-hidden="true"
+                    />
+                  </button>
+                );
+              })}
             </div>
           ) : (
-            <div
-              className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${
-                availabilityMode === "available_only"
-                  ? "border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-400"
-                  : "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-400"
-              }`}
-            >
-              {availabilityMode === "available_only" ? (
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-              ) : (
-                <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              )}
-              <div>
-                <p className="text-sm font-medium">
-                  {availabilityMode === "available_only" ? "Disponível" : "Indisponível"}
-                </p>
-                <p className="mt-0.5 text-xs opacity-80">
-                  {availabilityMode === "available_only"
-                    ? "Confirme este dia somente se você puder servir."
-                    : "Registre este dia somente se você não puder servir."}
-                </p>
+            <div className={group}>
+              <div className="flex min-h-[60px] items-center gap-3 px-4 py-3">
+                {statusIcon(availabilityMode === "available_only" ? "available" : "unavailable")}
+                <div className="min-w-0">
+                  <p className="text-body text-foreground">
+                    {availabilityMode === "available_only" ? "Disponível" : "Indisponível"}
+                  </p>
+                  <p className="text-footnote text-muted-foreground">
+                    {availabilityMode === "available_only"
+                      ? "Confirme este dia somente se você puder servir."
+                      : "Registre este dia somente se você não puder servir."}
+                  </p>
+                </div>
               </div>
             </div>
           )}
 
           {/* Available → instrument selection */}
-          {status === "available" && (
-            <div>
-              {hasMultipleInstruments ? (
-                <>
-                  <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
-                    Em qual(is) instrumento(s)?
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {myInstruments.map((inst) => {
-                      const active = selectedInstruments.includes(inst);
-                      const Icon = instrumentIcon(inst);
-                      return (
-                        <button
-                          key={inst}
-                          onClick={() => toggleInstrument(inst)}
-                          className={`text-xs px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-full border transition-colors flex items-center gap-1.5 ${
-                            active
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-accent/50 text-muted-foreground border-border hover:border-primary/50"
-                          }`}
-                        >
-                          {active ? <Check className="h-3 w-3" /> : Icon && <Icon className="h-3 w-3" />}
-                          {inst}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              ) : myInstruments.length === 1 ? (
-                <p className="text-xs text-muted-foreground">
-                  Você ficará disponível em <span className="font-medium text-foreground">{myInstruments[0]}</span>.
+          {status === "available" &&
+            (hasMultipleInstruments ? (
+              <div className="mt-[22px]">
+                <p className={groupLabel} id="availability-instruments-label">
+                  Em qual(is) instrumento(s)?
                 </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Nenhum instrumento cadastrado no seu perfil — você ficará disponível de forma geral.
-                </p>
-              )}
-            </div>
-          )}
+                <div className={group} role="group" aria-labelledby="availability-instruments-label">
+                  {myInstruments.map((inst, i) => {
+                    const active = selectedInstruments.includes(inst);
+                    const Icon = instrumentIcon(inst);
+                    return (
+                      <button
+                        key={inst}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => toggleInstrument(inst)}
+                        className={cn(
+                          "relative flex w-full min-h-[48px] items-center gap-3 px-4 py-2 text-left transition-colors active:bg-fill-tertiary",
+                          i > 0 && "before:absolute before:left-[58px] before:right-0 before:top-0 before:border-t before:border-separator before:content-['']",
+                        )}
+                      >
+                        <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[8px] bg-fill-tertiary text-muted-foreground" aria-hidden="true">
+                          {Icon && <Icon className="h-4 w-4" strokeWidth={2.25} />}
+                        </span>
+                        <span className="flex-1 text-body text-foreground">{inst}</span>
+                        <Check
+                          className={cn("h-5 w-5 shrink-0 text-primary", !active && "invisible")}
+                          strokeWidth={2.5}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : myInstruments.length === 1 ? (
+              <p className="mt-2 px-4 text-footnote text-muted-foreground">
+                Você ficará disponível em <span className="font-semibold text-foreground">{myInstruments[0]}</span>.
+              </p>
+            ) : (
+              <p className="mt-2 px-4 text-footnote text-muted-foreground">
+                Nenhum instrumento cadastrado no seu perfil — você ficará disponível de forma geral.
+              </p>
+            ))}
 
           {/* Unavailable → reason */}
           {status === "unavailable" && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
+            <div className="mt-[22px]">
+              <p className={groupLabel} id="availability-reason-label">
                 Motivo (opcional)
               </p>
-              <Textarea
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="Ex: viagem, compromisso de trabalho, saúde..."
-                className="text-sm min-h-[72px] rounded-xl bg-accent/30 border-border/50"
-              />
+              <div className={group}>
+                <textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  rows={3}
+                  aria-labelledby="availability-reason-label"
+                  placeholder="Ex: viagem, compromisso de trabalho, saúde..."
+                  className="block min-h-[88px] w-full resize-none bg-transparent px-4 py-[13px] text-body text-foreground placeholder:text-label-tertiary outline-none focus-visible:outline-none"
+                />
+              </div>
             </div>
           )}
 
-          {/* Actions */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1">
-            {existing ? (
-              <Button
-                variant="ghost"
-                className="rounded-xl gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10 w-full sm:w-auto"
+          {/* Destrutivo: linha vermelha separada no fim (HIG > Sheets) */}
+          {existing && (
+            <div className={cn(group, "mt-[22px]")}>
+              <button
+                type="button"
                 onClick={handleRemove}
                 disabled={removing || saving}
+                className="flex w-full min-h-[50px] items-center justify-center gap-2 px-4 py-3 text-body text-ios-red transition-colors active:bg-fill-tertiary disabled:opacity-40"
               >
-                {removing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                Remover
-              </Button>
-            ) : (
-              <span className="hidden sm:block" />
-            )}
-            <div className="flex gap-2">
-              <Button variant="outline" className="rounded-xl flex-1 sm:flex-none" onClick={() => onOpenChange(false)}>
-                Cancelar
-              </Button>
-              <Button className="rounded-xl gap-1.5 flex-1 sm:flex-none" onClick={handleSave} disabled={saving || removing}>
-                {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                Confirmar
-              </Button>
+                {removing && <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden="true" />}
+                {existing.status === "available" ? "Remover disponibilidade" : "Remover indisponibilidade"}
+              </button>
             </div>
-          </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

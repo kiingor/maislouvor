@@ -3,15 +3,22 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
+/**
+ * Cápsula iOS (caption1 semibold). Status: cor do sistema a 15% com texto na cor
+ * (pendente = warning/laranja, aceito = success/verde, recusado = destructive/vermelho).
+ * Nunca use a cor como único indicador: mantenha o texto ou um símbolo.
+ */
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  "inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-caption1 font-semibold transition-colors [&_svg]:size-3 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "border-transparent bg-primary text-primary-foreground hover:bg-primary/80",
-        secondary: "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        destructive: "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
-        outline: "text-foreground",
+        default: "bg-fill-secondary text-foreground",
+        secondary: "bg-fill-tertiary text-foreground",
+        destructive: "bg-ios-red/15 text-ios-red",
+        outline: "bg-transparent text-foreground ring-1 ring-inset ring-separator",
+        success: "bg-ios-green/15 text-ios-green",
+        warning: "bg-ios-orange/15 text-ios-orange",
       },
     },
     defaultVariants: {

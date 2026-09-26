@@ -14,6 +14,7 @@ import {
   X,
   Users,
   ChevronLeft,
+  ChevronRight,
   Infinity as InfinityIcon,
   Pencil,
 } from "lucide-react";
@@ -49,7 +50,7 @@ interface LoopPanelProps {
   onPlaybackRateChange: (rate: number) => void;
   isDark: boolean;
   onClose: () => void;
-  /** No drawer mobile: esconde o botão fechar (fecha arrastando). */
+  /** Renderizado na folha mobile. Mantido por compatibilidade: a folha iOS também mostra o ✕ (spec). */
   inDrawer?: boolean;
 }
 
@@ -73,7 +74,6 @@ export function LoopPanel({
   onPlaybackRateChange,
   isDark,
   onClose,
-  inDrawer = false,
 }: LoopPanelProps) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("my");
@@ -88,11 +88,12 @@ export function LoopPanel({
     setSelectedProfileId(null);
   }, [songId]);
 
-  const subtleText = isDark ? "text-white/50" : "text-black/50";
-  const accentBg = isDark ? "bg-white/10" : "bg-black/10";
-  const hoverBg = isDark ? "hover:bg-white/10" : "hover:bg-black/10";
-  const borderSubtle = isDark ? "border-white/10" : "border-black/10";
-  const cardBg = isDark ? "bg-white/5" : "bg-black/5";
+  // Superfícies iOS: células brancas sobre o painel no claro, #2C2C2E no escuro (também na folha).
+  const group = "rounded-card bg-card dark:bg-grouped-tertiary";
+  // Linhas de loop têm o círculo de ordem (22px) à esquerda: o fio começa no texto (16 + 22 + 12).
+  const rowSeparator = "before:absolute before:left-[50px] before:right-0 before:top-0 before:border-t before:border-separator";
+  const iconButton =
+    "relative grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors hover:bg-fill-tertiary active:bg-fill-tertiary before:absolute before:left-1/2 before:top-1/2 before:h-11 before:w-11 before:-translate-x-1/2 before:-translate-y-1/2";
 
   // Fetch own loops
   const { data: myLoops = [] } = useQuery({
@@ -262,86 +263,97 @@ export function LoopPanel({
           event.stopPropagation();
           onSelectLoop(loop);
         }}
-        className="min-w-0 flex-1 rounded-lg p-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className="flex min-w-0 flex-1 items-start gap-3 rounded-[12px] py-0.5 text-left"
       >
-        <span className="flex items-center gap-2">
-          {order >= 0 && (
-            <span aria-label={`${order + 1}º na sequência`} className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
-              {order + 1}
-            </span>
-          )}
-          <span className="min-w-0 break-words text-sm font-medium">{loop.label}</span>
+        <span
+          aria-hidden={order < 0 ? true : undefined}
+          aria-label={order >= 0 ? `${order + 1}º na sequência` : undefined}
+          className={`mt-px grid h-[22px] min-w-[22px] shrink-0 place-items-center rounded-full px-1 text-caption1 font-semibold tabular-nums transition-colors ${
+            order >= 0 ? "bg-prominent text-prominent-foreground" : "border-[1.5px] border-label-tertiary"
+          }`}
+        >
+          {order >= 0 ? order + 1 : ""}
         </span>
-        <span className={`mt-1 block font-mono text-xs ${subtleText}`}>
-          {formatTime(loop.start_time)} → {formatTime(loop.end_time)}
-        </span>
-        {isActive ? (
-          <span className="mt-1 flex items-center gap-1 text-[10px] text-primary">
-            {isPlaying ? "Tocando" : "Atual"} · {infinite ? currentRepetition : Math.min(currentRepetition, Math.max(1, loop.repeat_count))}
-            {infinite ? <InfinityIcon className="h-3 w-3" /> : `/${Math.max(1, loop.repeat_count)}`}
+        <span className="min-w-0 flex-1">
+          <span className={`block break-words text-body ${order >= 0 ? "font-semibold" : ""}`}>{loop.label}</span>
+          <span className="mt-0.5 block font-mono text-footnote tabular-nums text-muted-foreground">
+            {formatTime(loop.start_time)} → {formatTime(loop.end_time)}
           </span>
-        ) : loop.repeat_count > 0 && (
-          <span className={`mt-1 block text-[10px] ${subtleText}`}>Repetir {loop.repeat_count}x</span>
-        )}
+          {isActive ? (
+            <span className="mt-0.5 flex items-center gap-1 text-caption1 font-semibold text-primary">
+              {isPlaying ? "Tocando" : "Atual"} · {infinite ? currentRepetition : Math.min(currentRepetition, Math.max(1, loop.repeat_count))}
+              {infinite ? <InfinityIcon className="h-3.5 w-3.5" aria-hidden="true" /> : `/${Math.max(1, loop.repeat_count)}`}
+            </span>
+          ) : loop.repeat_count > 0 && (
+            <span className="mt-0.5 block text-caption1 text-muted-foreground">Repetir {loop.repeat_count}x</span>
+          )}
+        </span>
       </button>
     );
   };
 
   const content = (
-    <div onKeyDown={(event) => event.stopPropagation()} className={`flex h-full min-h-0 flex-col overflow-hidden ${isDark ? "text-white" : "text-black"}`}>
-      {/* Header */}
-      <div className={`flex shrink-0 items-center justify-between border-b px-4 py-3 ${borderSubtle}`}>
-        <div className="flex items-center gap-2">
-          <Repeat className="h-4 w-4 text-primary" />
-          <span className="text-sm font-semibold">Loop</span>
-        </div>
-        {!inDrawer && (
-          <button
-            type="button"
-            onClick={() => { onPreview(null); onClose(); }}
-            className={`rounded-lg p-1.5 ${hoverBg}`}
-            aria-label="Fechar modo ensaio"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
+    <div
+      onKeyDown={(event) => event.stopPropagation()}
+      // Altura ≤ 500 (celular deitado): o painel inteiro rola como uma coisa só — velocidade, sequência,
+      // abas e loops ficam alcançáveis em vez de cortados por blocos fixos.
+      className="flex h-full min-h-0 flex-col overflow-hidden text-foreground [@media(max-height:500px)]:overflow-y-auto [@media(max-height:500px)]:overscroll-contain"
+    >
+      {/* Barra do painel: Fechar (vidro) à esquerda, título centralizado */}
+      <div className="grid shrink-0 grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2 px-3 pb-2 pt-3 [@media(max-height:500px)]:pb-1 [@media(max-height:500px)]:pt-1.5">
+        <button
+          type="button"
+          onClick={() => { onPreview(null); onClose(); }}
+          className="liquid-glass grid h-11 w-11 place-items-center rounded-full text-foreground transition-transform duration-200 active:scale-95 motion-reduce:transition-none"
+          aria-label="Fechar modo ensaio"
+          title="Fechar"
+        >
+          <X className="relative z-[4] h-[18px] w-[18px]" strokeWidth={2.4} aria-hidden="true" />
+        </button>
+        <h2 className="flex items-center justify-center gap-1.5 truncate text-headline">
+          <Repeat className="h-4 w-4 shrink-0 text-muted-foreground" strokeWidth={2.25} aria-hidden="true" />
+          Loop
+        </h2>
+        <span aria-hidden="true" className="h-11 w-11" />
       </div>
 
-      {/* Speed control */}
-      <div className={`flex shrink-0 flex-wrap items-center gap-1.5 border-b px-4 py-2.5 ${borderSubtle}`}>
-        <span className={`text-[10px] font-semibold uppercase tracking-wider ${subtleText} mr-1`}>Velocidade</span>
-        {SPEED_OPTIONS.map((speed) => (
-          <button
-            key={speed}
-            onClick={() => onPlaybackRateChange(speed)}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-              playbackRate === speed
-                ? "bg-primary text-primary-foreground"
-                : `${accentBg} ${subtleText} ${hoverBg}`
-            }`}
-          >
-            {speed}x
-          </button>
-        ))}
+      {/* Speed control — controle segmentado */}
+      <div className="shrink-0 px-4 pb-3">
+        <p className="mx-4 mb-1.5 text-footnote text-muted-foreground">Velocidade</p>
+        <div role="group" aria-label="Velocidade" className="flex h-9 items-center gap-0.5 rounded-full bg-fill-tertiary p-0.5">
+          {SPEED_OPTIONS.map((speed) => (
+            <button
+              key={speed}
+              type="button"
+              onClick={() => onPlaybackRateChange(speed)}
+              aria-current={playbackRate === speed ? "true" : undefined}
+              className={`relative h-8 min-w-0 flex-1 rounded-full text-subhead font-medium tabular-nums text-foreground transition-colors duration-200 before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2 motion-reduce:transition-none ${
+                playbackRate === speed ? "bg-card shadow-sm dark:bg-prominent" : ""
+              }`}
+            >
+              {speed}x
+            </button>
+          ))}
+        </div>
       </div>
 
       {!showForm && (
-        <div className={`shrink-0 border-b px-4 py-2.5 ${borderSubtle}`}>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold">Sequência{selectedLoops.length > 0 ? ` (${selectedLoops.length})` : ""}</span>
+        // pt-2: o "Limpar seleção" (44pt, -my-3) não alcança a área de toque dos botões de velocidade.
+        <div className="shrink-0 px-4 pb-3 pt-2">
+          <div className="mx-4 mb-1.5 flex min-h-5 items-center justify-between gap-2">
+            <span className="text-footnote text-muted-foreground">Sequência{selectedLoops.length > 0 ? ` (${selectedLoops.length})` : ""}</span>
             {selectedLoops.length > 0 && (
-              <button type="button" onClick={() => onSelectLoop(null)} className={`rounded-lg px-2 py-1 text-xs ${subtleText} ${hoverBg}`}>
+              <button
+                type="button"
+                onClick={() => onSelectLoop(null)}
+                className="relative -my-3 -mr-1.5 min-h-11 rounded-[10px] px-1.5 text-subhead font-medium text-primary active:opacity-60"
+              >
                 Limpar seleção
               </button>
             )}
           </div>
-          <p className={`mt-1 text-[10px] leading-relaxed ${subtleText}`}>
-            {selectedLoops.length > 1
-              ? "A sequência se repete. Loops infinitos tocam uma vez por rodada."
-              : "Selecione os loops na ordem em que deseja ouvir."}
-          </p>
           {selectedLoops.length > 0 && (
-            <ol aria-label="Ordem dos loops" className="mt-2 flex gap-1.5 overflow-x-auto pb-1" data-vaul-no-drag>
+            <ol aria-label="Ordem dos loops" className="-my-1.5 flex gap-1.5 overflow-x-auto pt-1.5 pb-2.5 hide-scrollbar" data-vaul-no-drag>
               {selectedLoops.map((loop, index) => (
                 <li key={loop.id} className="shrink-0">
                   <button
@@ -349,34 +361,41 @@ export function LoopPanel({
                     aria-label={`Remover ${loop.label} da sequência`}
                     aria-current={activeLoopId === loop.id ? "step" : undefined}
                     onClick={() => onRemoveLoop(loop.id)}
-                    className={`flex max-w-48 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs ${activeLoopId === loop.id ? "bg-primary text-primary-foreground" : `${accentBg} ${hoverBg}`}`}
+                    className={`relative flex h-8 max-w-48 items-center gap-1.5 rounded-full pl-3 pr-2.5 text-footnote font-medium transition-colors before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2 ${
+                      activeLoopId === loop.id ? "bg-prominent text-prominent-foreground" : "bg-fill-tertiary text-foreground"
+                    }`}
                   >
-                    <span className="font-mono">{index + 1}.</span>
+                    <span className="tabular-nums opacity-70">{index + 1}</span>
                     <span className="truncate">{loop.label}</span>
-                    <X className="h-3 w-3 shrink-0" />
+                    <X className="h-3.5 w-3.5 shrink-0 opacity-70" strokeWidth={2.5} aria-hidden="true" />
                   </button>
                 </li>
               ))}
             </ol>
           )}
+          <p className="mx-4 mt-1.5 text-footnote text-muted-foreground">
+            {selectedLoops.length > 1
+              ? "A sequência se repete. Loops infinitos tocam uma vez por rodada."
+              : "Selecione os loops na ordem em que deseja ouvir."}
+          </p>
         </div>
       )}
 
-      {/* Tabs */}
-      <Tabs value={tab} onValueChange={(value) => { onPreview(null); setTab(value); }} className="flex h-0 min-h-0 flex-1 flex-col overflow-hidden">
-        {!showForm && <TabsList className={`mx-4 mt-2 shrink-0 ${isDark ? "bg-white/10" : "bg-black/10"}`}>
-          <TabsTrigger value="my" className="flex-1 text-xs">
+      {/* Tabs — controle segmentado */}
+      <Tabs value={tab} onValueChange={(value) => { onPreview(null); setTab(value); }} className="flex h-0 min-h-0 flex-1 flex-col overflow-hidden [@media(max-height:500px)]:h-auto [@media(max-height:500px)]:flex-none [@media(max-height:500px)]:overflow-visible">
+        {!showForm && <TabsList className="mx-4 mt-1 flex shrink-0">
+          <TabsTrigger value="my" className="flex-1">
             Meus loops{myLoops.length > 0 ? ` (${myLoops.length})` : ""}
           </TabsTrigger>
-          <TabsTrigger value="profiles" className="flex-1 text-xs gap-1">
-            <Users className="h-3 w-3" /> Perfis
+          <TabsTrigger value="profiles" className="flex-1 gap-1.5">
+            <Users className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" /> Perfis
           </TabsTrigger>
         </TabsList>}
 
         {/* My Loops */}
         <TabsContent
           value="my"
-          className="h-0 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
+          className="h-0 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col [@media(max-height:500px)]:h-auto [@media(max-height:500px)]:flex-none [@media(max-height:500px)]:overflow-visible"
         >
           {showForm ? (
             <LoopEditor
@@ -396,19 +415,19 @@ export function LoopPanel({
             />
           ) : (
             <>
-              <div className={`shrink-0 border-b px-4 py-3 ${borderSubtle}`}>
+              <div className="shrink-0 px-4 pb-1">
                 <button
                   type="button"
                   onClick={startCreating}
-                  className={`flex w-full items-center justify-between gap-3 rounded-xl border border-dashed px-3 py-2.5 text-left transition-colors ${borderSubtle} ${hoverBg}`}
+                  className={`${group} flex min-h-[52px] w-full items-center justify-between gap-3 px-4 py-2 text-left transition-colors active:bg-fill-tertiary`}
                 >
-                  <span className="flex items-center gap-2 text-xs font-semibold">
-                    <span className={`grid h-7 w-7 place-items-center rounded-lg ${accentBg}`}>
-                      <Plus className="h-4 w-4 text-primary" />
+                  <span className="flex items-center gap-3 text-body font-medium">
+                    <span className="grid h-[30px] w-[30px] place-items-center rounded-full bg-prominent text-prominent-foreground">
+                      <Plus className="h-[18px] w-[18px]" strokeWidth={2.5} aria-hidden="true" />
                     </span>
                     Criar novo loop
                   </span>
-                  <span className={`shrink-0 font-mono text-[10px] tabular-nums ${subtleText}`}>
+                  <span className="shrink-0 font-mono text-footnote tabular-nums text-muted-foreground">
                     em {formatTime(currentTime)}
                   </span>
                 </button>
@@ -419,41 +438,43 @@ export function LoopPanel({
                 aria-label="Loops salvos"
                 tabIndex={0}
                 style={{ WebkitOverflowScrolling: "touch", scrollbarGutter: "stable" }}
-                className="h-0 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-4 py-3 touch-pan-y"
+                className="h-0 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-3 touch-pan-y [@media(max-height:500px)]:h-auto [@media(max-height:500px)]:flex-none [@media(max-height:500px)]:overflow-visible"
                 data-vaul-no-drag
               >
                 {myLoops.length === 0 && (
-                  <p className={`px-4 py-8 text-center text-xs leading-relaxed ${subtleText}`}>
-                    Nenhum loop criado. Marque um trecho para repeti-lo durante o ensaio.
-                  </p>
+                  <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+                    <Repeat className="h-7 w-7 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+                    <p className="text-body text-muted-foreground">
+                      Nenhum loop criado. Marque um trecho para repeti-lo durante o ensaio.
+                    </p>
+                  </div>
                 )}
 
-                {myLoops.map((loop) => {
+                {myLoops.map((loop, index) => {
                   const isSelected = selectedLoops.some((selected) => selected.id === loop.id);
                   return (
                     <div
                       key={loop.id}
                       role="listitem"
                       onClick={() => onSelectLoop(loop)}
-                      className={`cursor-pointer rounded-xl border p-3 transition-all ${
-                        isSelected
-                          ? "border-primary bg-primary/10"
-                          : `border-transparent ${cardBg} ${hoverBg}`
-                      }`}
+                      className={`relative cursor-pointer bg-card px-4 py-2.5 transition-colors dark:bg-grouped-tertiary ${
+                        isSelected ? "" : "hover:bg-fill-quaternary"
+                      } ${index === 0 ? "rounded-t-card" : rowSeparator} ${index === myLoops.length - 1 ? "rounded-b-card" : ""}`}
                     >
-                      <div className="mb-1 flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-1">
                         {loopSelection(loop)}
-                        <div className="flex shrink-0 items-center gap-2">
+                        {/* gap-2: as áreas de 44pt de Editar e Remover se encontram sem se sobrepor. */}
+                        <div className="-mr-1.5 flex shrink-0 items-center gap-2">
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               startEditing(loop);
                             }}
-                            className={`rounded-lg p-1 ${hoverBg}`}
+                            className={`${iconButton} text-foreground`}
                             aria-label={`Editar ${loop.label}`}
                           >
-                            <Pencil className="h-3.5 w-3.5" />
+                            <Pencil className="h-[17px] w-[17px]" strokeWidth={2.25} aria-hidden="true" />
                           </button>
                           <button
                             type="button"
@@ -461,16 +482,16 @@ export function LoopPanel({
                               e.stopPropagation();
                               deleteLoop.mutate(loop.id);
                             }}
-                            className={`rounded-lg p-1 ${hoverBg}`}
+                            className={`${iconButton} text-ios-red`}
                             aria-label={`Remover ${loop.label}`}
                           >
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                            <Trash2 className="h-[17px] w-[17px]" strokeWidth={2.25} aria-hidden="true" />
                           </button>
                         </div>
                       </div>
-                      <div className="flex items-center justify-end">
-                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          <span className={`text-[10px] ${subtleText}`}>
+                      <div className="mt-1 flex items-center justify-end">
+                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                          <span className="text-footnote text-muted-foreground">
                             {loop.is_public ? "Público" : "Privado"}
                           </span>
                           <Switch
@@ -478,7 +499,6 @@ export function LoopPanel({
                             onCheckedChange={(checked) =>
                               togglePublic.mutate({ loopId: loop.id, isPublic: checked })
                             }
-                            className="scale-75"
                             aria-label={`${loop.is_public ? "Tornar privado" : "Tornar público"}: ${loop.label}`}
                           />
                         </div>
@@ -494,65 +514,71 @@ export function LoopPanel({
         {/* Profiles */}
         <TabsContent
           value="profiles"
-          className="h-0 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 touch-pan-y"
+          className="h-0 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 touch-pan-y [@media(max-height:500px)]:h-auto [@media(max-height:500px)]:flex-none [@media(max-height:500px)]:overflow-visible"
           style={{ WebkitOverflowScrolling: "touch", scrollbarGutter: "stable" }}
           data-vaul-no-drag
         >
           {selectedProfileId ? (
-            <div className="space-y-2">
+            <div>
               <button
                 onClick={() => setSelectedProfileId(null)}
-                className={`flex items-center gap-1.5 text-xs font-medium ${subtleText} mb-2 ${hoverBg} px-2 py-1 rounded-lg`}
+                className="-ml-1.5 mb-1 flex min-h-11 items-center gap-0.5 rounded-[10px] px-1.5 text-subhead font-medium text-primary active:opacity-60"
               >
-                <ChevronLeft className="h-3.5 w-3.5" /> Voltar
+                <ChevronLeft className="h-5 w-5" strokeWidth={2.4} aria-hidden="true" /> Voltar
               </button>
-              {profileLoops.map((loop) => (
-                <div
-                  key={loop.id}
-                  onClick={() => onSelectLoop(loop)}
-                  className={`flex cursor-pointer rounded-xl p-3 border transition-all ${
-                    selectedLoops.some((selected) => selected.id === loop.id)
-                      ? "border-primary bg-primary/10"
-                      : `border-transparent ${cardBg} ${hoverBg}`
-                  }`}
-                >
-                  {loopSelection(loop)}
+              {profileLoops.length > 0 && (
+                <div className={`${group} overflow-hidden`}>
+                  {profileLoops.map((loop, index) => (
+                    <div
+                      key={loop.id}
+                      onClick={() => onSelectLoop(loop)}
+                      className={`relative flex cursor-pointer px-4 py-2.5 transition-colors hover:bg-fill-quaternary ${index > 0 ? rowSeparator : ""}`}
+                    >
+                      {loopSelection(loop)}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
               {profileLoops.length === 0 && (
-                <p className={`text-xs ${subtleText} text-center py-4`}>Nenhum loop público</p>
+                <p className="py-4 text-center text-body text-muted-foreground">Nenhum loop público</p>
               )}
             </div>
           ) : (
-            <div className="space-y-2 mt-2">
+            <div>
               {publicProfiles.length === 0 ? (
-                <p className={`text-xs ${subtleText} text-center py-8`}>
-                  Nenhum membro tem loops públicos nesta música
-                </p>
+                <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+                  <Users className="h-7 w-7 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+                  <p className="text-body text-muted-foreground">
+                    Nenhum membro tem loops públicos nesta música
+                  </p>
+                </div>
               ) : (
-                <div className="grid grid-cols-3 gap-3">
-                  {publicProfiles.map((profile) => {
+                <div className={`${group} overflow-hidden`}>
+                  {publicProfiles.map((profile, index) => {
                     const loopCount = publicLoops.filter((l) => l.profile_id === profile.id).length;
                     return (
                       <button
                         key={profile.id}
                         onClick={() => setSelectedProfileId(profile.id)}
-                        className={`flex flex-col items-center gap-2 p-3 rounded-xl ${cardBg} ${hoverBg} transition-colors`}
+                        className={`relative flex min-h-[60px] w-full items-center gap-3 px-4 py-2 text-left transition-colors active:bg-fill-tertiary ${
+                          index > 0 ? "before:absolute before:left-[68px] before:right-0 before:top-0 before:border-t before:border-separator" : ""
+                        }`}
                       >
-                        <Avatar className="h-12 w-12">
+                        <Avatar className="h-10 w-10">
                           {profile.avatar_url ? (
                             <AvatarImage src={profile.avatar_url} />
                           ) : null}
-                          <AvatarFallback className="text-sm">
+                          <AvatarFallback className="text-subhead">
                             {(profile.full_name || "?")[0]?.toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="text-[11px] font-medium truncate w-full text-center">
-                          {profile.full_name || "Membro"}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-body">{profile.full_name || "Membro"}</span>
+                          <span className="block text-footnote text-muted-foreground">
+                            {loopCount} loop{loopCount !== 1 ? "s" : ""}
+                          </span>
                         </span>
-                        <span className={`text-[10px] ${subtleText}`}>
-                          {loopCount} loop{loopCount !== 1 ? "s" : ""}
-                        </span>
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-label-tertiary" strokeWidth={3} aria-hidden="true" />
                       </button>
                     );
                   })}

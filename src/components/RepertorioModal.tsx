@@ -1,9 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { GlassInput } from "@/components/GlassInput";
-import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogToolbar } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -48,18 +46,33 @@ export function RepertorioModal({ open, onOpenChange, editId, editName }: Props)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass rounded-2xl border-0 sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-lg font-semibold">{editId ? "Renomear repertório" : "Novo repertório"}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Nome</label>
-            <GlassInput placeholder="Ex: Domingo 23/02" value={name} onChange={(e) => setName(e.target.value)} required />
+      <DialogContent className="sm:max-w-md">
+        <DialogToolbar
+          title={editId ? "Renomear repertório" : "Novo repertório"}
+          confirm={{
+            label: editId ? "Salvar" : "Criar",
+            type: "submit",
+            form: "repertorio-form",
+            disabled: loading || !name.trim(),
+            loading,
+          }}
+        />
+        <form id="repertorio-form" onSubmit={handleSubmit} className="min-w-0 pb-2">
+          <label htmlFor="repertorio-name" className="mx-4 mb-1.5 block text-footnote text-muted-foreground">
+            Nome
+          </label>
+          <div className="overflow-hidden rounded-card bg-card">
+            <input
+              id="repertorio-name"
+              placeholder="Ex: Domingo 23/02"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              autoComplete="off"
+              enterKeyHint="done"
+              className="h-[52px] w-full bg-transparent px-4 text-body text-foreground placeholder:text-label-tertiary outline-none focus-visible:outline-none"
+            />
           </div>
-          <Button type="submit" disabled={loading} className="w-full h-11 rounded-xl text-sm font-semibold">
-            {loading ? <div className="h-4 w-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" /> : editId ? "Salvar" : "Criar"}
-          </Button>
         </form>
       </DialogContent>
     </Dialog>

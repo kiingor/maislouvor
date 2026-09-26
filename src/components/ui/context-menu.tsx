@@ -1,8 +1,30 @@
 import * as React from "react";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
-import { Check, ChevronRight, Circle } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+
+/*
+ * Menu de contexto iOS 27 (HIG > Context menus): Liquid Glass espesso, raio 22, linhas de 44pt,
+ * texto à esquerda e símbolo à direita. No JSX o ícone vem primeiro; o item o leva para a direita.
+ * Marcas de seleção (✓) ficam à esquerda, como no iOS.
+ */
+
+const menuContent = cn(
+  "z-50 min-w-[220px] max-w-[calc(100vw-16px)] overflow-y-auto overflow-x-hidden rounded-[22px] p-1.5 text-foreground outline-none liquid-glass-thick",
+  "data-[state=open]:animate-[ios-pop-in_320ms_cubic-bezier(0.3,1.3,0.5,1)] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
+  "motion-reduce:!animate-none",
+);
+
+const menuItem = cn(
+  "relative flex min-h-11 cursor-default select-none items-center gap-3 rounded-[12px] px-3 py-2.5 text-body text-foreground outline-none transition-colors duration-100",
+  "focus:bg-fill-tertiary data-[highlighted]:bg-fill-tertiary data-[disabled]:pointer-events-none data-[disabled]:opacity-40",
+  "[&_svg]:pointer-events-none [&>svg]:size-[19px] [&>svg]:shrink-0 [&>svg.lucide-check]:size-4",
+);
+
+/** Símbolo do item à direita (padrão iOS), exceto a marca de seleção. */
+const trailingIcon =
+  "[&>svg:first-child:not(.lucide-check)]:order-last [&>svg:first-child:not(.lucide-check)]:ml-auto";
 
 const ContextMenu = ContextMenuPrimitive.Root;
 
@@ -24,15 +46,11 @@ const ContextMenuSubTrigger = React.forwardRef<
 >(({ className, inset, children, ...props }, ref) => (
   <ContextMenuPrimitive.SubTrigger
     ref={ref}
-    className={cn(
-      "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none data-[state=open]:bg-accent data-[state=open]:text-accent-foreground focus:bg-accent focus:text-accent-foreground",
-      inset && "pl-8",
-      className,
-    )}
+    className={cn(menuItem, "data-[state=open]:bg-fill-tertiary", inset && "pl-10", className)}
     {...props}
   >
     {children}
-    <ChevronRight className="ml-auto h-4 w-4" />
+    <ChevronRight className="ml-auto !size-4 text-muted-foreground" strokeWidth={2.5} aria-hidden="true" />
   </ContextMenuPrimitive.SubTrigger>
 ));
 ContextMenuSubTrigger.displayName = ContextMenuPrimitive.SubTrigger.displayName;
@@ -43,10 +61,7 @@ const ContextMenuSubContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ContextMenuPrimitive.SubContent
     ref={ref}
-    className={cn(
-      "z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
-      className,
-    )}
+    className={cn(menuContent, "origin-[var(--radix-context-menu-content-transform-origin)]", className)}
     {...props}
   />
 ));
@@ -55,12 +70,14 @@ ContextMenuSubContent.displayName = ContextMenuPrimitive.SubContent.displayName;
 const ContextMenuContent = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Content>
->(({ className, ...props }, ref) => (
+>(({ className, collisionPadding = 8, ...props }, ref) => (
   <ContextMenuPrimitive.Portal>
     <ContextMenuPrimitive.Content
       ref={ref}
+      collisionPadding={collisionPadding}
       className={cn(
-        "z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        menuContent,
+        "max-h-[var(--radix-context-menu-content-available-height)] origin-[var(--radix-context-menu-content-transform-origin)]",
         className,
       )}
       {...props}
@@ -77,11 +94,7 @@ const ContextMenuItem = React.forwardRef<
 >(({ className, inset, ...props }, ref) => (
   <ContextMenuPrimitive.Item
     ref={ref}
-    className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-accent focus:text-accent-foreground",
-      inset && "pl-8",
-      className,
-    )}
+    className={cn(menuItem, trailingIcon, inset && "pl-10", className)}
     {...props}
   />
 ));
@@ -93,16 +106,13 @@ const ContextMenuCheckboxItem = React.forwardRef<
 >(({ className, children, checked, ...props }, ref) => (
   <ContextMenuPrimitive.CheckboxItem
     ref={ref}
-    className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-accent focus:text-accent-foreground",
-      className,
-    )}
+    className={cn(menuItem, trailingIcon, "pl-10", className)}
     checked={checked}
     {...props}
   >
-    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+    <span className="absolute left-3 flex size-4 items-center justify-center">
       <ContextMenuPrimitive.ItemIndicator>
-        <Check className="h-4 w-4" />
+        <Check className="size-4" strokeWidth={2.5} aria-hidden="true" />
       </ContextMenuPrimitive.ItemIndicator>
     </span>
     {children}
@@ -116,15 +126,12 @@ const ContextMenuRadioItem = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <ContextMenuPrimitive.RadioItem
     ref={ref}
-    className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-accent focus:text-accent-foreground",
-      className,
-    )}
+    className={cn(menuItem, trailingIcon, "pl-10", className)}
     {...props}
   >
-    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+    <span className="absolute left-3 flex size-4 items-center justify-center">
       <ContextMenuPrimitive.ItemIndicator>
-        <Circle className="h-2 w-2 fill-current" />
+        <Check className="size-4" strokeWidth={2.5} aria-hidden="true" />
       </ContextMenuPrimitive.ItemIndicator>
     </span>
     {children}
@@ -140,22 +147,27 @@ const ContextMenuLabel = React.forwardRef<
 >(({ className, inset, ...props }, ref) => (
   <ContextMenuPrimitive.Label
     ref={ref}
-    className={cn("px-2 py-1.5 text-sm font-semibold text-foreground", inset && "pl-8", className)}
+    className={cn("px-3 pb-1 pt-2 text-footnote text-muted-foreground", inset && "pl-10", className)}
     {...props}
   />
 ));
 ContextMenuLabel.displayName = ContextMenuPrimitive.Label.displayName;
 
+/** Separador de grupo: faixa de 8pt (protótipo .menu-gap). */
 const ContextMenuSeparator = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.Separator>,
   React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Separator>
 >(({ className, ...props }, ref) => (
-  <ContextMenuPrimitive.Separator ref={ref} className={cn("-mx-1 my-1 h-px bg-border", className)} {...props} />
+  <ContextMenuPrimitive.Separator
+    ref={ref}
+    className={cn("-mx-1.5 my-1.5 h-2 bg-fill-quaternary", className)}
+    {...props}
+  />
 ));
 ContextMenuSeparator.displayName = ContextMenuPrimitive.Separator.displayName;
 
 const ContextMenuShortcut = ({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) => {
-  return <span className={cn("ml-auto text-xs tracking-widest text-muted-foreground", className)} {...props} />;
+  return <span className={cn("ml-auto text-footnote text-muted-foreground", className)} {...props} />;
 };
 ContextMenuShortcut.displayName = "ContextMenuShortcut";
 

@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { warmPresentation } from "@/lib/routeLoaders";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { firePush } from "@/lib/push";
 import { useTeam } from "@/contexts/TeamContext";
-import { GlassCard } from "@/components/GlassCard";
-import { SongCard } from "@/components/SongCard";
+import { PageHeader } from "@/components/shell/PageHeader";
+import { ToolbarButton } from "@/components/shell/ToolbarButton";
 import { AddCultoSongModal } from "@/components/AddCultoSongModal";
 import { CultoLineupModal } from "@/components/CultoLineupModal";
 import { CultoBlockModal } from "@/components/CultoBlockModal";
@@ -14,6 +15,13 @@ import { SongSummaryModal } from "@/components/SongSummaryModal";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,7 +34,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
-  ArrowLeft,
   Music,
   Plus,
   MonitorPlay,
@@ -37,7 +44,7 @@ import {
   XCircle,
   Clock,
   MessageSquare,
-  Share2,
+  Share,
   Loader2,
   Copy,
   BellRing,
@@ -46,14 +53,68 @@ import {
   ChevronUp,
   ChevronDown,
   Mic2,
+  MoreHorizontal,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { compareInstruments, instrumentIcon, isVocalRole } from "@/data/instruments";
 import { buildVoiceLines, type VoiceAssignment } from "@/lib/voices";
 import type { ShareRoteiroItem } from "@/lib/shareText";
 import { CultoSongVoicesModal } from "@/components/CultoSongVoicesModal";
 import { CultoShareModal } from "@/components/CultoShareModal";
 import { CHROMATIC_KEYS } from "@/data/chordDictionary";
+
+const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
+/** Status da escala em cápsula (spec §5): cor a 15% + texto na cor, sempre com símbolo e rótulo. */
+const LINEUP_STATUS = {
+  pending: { label: "Pendente", icon: Clock, className: "bg-ios-orange/15 text-ios-orange" },
+  accepted: { label: "Aceito", icon: CheckCircle2, className: "bg-ios-green/15 text-ios-green" },
+  declined: { label: "Recusado", icon: XCircle, className: "bg-ios-red/15 text-ios-red" },
+} as const;
+
+function StatusBadge({ status }: { status: string }) {
+  const s = LINEUP_STATUS[(status as keyof typeof LINEUP_STATUS)] ?? LINEUP_STATUS.pending;
+  const Icon = s.icon;
+  return (
+    <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-caption1 font-semibold", s.className)}>
+      <Icon className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
+      {s.label}
+    </span>
+  );
+}
+
+/** Capa da canção no roteiro (mesma URL assinada que o SongCard usava). */
+function RoteiroCover({ coverPath, title }: { coverPath?: string | null; title: string }) {
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!coverPath) return;
+    supabase.storage.from("covers").createSignedUrl(coverPath, 3600).then(({ data }) => {
+      if (data?.signedUrl) setCoverUrl(data.signedUrl);
+    });
+  }, [coverPath]);
+  return (
+    <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-fill-tertiary">
+      {coverUrl ? (
+        <img src={coverUrl} alt={title} className="h-full w-full object-cover" />
+      ) : (
+        <Music className="h-5 w-5 text-muted-foreground" strokeWidth={2} aria-hidden="true" />
+      )}
+    </span>
+  );
+}
+
+/** Botão de texto tintado (link-button do protótipo), alvo de 44pt. */
+const linkButton =
+  "inline-flex min-h-[44px] items-center gap-1 -my-2.5 px-1.5 -mr-1.5 rounded-[10px] text-subhead font-medium text-primary whitespace-nowrap transition-opacity active:opacity-60 disabled:opacity-40";
+
+/** Separador hairline recuado até o texto das linhas do roteiro (16 + 20 + 12 + 44 + 12). */
+const roteiroSeparator =
+  "before:absolute before:top-0 before:right-0 before:left-[104px] before:border-t before:border-border first:before:hidden";
+
+/** Chip de tema/tag da canção (mesmo estilo de AddCultoSongModal). */
+const songChip =
+  "inline-flex max-w-full items-center truncate rounded-full bg-fill-tertiary px-2 py-0.5 text-caption1 text-muted-foreground";
 
 const KEY_OPTIONS = [...CHROMATIC_KEYS, ...CHROMATIC_KEYS.map((k) => k + "m")];
 const SONG_FALLBACK_SECONDS = 240;
@@ -66,6 +127,8 @@ function formatTotal(totalSeconds: number): string {
 }
 
 export default function CultoDetail() {
+  // Baixa o Modo ensaio em segundo plano: tocar em "Ensaio" abre sem espera.
+  useEffect(warmPresentation, []);
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { can, profileId, currentTeam } = useTeam();
@@ -386,415 +449,523 @@ export default function CultoDetail() {
     shareLineup[instrument] = entries.map((e: any) => (e.team_members?.profiles as any)?.full_name ?? "—");
   });
 
+  // Observação da canção: 1º toque abre o editor com o texto atual, 2º toque salva.
+  // (Mesmo comportamento do antigo botão de balão; agora também disparado pelo "Salvar" do editor.)
+  const toggleSongNotes = (cs: any) => {
+    setEditingNotes((prev) => ({
+      ...prev,
+      [cs.id]: prev[cs.id] !== undefined ? prev[cs.id] : (cs.notes || ""),
+    }));
+    if (editingNotes[cs.id] !== undefined) {
+      updateSongNotes(cs.id, editingNotes[cs.id] || "");
+      setEditingNotes((prev) => {
+        const n = { ...prev };
+        delete n[cs.id];
+        return n;
+      });
+      qc.invalidateQueries({ queryKey: ["culto-songs", id] });
+    }
+  };
+
   if (isLoading) {
     return (
-      <div className="animate-in-up space-y-4">
-        <div className="h-8 w-48 bg-accent rounded-lg animate-pulse" />
-        <GlassCard className="h-32 animate-pulse" />
+      <div className="animate-in-up" aria-busy="true">
+        <PageHeader title="Culto" back="/app/cultos" />
+        <div className="rounded-card bg-card h-32 animate-pulse" />
+        <div className="mt-6 rounded-card bg-card h-48 animate-pulse" />
       </div>
     );
   }
 
   if (!culto) {
     return (
-      <div className="animate-in-up text-center py-16">
-        <p className="text-muted-foreground">Culto não encontrado.</p>
-        <Button variant="outline" className="mt-4 rounded-xl" onClick={() => navigate("/app/cultos")}>
-          Voltar
-        </Button>
+      <div className="animate-in-up">
+        <PageHeader title="Culto" back="/app/cultos" />
+        <div className="rounded-card bg-card px-6 py-10 flex flex-col items-center text-center gap-2">
+          <Music className="h-7 w-7 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+          <p className="text-body text-muted-foreground">Culto não encontrado.</p>
+          <Button variant="secondary" className="mt-3 rounded-full" onClick={() => navigate("/app/cultos")}>
+            Voltar
+          </Button>
+        </div>
       </div>
     );
   }
 
+  const cultoDateObj = new Date(culto.date + "T00:00:00");
+  const isToday = culto.date === new Date().toLocaleDateString("en-CA");
+  const showLineupSection = Object.keys(lineupByInstrument).length > 0 || canEdit;
+
   return (
     <div className="animate-in-up">
-      <div className="mb-8">
-        {/* Title row — back arrow inline (substitui o "← Cultos") */}
-        <div className="flex items-start gap-2">
-          <button
-            onClick={() => navigate("/app/cultos")}
-            aria-label="Voltar"
-            title="Voltar"
-            className="shrink-0 mt-1 -ml-1.5 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+      <PageHeader
+        title={culto.name}
+        back="/app/cultos"
+        actions={
+          <>
+            <ToolbarButton icon={<Share />} aria-label="Compartilhar escala e repertório" onClick={() => setShareOpen(true)} />
+            {canEdit && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <ToolbarButton icon={<MoreHorizontal />} aria-label="Mais ações do culto" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setLineupOpen(true)}>
+                    <Users /> Escala
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setEditBlock(null); setBlockOpen(true); }}>
+                    <ListPlus /> Adicionar momento
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setDuplicateOpen(true)}>
+                    <Copy /> Duplicar culto
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            {canEdit && (
+              <ToolbarButton icon={<Plus />} aria-label="Adicionar música" onClick={() => setAddSongOpen(true)} />
+            )}
+          </>
+        }
+      />
+
+      {/* Resumo do culto: data (estilo Calendário), observações e Modo ensaio */}
+      <section className="rounded-card bg-card p-4" aria-label="Resumo do culto">
+        <div className="flex items-center gap-3">
+          <span
+            aria-hidden="true"
+            className="flex h-[52px] w-[52px] shrink-0 flex-col items-center justify-center rounded-[12px] bg-fill-tertiary"
           >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
+            <span className={cn("text-caption2 font-semibold uppercase", isToday ? "text-ios-red" : "text-muted-foreground")}>
+              {cultoDateObj.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "")}
+            </span>
+            <span className={cn("text-title2 leading-[24px] tabular-nums", isToday ? "text-ios-red" : "text-foreground")}>
+              {cultoDateObj.getDate()}
+            </span>
+          </span>
           <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-tight truncate">{culto.name}</h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              {new Date(culto.date + "T00:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}
+            <p className="text-headline text-foreground">
+              {capitalize(cultoDateObj.toLocaleDateString("pt-BR", { weekday: "long" }))}
             </p>
-            {culto.description && <p className="text-muted-foreground text-sm mt-2">{culto.description}</p>}
+            <p className="text-footnote text-muted-foreground">
+              {cultoDateObj.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}
+            </p>
           </div>
         </div>
-
-        {/* Ações — uma linha só, somente ícones */}
-        <div className="flex items-center gap-2 flex-wrap mt-4">
-          {canEdit && (
-            <Button variant="outline" size="icon" className="rounded-xl h-9 w-9" title="Escala" onClick={() => setLineupOpen(true)}>
-              <Users className="h-4 w-4" />
-            </Button>
-          )}
-          {/* Sem permissão de edição há poucos botões → mostra os rótulos (sobra espaço).
-              Com edição há muitos botões → só ícone, pra caber na linha. */}
-          {cultoSongs.length > 0 && (
-            <Button
-              variant="outline"
-              size={canEdit ? "icon" : "default"}
-              className={`rounded-xl h-9 ${canEdit ? "w-9" : "gap-2 px-3"}`}
-              title="Modo Ensaio"
-              onClick={() => navigate(`/app/cultos/${id}/present`)}
-            >
-              <MonitorPlay className="h-4 w-4" />
-              {!canEdit && <span className="text-sm font-medium">Modo Ensaio</span>}
-            </Button>
-          )}
+        {culto.description && (
+          <p className="mt-3 text-subhead text-muted-foreground whitespace-pre-line break-words">{culto.description}</p>
+        )}
+        {cultoSongs.length > 0 && (
           <Button
-            variant="outline"
-            size={canEdit ? "icon" : "default"}
-            className={`rounded-xl h-9 ${canEdit ? "w-9" : "gap-2 px-3"}`}
-            onClick={() => setShareOpen(true)}
-            title="Compartilhar escala e repertório"
+            className="mt-4 h-11 w-full rounded-full gap-2 text-body font-semibold sm:w-auto sm:min-w-[220px]"
+            title="Modo Ensaio"
+            onClick={() => navigate(`/app/cultos/${id}/present`)}
           >
-            <Share2 className="h-4 w-4" />
-            {!canEdit && <span className="text-sm font-medium">Compartilhar</span>}
+            <MonitorPlay className="h-5 w-5" strokeWidth={2} aria-hidden="true" /> Modo ensaio
           </Button>
-          {canEdit && (
-            <Button variant="outline" size="icon" className="rounded-xl h-9 w-9" title="Duplicar culto" onClick={() => setDuplicateOpen(true)}>
-              <Copy className="h-4 w-4" />
-            </Button>
+        )}
+      </section>
+
+      {/* Escala */}
+      {showLineupSection && (
+        <section className="mt-7" aria-labelledby="escala-title">
+          <div className="mx-1 mb-2 flex items-end justify-between gap-3">
+            <h2 id="escala-title" className="text-title3 text-foreground">Escala</h2>
+            {canEdit && (
+              <div className="flex items-center gap-3">
+                {pendingEntries.length > 0 && (
+                  <button type="button" className={linkButton} disabled={remindLoading} onClick={remindPending}>
+                    {remindLoading ? (
+                      <Loader2 className="h-[15px] w-[15px] animate-spin" aria-hidden="true" />
+                    ) : (
+                      <BellRing className="h-[15px] w-[15px]" strokeWidth={2.25} aria-hidden="true" />
+                    )}
+                    Lembrar pendentes ({pendingEntries.length})
+                  </button>
+                )}
+                {lineupEntries.length > 0 && (
+                  <button type="button" className={linkButton} onClick={() => setLineupOpen(true)}>
+                    Editar
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {lineupEntries.length === 0 ? (
+            <div className="rounded-card bg-card flex items-center gap-3 p-4">
+              <Users className="h-6 w-6 shrink-0 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+              <p className="flex-1 text-subhead text-muted-foreground">Ninguém escalado ainda.</p>
+              <button type="button" className={linkButton} onClick={() => setLineupOpen(true)}>
+                Montar escala
+              </button>
+            </div>
+          ) : (
+            <ul className="rounded-card bg-card overflow-hidden sm:grid sm:grid-cols-2">
+              {lineupEntries.flatMap(([instrument, entries]) => {
+                const Icon = instrumentIcon(instrument);
+                return entries.map((e: any) => {
+                  const profile = e.team_members?.profiles as any;
+                  const status = e.status || "pending";
+                  const isMine = e.team_members?.profile_id && e.team_members.profile_id === profileId;
+                  return (
+                    <li
+                      key={e.id}
+                      className="relative px-4 py-2.5 before:absolute before:top-0 before:right-0 before:left-[60px] before:border-t before:border-border first:before:hidden sm:[&:nth-child(2)]:before:hidden"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-8 w-8">
+                          {profile?.avatar_url && <AvatarImage src={profile.avatar_url} />}
+                          <AvatarFallback className="bg-fill-tertiary text-footnote font-semibold text-muted-foreground">
+                            {(profile?.full_name ?? "?")[0]?.toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-body text-foreground">{profile?.full_name ?? "—"}</span>
+                          <span className="flex items-center gap-1 text-footnote text-muted-foreground">
+                            <Icon className="h-[13px] w-[13px] shrink-0" strokeWidth={2.25} aria-hidden="true" />
+                            <span className="truncate">{instrument}</span>
+                          </span>
+                        </span>
+                        <StatusBadge status={status} />
+                      </div>
+                      {isMine && status !== "accepted" && (
+                        <div className="mt-2 flex gap-2 pl-11">
+                          <Button className="h-11 flex-1 rounded-full gap-1.5" onClick={() => setLineupStatus(e.id, "accepted")}>
+                            <CheckCircle2 aria-hidden="true" /> Aceitar
+                          </Button>
+                          <Button variant="secondary" className="h-11 flex-1 rounded-full gap-1.5" onClick={() => setLineupStatus(e.id, "declined")}>
+                            <XCircle aria-hidden="true" /> Recusar
+                          </Button>
+                        </div>
+                      )}
+                      {isMine && status === "accepted" && (
+                        <button
+                          type="button"
+                          className="ml-11 inline-flex min-h-[44px] items-center -mb-2.5 text-subhead font-medium text-ios-red transition-opacity active:opacity-60"
+                          onClick={() => setLineupStatus(e.id, "declined")}
+                        >
+                          Não poderei ir
+                        </button>
+                      )}
+                    </li>
+                  );
+                });
+              })}
+            </ul>
           )}
+        </section>
+      )}
+
+      {/* Roteiro */}
+      <section className="mt-7" aria-labelledby="roteiro-title">
+        <div className="mx-1 mb-2 flex items-end justify-between gap-3">
+          <h2 id="roteiro-title" className="text-title3 text-foreground">
+            Roteiro
+            {totalSeconds > 0 && (
+              <span className="block text-subhead font-normal text-muted-foreground">
+                <span className="sr-only">Duração total: </span>
+                {formatTotal(totalSeconds)}
+              </span>
+            )}
+          </h2>
           {canEdit && (
-            <Button onClick={() => setAddSongOpen(true)} size="icon" className="rounded-xl h-9 w-9 ml-auto" title="Adicionar música">
-              <Plus className="h-4 w-4" />
-            </Button>
+            <button type="button" className={linkButton} onClick={() => { setEditBlock(null); setBlockOpen(true); }}>
+              <ListPlus className="h-[15px] w-[15px]" strokeWidth={2.25} aria-hidden="true" /> Adicionar momento
+            </button>
           )}
         </div>
-      </div>
 
-      {/* Lineup display */}
-      {Object.keys(lineupByInstrument).length > 0 && (
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Escala</h2>
-            {canEdit && pendingEntries.length > 0 && (
-              <Button variant="outline" size="sm" className="rounded-lg gap-1.5 h-8 text-xs" disabled={remindLoading} onClick={remindPending}>
-                {remindLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BellRing className="h-3.5 w-3.5" />}
-                Lembrar pendentes ({pendingEntries.length})
+        {roteiro.length === 0 ? (
+          <div className="rounded-card bg-card px-6 py-10 flex flex-col items-center text-center gap-2">
+            <Music className="h-7 w-7 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+            <h3 className="text-body text-muted-foreground">Roteiro vazio</h3>
+            <p className="text-footnote text-muted-foreground max-w-xs">
+              {canEdit ? "Adicione músicas e momentos (oração, palavra...) para montar o roteiro." : "Nada foi adicionado ainda."}
+            </p>
+            {canEdit && (
+              <Button className="mt-3 rounded-full gap-2" onClick={() => setAddSongOpen(true)}>
+                <Plus className="h-[17px] w-[17px]" aria-hidden="true" /> Adicionar música
               </Button>
             )}
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-            {lineupEntries.map(([instrument, entries]) => (
-              <GlassCard key={instrument} variant="subtle" className="p-3">
-                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  {(() => { const Icon = instrumentIcon(instrument); return <Icon className="h-3.5 w-3.5" />; })()}
-                  {instrument}
-                </p>
-                <div className="space-y-1.5">
-                  {entries.map((e: any) => {
-                    const profile = e.team_members?.profiles as any;
-                    const status = e.status || "pending";
-                    const isMine = e.team_members?.profile_id && e.team_members.profile_id === profileId;
-                    const StatusIcon = status === "accepted" ? CheckCircle2 : status === "declined" ? XCircle : Clock;
-                    const statusColor = status === "accepted" ? "text-green-500" : status === "declined" ? "text-red-500" : "text-yellow-500";
-                    return (
-                      <div key={e.id}>
-                        <div className={`flex items-center gap-2 ${status === "pending" ? "rounded-lg bg-yellow-500/10 px-1.5 py-1 -mx-1" : ""}`}>
-                          <Avatar className="h-6 w-6">
-                            {profile?.avatar_url && <AvatarImage src={profile.avatar_url} />}
-                            <AvatarFallback className="text-[9px] bg-accent">
-                              {(profile?.full_name ?? "?")[0]?.toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="text-xs font-medium truncate flex-1">{profile?.full_name ?? "—"}</span>
-                          <StatusIcon className={`h-3.5 w-3.5 shrink-0 ${statusColor}`} />
-                        </div>
-                        {isMine && status !== "accepted" && (
-                          <div className="flex gap-1 mt-1">
-                            <Button size="sm" className="h-6 rounded-md text-[11px] px-2 flex-1 gap-1" onClick={() => setLineupStatus(e.id, "accepted")}>
-                              <CheckCircle2 className="h-3 w-3" /> Aceitar
-                            </Button>
-                            <Button size="sm" variant="outline" className="h-6 rounded-md text-[11px] px-2 flex-1 gap-1" onClick={() => setLineupStatus(e.id, "declined")}>
-                              <XCircle className="h-3 w-3" /> Recusar
-                            </Button>
-                          </div>
+        ) : (
+          <ul className="rounded-card bg-card overflow-hidden">
+            {roteiro.map((item, idx) => {
+              const dragClasses = cn(
+                "relative transition-[opacity,background-color]",
+                roteiroSeparator,
+                dragIdx === idx && "opacity-40",
+                overIdx === idx && dragIdx !== idx && "bg-fill-tertiary",
+              );
+              const moveItems = canEdit ? (
+                <>
+                  <DropdownMenuItem disabled={idx === 0} onClick={() => moveItem(idx, idx - 1)}>
+                    <ChevronUp /> Mover para cima
+                  </DropdownMenuItem>
+                  <DropdownMenuItem disabled={idx === roteiro.length - 1} onClick={() => moveItem(idx, idx + 1)}>
+                    <ChevronDown /> Mover para baixo
+                  </DropdownMenuItem>
+                </>
+              ) : null;
+              const grip = canEdit ? (
+                <span className="hidden h-11 w-5 shrink-0 cursor-grab items-center justify-center text-label-tertiary active:cursor-grabbing md:flex" aria-hidden="true">
+                  <GripVertical className="h-[17px] w-[17px]" />
+                </span>
+              ) : null;
+
+              if (item.kind === "block") {
+                const b = item.data;
+                const blockBody = (
+                  <>
+                    <span className="w-5 shrink-0" aria-hidden="true" />
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-fill-tertiary">
+                      <Clock className="h-5 w-5 text-muted-foreground" strokeWidth={2} aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-body text-foreground">{b.title}</span>
+                      {((b.kind && b.kind !== "moment") || b.notes) && (
+                        <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                          {b.kind && b.kind !== "moment" && (
+                            <span className="shrink-0 rounded-full bg-fill-tertiary px-2 py-px text-caption1 font-medium text-muted-foreground">
+                              {capitalize(b.kind)}
+                            </span>
+                          )}
+                          {b.notes && <span className="min-w-0 truncate text-footnote text-muted-foreground">{b.notes}</span>}
+                        </span>
+                      )}
+                    </span>
+                  </>
+                );
+                return (
+                  <li
+                    key={`block-${b.id}`}
+                    draggable={canEdit}
+                    onDragStart={handleDragStart(idx)}
+                    onDragOver={handleDragOver(idx)}
+                    onDrop={() => handleDrop(idx)}
+                    onDragEnd={handleDragEnd}
+                    className={dragClasses}
+                  >
+                    <div className="flex items-center">
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => { setEditBlock(b); setBlockOpen(true); }}
+                          className="flex min-w-0 flex-1 items-center gap-3 min-h-[64px] py-2.5 pl-4 pr-2 text-left transition-colors active:bg-grouped-tertiary"
+                        >
+                          {blockBody}
+                        </button>
+                      ) : (
+                        <div className="flex min-w-0 flex-1 items-center gap-3 min-h-[64px] py-2.5 pl-4 pr-2">{blockBody}</div>
+                      )}
+                      <div className={cn("flex shrink-0 items-center gap-1", canEdit ? "pr-1.5" : "pr-4")}>
+                        {!!b.duration_min && (
+                          <span className="px-1 text-footnote tabular-nums text-muted-foreground">{b.duration_min} min</span>
                         )}
-                        {isMine && status === "accepted" && (
-                          <button className="text-[11px] text-muted-foreground hover:text-foreground mt-0.5 ml-8" onClick={() => setLineupStatus(e.id, "declined")}>
-                            Não poderei ir
-                          </button>
+                        {canEdit && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                aria-label={`Ações do momento ${b.title}`}
+                                className="flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-fill-quaternary active:bg-fill-tertiary"
+                              >
+                                <MoreHorizontal className="h-5 w-5" strokeWidth={2} />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => { setEditBlock(b); setBlockOpen(true); }}>
+                                <Pencil /> Editar momento
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              {moveItems}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-ios-red focus:text-ios-red" onClick={() => setDeleteBlockId(b.id)}>
+                                <Trash2 /> Excluir momento
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         )}
+                        {grip}
                       </div>
-                    );
-                  })}
-                </div>
-              </GlassCard>
-            ))}
-          </div>
-        </div>
-      )}
+                    </div>
+                  </li>
+                );
+              }
 
-      {/* Roteiro header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-baseline gap-2">
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Roteiro</h2>
-          {totalSeconds > 0 && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <Clock className="h-3 w-3" /> {formatTotal(totalSeconds)}
-            </span>
-          )}
-        </div>
-        {canEdit && (
-          <Button variant="outline" size="sm" className="rounded-lg gap-1.5 h-8 text-xs" onClick={() => { setEditBlock(null); setBlockOpen(true); }}>
-            <ListPlus className="h-3.5 w-3.5" /> Adicionar momento
-          </Button>
-        )}
-      </div>
-
-      {/* Roteiro list (songs + blocks) */}
-      {roteiro.length === 0 ? (
-        <GlassCard className="p-12 flex flex-col items-center justify-center text-center">
-          <div className="h-16 w-16 rounded-2xl bg-accent flex items-center justify-center mb-4">
-            <Music className="h-7 w-7 text-muted-foreground" />
-          </div>
-          <h3 className="text-lg font-medium mb-1">Roteiro vazio</h3>
-          <p className="text-muted-foreground text-sm max-w-xs">
-            {canEdit ? "Adicione músicas e momentos (oração, palavra...) para montar o roteiro." : "Nada foi adicionado ainda."}
-          </p>
-          {canEdit && (
-            <Button className="mt-6 rounded-xl gap-2" onClick={() => setAddSongOpen(true)}>
-              <Plus className="h-4 w-4" /> Adicionar música
-            </Button>
-          )}
-        </GlassCard>
-      ) : (
-        <div className="space-y-1">
-          {roteiro.map((item, idx) => {
-            if (item.kind === "block") {
-              const b = item.data;
+              // SONG
+              const cs = item.data;
+              // Tom "original": o que está gravado na canção/repertório (cifra).
+              // Tom de execução: o override do culto, quando houver.
+              const originalKey = cs.songs?.key_current || cs.songs?.key_original || "";
+              const effectiveKey = cs.key_override || originalKey;
+              const transposed = !!effectiveKey && !!originalKey && effectiveKey !== originalKey;
+              const songTitle = cs.songs?.title ?? "—";
+              const lines = voiceLinesByCultoSong.get(cs.id) ?? [];
+              const isEditingNotes = editingNotes[cs.id] !== undefined && canEdit;
+              const openVoices = () => setVoicesSong({ id: cs.id, title: cs.songs?.title ?? "" });
               return (
-                <div
-                  key={`block-${b.id}`}
+                <li
+                  key={`song-${cs.id}`}
                   draggable={canEdit}
                   onDragStart={handleDragStart(idx)}
                   onDragOver={handleDragOver(idx)}
                   onDrop={() => handleDrop(idx)}
                   onDragEnd={handleDragEnd}
-                  className={`rounded-xl transition-all ${dragIdx === idx ? "opacity-40" : ""} ${overIdx === idx && dragIdx !== idx ? "ring-2 ring-primary/40 ring-offset-1" : ""}`}
+                  className={dragClasses}
                 >
-                  <div className="flex items-center gap-2">
-                    {canEdit && (
-                      <div className="shrink-0 flex flex-col">
-                        <button className="text-muted-foreground hover:text-foreground disabled:opacity-30" disabled={idx === 0} onClick={() => moveItem(idx, idx - 1)}>
-                          <ChevronUp className="h-3.5 w-3.5" />
-                        </button>
-                        <button className="text-muted-foreground hover:text-foreground disabled:opacity-30" disabled={idx === roteiro.length - 1} onClick={() => moveItem(idx, idx + 1)}>
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )}
-                    <GlassCard variant="subtle" className="flex-1 min-w-0 p-3 flex items-center gap-3 border border-dashed border-border/60">
-                      <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                        <Clock className="h-4 w-4 text-primary" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-medium truncate">{b.title}</p>
-                          {b.kind && b.kind !== "moment" && (
-                            <span className="text-[9px] font-medium uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">{b.kind}</span>
-                          )}
-                        </div>
-                        {b.notes && <p className="text-xs text-muted-foreground mt-0.5 italic line-clamp-1">{b.notes}</p>}
-                      </div>
-                      {!!b.duration_min && (
-                        <span className="text-[11px] text-muted-foreground shrink-0">{b.duration_min} min</span>
-                      )}
-                      {canEdit && (
-                        <div className="flex items-center gap-0.5 shrink-0">
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => { setEditBlock(b); setBlockOpen(true); }}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => setDeleteBlockId(b.id)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      )}
-                    </GlassCard>
-                  </div>
-                </div>
-              );
-            }
-
-            // SONG
-            const cs = item.data;
-            // Tom "original": o que está gravado na canção/repertório (cifra).
-            // Tom de execução: o override do culto, quando houver.
-            const originalKey = cs.songs?.key_current || cs.songs?.key_original || "";
-            const effectiveKey = cs.key_override || originalKey;
-            const transposed = !!effectiveKey && !!originalKey && effectiveKey !== originalKey;
-            return (
-              <div
-                key={`song-${cs.id}`}
-                draggable={canEdit}
-                onDragStart={handleDragStart(idx)}
-                onDragOver={handleDragOver(idx)}
-                onDrop={() => handleDrop(idx)}
-                onDragEnd={handleDragEnd}
-                className={`rounded-xl transition-all ${dragIdx === idx ? "opacity-40" : ""} ${overIdx === idx && dragIdx !== idx ? "ring-2 ring-primary/40 ring-offset-1" : ""}`}
-              >
-                <div className="flex items-center gap-2">
-                  {canEdit && (
-                    <div className="shrink-0 cursor-grab active:cursor-grabbing touch-none text-muted-foreground hover:text-foreground transition-colors">
-                      <GripVertical className="h-4 w-4" />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <SongCard
-                      song={cs.songs || { id: cs.song_id, title: "—" }}
-                      index={idx}
-                      hideKey
+                  <div className="flex items-center">
+                    <button
+                      type="button"
                       onClick={() => {
                         setSummarySongId(cs.songs?.id || cs.song_id);
                         setSummaryNotes(cs.notes || null);
                         setSummaryNotesAuthor((cs as any).notes_author || null);
                       }}
-                      actions={
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                          {/* Dois tons lado a lado, rotulados: o da cifra (referência, apagado)
-                              e o que o grupo vai tocar (destacado). */}
-                          <div className="flex items-end gap-1.5">
-                            {originalKey && (
-                              <div className="flex flex-col items-center gap-0.5">
-                                <span className="text-[8px] font-medium uppercase tracking-wider text-muted-foreground/70 leading-none">
-                                  Original
-                                </span>
-                                <span
-                                  title={`Tom original da canção: ${originalKey}`}
-                                  className={`h-7 min-w-[42px] px-2 inline-flex items-center justify-center rounded-lg bg-muted/50 text-[11px] font-medium leading-none ${
-                                    transposed ? "text-muted-foreground/60 line-through decoration-1" : "text-muted-foreground"
-                                  }`}
-                                >
-                                  {originalKey}
-                                </span>
-                              </div>
-                            )}
-                            <div className="flex flex-col items-center gap-0.5">
-                              <span className="text-[8px] font-semibold uppercase tracking-wider text-primary leading-none">
-                                Tocar em
-                              </span>
-                              {/* Tom de execução deste culto */}
-                              <Select value={effectiveKey || undefined} onValueChange={(v) => updateSongKey(cs.id, v)} disabled={!canEdit}>
-                                <SelectTrigger
-                                  title="Tom em que o grupo vai tocar neste culto"
-                                  className="h-7 w-[64px] rounded-lg text-[11px] font-bold px-2 bg-primary/15 text-primary border border-primary/40 focus:ring-primary/30 [&>svg]:opacity-70"
-                                >
-                                  <SelectValue placeholder="Tom" />
-                                </SelectTrigger>
-                                <SelectContent className="max-h-64">
-                                  {KEY_OPTIONS.map((k) => (
-                                    <SelectItem key={k} value={k} className="text-xs">{k}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            {/* Vozes desta canção (1ª/2ª/3ª) — visível para todos, editável só por quem pode. */}
-                            {hasVocalists && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                                title="Vozes da canção"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setVoicesSong({ id: cs.id, title: cs.songs?.title ?? "" });
-                                }}
-                              >
-                                <Mic2 className={`h-3.5 w-3.5 ${voiceLinesByCultoSong.has(cs.id) ? "text-primary" : ""}`} />
-                              </Button>
-                            )}
-                            {canEdit && (
+                      className="flex min-w-0 flex-1 items-center gap-3 min-h-[64px] py-2.5 pl-4 pr-2 text-left transition-colors active:bg-grouped-tertiary"
+                    >
+                      <span className="w-5 shrink-0 text-center text-footnote tabular-nums text-muted-foreground">{idx + 1}</span>
+                      <RoteiroCover coverPath={cs.songs?.cover_path} title={songTitle} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-body text-foreground">{songTitle}</span>
+                        {(cs.songs?.artist || transposed) && (
+                          <span className="block truncate text-footnote text-muted-foreground">
+                            {cs.songs?.artist}
+                            {transposed && (
                               <>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                                  title="Observação da canção"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingNotes((prev) => ({
-                                      ...prev,
-                                      [cs.id]: prev[cs.id] !== undefined ? prev[cs.id] : (cs.notes || ""),
-                                    }));
-                                    if (editingNotes[cs.id] !== undefined) {
-                                      updateSongNotes(cs.id, editingNotes[cs.id] || "");
-                                      setEditingNotes((prev) => {
-                                        const n = { ...prev };
-                                        delete n[cs.id];
-                                        return n;
-                                      });
-                                      qc.invalidateQueries({ queryKey: ["culto-songs", id] });
-                                    }
-                                  }}
-                                >
-                                  <MessageSquare className={`h-3.5 w-3.5 ${cs.notes ? "text-primary" : ""}`} />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                  title="Remover do roteiro"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    removeSong(cs.id);
-                                  }}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
+                                {cs.songs?.artist ? " · " : ""}
+                                <span title={`Tom original da canção: ${originalKey}`}>
+                                  Original <s className="decoration-1">{originalKey}</s>
+                                </span>
                               </>
                             )}
-                          </div>
-                        </div>
-                      }
-                    />
+                          </span>
+                        )}
+                        {(cs.songs?.theme || (cs.songs?.tags && cs.songs.tags.length > 0)) && (
+                          <span className="mt-1 flex flex-wrap gap-1">
+                            {cs.songs?.theme && <span className={songChip}>{cs.songs.theme}</span>}
+                            {cs.songs?.tags?.map((tag: string, i: number) => (
+                              <span key={i} className={songChip}>{tag}</span>
+                            ))}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                    <div className={cn("flex shrink-0 items-center gap-1", canEdit || hasVocalists ? "pr-1.5" : "pr-4")}>
+                      {/* Tom de execução deste culto */}
+                      <Select value={effectiveKey || undefined} onValueChange={(v) => updateSongKey(cs.id, v)} disabled={!canEdit}>
+                        <SelectTrigger
+                          title="Tom em que o grupo vai tocar neste culto"
+                          aria-label={`Tocar em ${effectiveKey || "tom não definido"}`}
+                          className={cn(
+                            // 32px visíveis, alvo de toque de 44pt (::before), como Button size="sm".
+                            "relative h-8 w-auto min-w-[52px] gap-1 rounded-full border-0 bg-fill-tertiary px-3 text-subhead font-semibold text-foreground tabular-nums before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2 focus:ring-[3px] focus:ring-ios-blue/40 focus:ring-offset-0 disabled:cursor-default disabled:opacity-100",
+                            !canEdit && "justify-center [&>svg]:hidden",
+                          )}
+                        >
+                          <SelectValue placeholder="Tom" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-64">
+                          {KEY_OPTIONS.map((k) => (
+                            <SelectItem key={k} value={k}>{k}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {canEdit ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label={`Ações de ${songTitle}`}
+                              className="flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-fill-quaternary active:bg-fill-tertiary"
+                            >
+                              <MoreHorizontal className="h-5 w-5" strokeWidth={2} />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" onCloseAutoFocus={(e) => { if (editingNotes[cs.id] !== undefined) e.preventDefault(); }}>
+                            {/* Vozes desta canção (1ª/2ª/3ª) — visível para todos, editável só por quem pode. */}
+                            {hasVocalists && (
+                              <DropdownMenuItem onClick={openVoices}>
+                                <Mic2 /> Vozes da canção
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => toggleSongNotes(cs)}>
+                              <MessageSquare /> {editingNotes[cs.id] !== undefined ? "Salvar observação" : "Observação da canção"}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            {moveItems}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-ios-red focus:text-ios-red" onClick={() => removeSong(cs.id)}>
+                              <Trash2 /> Remover do roteiro
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : hasVocalists ? (
+                        <button
+                          type="button"
+                          title="Vozes da canção"
+                          aria-label="Vozes da canção"
+                          onClick={openVoices}
+                          className={cn(
+                            "flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-fill-quaternary active:bg-fill-tertiary",
+                            lines.length > 0 ? "text-primary" : "text-muted-foreground",
+                          )}
+                        >
+                          <Mic2 className="h-5 w-5" strokeWidth={2} />
+                        </button>
+                      ) : null}
+                      {grip}
+                    </div>
                   </div>
-                </div>
-                {(() => {
-                  const lines = voiceLinesByCultoSong.get(cs.id) ?? [];
-                  if (lines.length === 0) return null;
-                  return (
-                    <div className="mt-1 ml-6 mr-2 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                      <Mic2 className="h-3 w-3 text-primary/70 shrink-0" />
+
+                  {lines.length > 0 && (
+                    <button
+                      type="button"
+                      title="Vozes da canção"
+                      onClick={openVoices}
+                      className="-mt-1.5 flex w-full flex-wrap items-center gap-x-3 gap-y-0.5 pb-2.5 pl-[104px] pr-4 text-left"
+                    >
+                      <Mic2 className="h-[13px] w-[13px] shrink-0 text-muted-foreground" strokeWidth={2.25} aria-hidden="true" />
                       {lines.map((line) => (
-                        <span key={line.voice} className="text-[11px] text-muted-foreground">
-                          <span className="font-semibold text-foreground/80">{line.voice}ª</span>{" "}
+                        <span key={line.voice} className="text-footnote text-muted-foreground">
+                          <span className="font-semibold text-foreground">{line.voice}ª</span>{" "}
                           {line.people
                             .map((p) => (p.part ? `${p.name} (${p.part.replace(" (voz)", "")})` : p.name))
                             .join(", ")}
                         </span>
                       ))}
+                    </button>
+                  )}
+                  {isEditingNotes ? (
+                    <div className="-mt-1 pb-3 pl-4 pr-4 sm:pl-[104px]">
+                      <Textarea
+                        autoFocus
+                        aria-label="Observação da canção"
+                        value={editingNotes[cs.id]}
+                        onChange={(e) => setEditingNotes((prev) => ({ ...prev, [cs.id]: e.target.value }))}
+                        placeholder="Ex: começar só com violão, repetir refrão 3x..."
+                        className="min-h-[72px] resize-none rounded-[14px] border-0 bg-grouped-tertiary text-subhead placeholder:text-label-tertiary focus-visible:ring-[3px] focus-visible:ring-ios-blue/40 focus-visible:ring-offset-0"
+                      />
+                      <div className="mt-2 flex justify-end">
+                        <Button size="sm" onClick={() => toggleSongNotes(cs)}>
+                          Salvar
+                        </Button>
+                      </div>
                     </div>
-                  );
-                })()}
-                {editingNotes[cs.id] !== undefined && canEdit ? (
-                  <div className="mt-1 ml-6 mr-2">
-                    <Textarea
-                      value={editingNotes[cs.id]}
-                      onChange={(e) => setEditingNotes((prev) => ({ ...prev, [cs.id]: e.target.value }))}
-                      placeholder="Ex: começar só com violão, repetir refrão 3x..."
-                      className="text-xs min-h-[60px] rounded-lg bg-accent/30 border-border/50"
-                    />
-                  </div>
-                ) : cs.notes ? (
-                  <p className="text-xs text-muted-foreground mt-1 ml-6 mr-2 italic">{cs.notes}</p>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      )}
+                  ) : cs.notes ? (
+                    <p className="-mt-1.5 flex gap-1.5 pb-2.5 pl-[104px] pr-4 text-footnote text-muted-foreground">
+                      <MessageSquare className="mt-[3px] h-[13px] w-[13px] shrink-0" strokeWidth={2.25} aria-hidden="true" />
+                      <span className="min-w-0 break-words">{cs.notes}</span>
+                    </p>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
 
       <AddCultoSongModal open={addSongOpen} onOpenChange={setAddSongOpen} cultoId={id!} />
       <CultoLineupModal open={lineupOpen} onOpenChange={setLineupOpen} cultoId={id!} cultoDate={culto?.date} cultoName={culto?.name} />
@@ -835,7 +1006,9 @@ export default function CultoDetail() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={deleteBlock}>Excluir</AlertDialogAction>
+            <AlertDialogAction className="bg-ios-red text-white hover:bg-ios-red/90" onClick={deleteBlock}>
+              Excluir
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { GlassCard } from "@/components/GlassCard";
-import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/BrandMark";
-import { Download as DownloadIcon, Smartphone, ShieldCheck, ArrowRight } from "lucide-react";
+import { Download as DownloadIcon, Smartphone, ShieldCheck, ChevronRight, Info } from "lucide-react";
 
 const APP_VERSION = "1.0.2";
 const APK_URL = "/LouvorMais-1.0.2.apk";
 
+/** Página pública do APK, no estilo de página de produto da App Store sobre o fundo agrupado. */
 export default function Download() {
   const [size, setSize] = useState<string | null>(null);
   const [updated, setUpdated] = useState<string | null>(null);
@@ -28,82 +27,80 @@ export default function Download() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden flex items-center justify-center px-4 py-10">
-      {/* Ambient glass orbs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-foreground/[0.03] blur-3xl" />
-        <div className="absolute top-1/3 -right-48 w-[500px] h-[500px] rounded-full bg-foreground/[0.02] blur-3xl" />
-        <div className="absolute -bottom-24 left-1/3 w-80 h-80 rounded-full bg-foreground/[0.03] blur-3xl" />
-      </div>
-
-      <div className="relative z-10 w-full max-w-md animate-in-up">
-        <GlassCard className="p-8 text-center relative overflow-hidden">
-          <div className="absolute -top-20 -right-20 w-40 h-40 rounded-full bg-foreground/[0.04] blur-2xl pointer-events-none" />
-
-          {/* Logo */}
-          <div className="h-20 w-20 rounded-3xl bg-foreground flex items-center justify-center mx-auto mb-5 shadow-xl">
-            <BrandMark className="h-11 w-11 text-background" />
+    <div className="min-h-[100dvh] bg-background text-foreground">
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-md flex-col justify-center px-4 min-[430px]:px-5 pt-[calc(max(env(safe-area-inset-top),12px)+28px)] pb-[calc(max(env(safe-area-inset-bottom),16px)+24px)] animate-in-up">
+        {/* Cabeçalho do produto */}
+        <header className="flex flex-col items-center text-center">
+          <div className="flex h-[88px] w-[88px] items-center justify-center rounded-[22px] bg-prominent text-prominent-foreground dark:bg-card dark:ring-1 dark:ring-inset dark:ring-white/10">
+            <BrandMark className="h-12 w-12" />
           </div>
-
-          <h1 className="text-2xl font-bold tracking-tight">+Louvor</h1>
-          <p className="text-sm text-muted-foreground mt-1 flex items-center justify-center gap-1.5">
-            <Smartphone className="h-3.5 w-3.5" /> App para Android
+          <h1 className="mt-5 text-title1">+Louvor</h1>
+          <p className="mt-0.5 flex items-center justify-center gap-1.5 text-subhead text-muted-foreground">
+            <Smartphone className="h-[15px] w-[15px]" strokeWidth={2.25} aria-hidden="true" /> App para Android
           </p>
 
-          {/* Version chip */}
-          <div className="flex items-center justify-center gap-2 mt-4 flex-wrap">
-            <span className="text-[11px] font-medium bg-primary/10 text-primary rounded-full px-3 py-1">
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <span className="rounded-full bg-fill-tertiary px-3 py-1 text-footnote font-medium">
               Versão {APP_VERSION}
             </span>
             {size && (
-              <span className="text-[11px] font-medium bg-accent/60 text-muted-foreground rounded-full px-3 py-1">
+              <span className="rounded-full bg-fill-tertiary px-3 py-1 text-footnote font-medium text-muted-foreground">
                 {size}
               </span>
             )}
           </div>
           {updated && (
-            <p className="text-[11px] text-muted-foreground mt-2">Atualizado em {updated}</p>
+            <p className="mt-2 text-footnote text-muted-foreground">Atualizado em {updated}</p>
           )}
+        </header>
 
-          <div role="note" className="mt-5 rounded-xl border border-primary/30 bg-primary/5 p-3.5 text-left">
-            <p className="text-xs font-semibold mb-1.5">Já tem o app instalado?</p>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Se você instalou a versão 1.0.1 deste site, <strong>atualize sem desinstalar</strong>.
-              {" "}A versão 1.0 usa outra assinatura: esta atualização <strong>não instala por cima da versão 1.0</strong>.
-              {" "}Antes de remover o app antigo, confira seus dados sincronizados e salve o que existe
-              apenas no celular. A desinstalação pode apagar esses dados locais.
-            </p>
-          </div>
+        {/* Aviso de atualização: precisa vir antes do link de download (coberto por teste). */}
+        <div role="note" className="mt-7 rounded-card bg-card p-4 text-left">
+          <p className="flex items-center gap-2 text-subhead font-semibold">
+            <Info className="h-[17px] w-[17px] shrink-0 text-ios-orange" strokeWidth={2.25} aria-hidden="true" />
+            Já tem o app instalado?
+          </p>
+          <p className="mt-1.5 text-footnote text-muted-foreground">
+            Se você instalou a versão 1.0.1 deste site, <strong className="font-semibold text-foreground">atualize sem desinstalar</strong>.
+            {" "}A versão 1.0 usa outra assinatura: esta atualização <strong className="font-semibold text-foreground">não instala por cima da versão 1.0</strong>.
+            {" "}Antes de remover o app antigo, confira seus dados sincronizados e salve o que existe
+            apenas no celular. A desinstalação pode apagar esses dados locais.
+          </p>
+        </div>
 
-          {/* Download button */}
-          <a href={APK_URL} download="LouvorMais-1.0.2.apk" className="block mt-6">
-            <Button className="w-full h-14 rounded-2xl text-base font-semibold gap-2.5 hover-lift">
-              <DownloadIcon className="h-5 w-5" /> Baixar APK
-            </Button>
-          </a>
+        {/* Download: o próprio link é o botão proeminente (sem <button> dentro de <a>). */}
+        <a
+          href={APK_URL}
+          download="LouvorMais-1.0.2.apk"
+          className="mt-6 flex h-[50px] w-full items-center justify-center gap-2 rounded-full bg-prominent px-5 text-headline text-prominent-foreground transition-transform active:scale-[0.98]"
+        >
+          <DownloadIcon className="h-5 w-5" aria-hidden="true" /> Baixar APK
+        </a>
 
-          {/* Install hint */}
-          <div className="mt-5 rounded-xl bg-accent/40 p-3.5 text-left">
-            <p className="text-xs font-medium flex items-center gap-1.5 mb-1.5">
-              <ShieldCheck className="h-3.5 w-3.5 text-primary" /> Como instalar
-            </p>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Toque em <strong>Baixar APK</strong> → abra o arquivo → se o Android avisar,
+        {/* Como instalar */}
+        <div className="mt-6 flex gap-3 rounded-card bg-card p-4 text-left">
+          <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] bg-fill-tertiary text-muted-foreground">
+            <ShieldCheck className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-subhead font-semibold">Como instalar</p>
+            <p className="mt-1 text-footnote text-muted-foreground">
+              Toque em <strong className="font-semibold text-foreground">Baixar APK</strong> → abra o arquivo → se o Android avisar,
               permita a instalação para o navegador usado → Instalar. Se você usa a versão 1.0,
               leia o aviso acima antes de remover o app antigo. Depois, entre na mesma conta.
             </p>
           </div>
+        </div>
 
-          {/* Use no navegador */}
-          <Link
-            to="/login"
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-5"
-          >
-            Prefere usar no navegador? Entrar <ArrowRight className="h-3 w-3" />
-          </Link>
-        </GlassCard>
+        {/* Use no navegador */}
+        <Link
+          to="/login"
+          className="mx-auto mt-5 inline-flex min-h-[44px] items-center gap-0.5 rounded-[10px] px-2 text-subhead font-medium text-primary"
+        >
+          Prefere usar no navegador? Entrar <ChevronRight className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
+        </Link>
 
-        <p className="text-center text-[11px] text-muted-foreground/70 mt-5">
+        <p className="mt-3 text-center text-caption1 text-muted-foreground">
           iPhone em breve · também disponível como app web (PWA)
         </p>
       </div>

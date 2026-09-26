@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Music, Upload } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Loader2, Music } from "lucide-react";
 
 interface CoverUploadProps {
   songId: string;
@@ -48,35 +47,40 @@ export function CoverUpload({ songId, teamId, coverPath, onUpload, readOnly }: C
     onUpload(path);
   };
 
-  return (
-    <div
-      onClick={() => !readOnly && inputRef.current?.click()}
-      className={cn(
-        "relative w-full aspect-square rounded-2xl overflow-hidden glass flex items-center justify-center",
-        !readOnly && "cursor-pointer hover-lift group"
-      )}
-    >
+  // Arte quadrada (estilo Apple Music): superfície opaca; sem hover no toque, então a ação
+  // fica num botão de texto tintado logo abaixo, e o próprio quadro também abre o seletor.
+  const artwork = (
+    <span className="relative block aspect-square w-full overflow-hidden rounded-[20px] bg-fill-tertiary">
       {signedUrl ? (
-        <img src={signedUrl} alt="Capa" className="w-full h-full object-cover" />
+        <img src={signedUrl} alt={readOnly ? "Capa" : ""} className="h-full w-full object-cover" />
       ) : (
-        <div className="flex flex-col items-center gap-2 text-muted-foreground">
-          <Music className="h-10 w-10" />
-          {!readOnly && <span className="text-xs">Adicionar capa</span>}
-        </div>
+        <span className="flex h-full w-full items-center justify-center text-label-tertiary">
+          <Music className="h-11 w-11" strokeWidth={1.75} aria-hidden="true" />
+        </span>
       )}
-
-      {!readOnly && (
-        <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/10 transition-colors flex items-center justify-center">
-          <Upload className="h-6 w-6 text-foreground opacity-0 group-hover:opacity-60 transition-opacity" />
-        </div>
-      )}
-
       {uploading && (
-        <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
-          <div className="h-6 w-6 border-2 border-foreground border-t-transparent rounded-full animate-spin" />
-        </div>
+        <span className="absolute inset-0 flex items-center justify-center bg-background/60">
+          <Loader2 className="h-6 w-6 animate-spin text-foreground" aria-hidden="true" />
+        </span>
       )}
+    </span>
+  );
 
+  if (readOnly) return <div className="w-full">{artwork}</div>;
+
+  return (
+    <div className="w-full">
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        aria-busy={uploading || undefined}
+        className="group flex w-full flex-col items-center gap-2"
+      >
+        <span className="block w-full transition-transform duration-200 group-active:scale-[0.98] group-hover:opacity-95">{artwork}</span>
+        <span className="inline-flex min-h-[32px] items-center text-subhead font-medium text-primary">
+          {signedUrl ? "Trocar capa" : "Adicionar capa"}
+        </span>
+      </button>
       <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
     </div>
   );

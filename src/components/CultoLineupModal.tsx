@@ -4,18 +4,24 @@ import { supabase } from "@/integrations/supabase/client";
 import { firePush } from "@/lib/push";
 import { useTeam } from "@/contexts/TeamContext";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogToolbar } from "@/components/ui/dialog";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { compareInstruments, instrumentIcon } from "@/data/instruments";
 import { InstrumentPicker } from "@/components/InstrumentPicker";
-import { AlertTriangle, Loader2, Users } from "lucide-react";
+import { AlertTriangle, Check } from "lucide-react";
 import {
   DEFAULT_AVAILABILITY_MODE,
   activeAvailabilityStatus,
   isMemberEligibleForLineup,
   type AvailabilityStatus,
 } from "@/lib/availability";
+
+// Lista agrupada dentro da folha (protótipo `.group` / `.group-label`).
+// Na folha, --card já vira branco (claro) / #2C2C2E (escuro) — ver ui/dialog.tsx.
+const group = "overflow-hidden rounded-card bg-card";
+const groupLabel = "mx-4 mb-1.5 block text-footnote text-muted-foreground";
+// Separador recuado até o nome (16 + avatar 32 + 12).
+const memberSeparator = "before:absolute before:top-0 before:right-0 before:left-[60px] before:border-t before:border-border";
 
 interface CultoLineupModalProps {
   open: boolean;
@@ -206,7 +212,7 @@ export function CultoLineupModal({ open, onOpenChange, cultoId, cultoDate, culto
     // escala zerava a confirmação de TODO mundo. Agora só tocamos no que mudou —
     // quem continua na mesma função mantém o "aceitou/recusou" que já tinha, e só
     // quem mudou de função volta a ficar pendente (a linha nova nasce 'pending').
-    const rowKey = (instrument: string, memberId: string) => `${instrument} ${memberId}`;
+    const rowKey = (instrument: string, memberId: string) => `${instrument}\u0000${memberId}`;
 
     const existingRows = existingLineup as any[];
     const existingKeys = new Set<string>(existingRows.map((l) => rowKey(l.instrument, l.team_member_id)));
@@ -317,99 +323,93 @@ export function CultoLineupModal({ open, onOpenChange, cultoId, cultoDate, culto
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass sm:rounded-2xl border-0 max-w-sm sm:max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Users className="h-4 w-4" /> Escala do Culto
-          </DialogTitle>
-        </DialogHeader>
+      <DialogContent className="sm:max-w-lg">
+        <DialogToolbar
+          title="Escala do culto"
+          confirm={{
+            label: "Salvar escala",
+            onClick: handleSave,
+            disabled: saving || hasLineupConflicts || !ready,
+            loading: saving,
+          }}
+        />
 
-        <div className="space-y-4 pt-2">
+        <div className="space-y-6">
+          {hasLineupConflicts && (
+            <div className={`${group} flex items-start gap-3 px-4 py-3`} role="status">
+              <AlertTriangle className="mt-px h-[17px] w-[17px] shrink-0 text-ios-orange" strokeWidth={2.25} aria-hidden="true" />
+              <p className="text-footnote text-foreground">
+                Há membros selecionados fora da disponibilidade atual. Remova os itens sinalizados para salvar a escala.
+              </p>
+            </div>
+          )}
+
           {/* Select instruments for this culto */}
           <div>
-            <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Funções neste culto</p>
-            <InstrumentPicker selected={selectedInstruments} onToggle={toggleInstrument} />
+            <p className={groupLabel}>Funções neste culto</p>
+            <div className={`${group} p-4`}>
+              <InstrumentPicker selected={selectedInstruments} onToggle={toggleInstrument} />
+            </div>
           </div>
 
           {/* For each selected instrument, show available members */}
           {selectedInstruments.length > 0 && (
-            <div className="space-y-4">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Membros por função</p>
+            <div className="space-y-5">
+              <p className="mx-4 text-subhead font-semibold text-foreground">Membros por função</p>
               {selectedInstruments.map((inst) => {
                 const available = getMembersForInstrument(inst);
                 const selected = lineup[inst] || [];
                 const Icon = instrumentIcon(inst);
                 return (
-                  <div key={inst} className="rounded-xl border border-border/50 p-3 space-y-2">
-                    <p className="text-sm font-medium flex items-center gap-1.5">
-                      <Icon className="h-4 w-4 text-primary" />
+                  <div key={inst}>
+                    <p className={`${groupLabel} flex items-center gap-1.5`}>
+                      <Icon className="h-[15px] w-[15px]" strokeWidth={2.25} aria-hidden="true" />
                       {inst}
                     </p>
-                    {available.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">
-                        {cultoDate ? "Nenhum membro disponível nesta data para esta função." : "Nenhum membro configurado para esta função."}
-                      </p>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {available.map((m: any) => {
+                    <div className={group}>
+                      {available.length === 0 ? (
+                        <p className="px-4 py-3.5 text-footnote text-muted-foreground">
+                          {cultoDate ? "Nenhum membro disponível nesta data para esta função." : "Nenhum membro configurado para esta função."}
+                        </p>
+                      ) : (
+                        available.map((m: any, i: number) => {
                           const profile = m.profiles as any;
                           const isSelected = selected.includes(m.id);
                           const isEligible = isMemberEligibleForInstrument(m, inst);
                           return (
                             <button
                               key={m.id}
+                              type="button"
+                              aria-pressed={isSelected}
                               onClick={() => toggleMember(inst, m.id)}
-                              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors ${
-                                isSelected && !isEligible
-                                  ? "bg-amber-500/10 border border-amber-500/40"
-                                  : isSelected
-                                  ? "bg-primary/10 border border-primary/30"
-                                  : "bg-accent/30 border border-transparent hover:border-border"
-                              }`}
+                              className={`relative flex w-full min-h-[52px] items-center gap-3 px-4 py-2 text-left transition-colors active:bg-fill-tertiary ${
+                                i > 0 ? memberSeparator : ""
+                              } ${isSelected && !isEligible ? "bg-ios-orange/10" : ""}`}
                             >
-                              <Avatar className="h-7 w-7">
+                              <Avatar className="h-8 w-8">
                                 {profile?.avatar_url && <AvatarImage src={profile.avatar_url} />}
-                                <AvatarFallback className="text-[10px] bg-accent">
+                                <AvatarFallback className="text-footnote">
                                   {(profile?.full_name ?? "?")[0]?.toUpperCase()}
                                 </AvatarFallback>
                               </Avatar>
-                              <span className="text-sm flex-1">{profile?.full_name ?? "Sem nome"}</span>
+                              <span className="min-w-0 flex-1 truncate text-body text-foreground">{profile?.full_name ?? "Sem nome"}</span>
                               {isSelected && !isEligible ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">
-                                  <AlertTriangle className="h-3 w-3" /> Remover
+                                <span className="inline-flex shrink-0 items-center gap-1 text-footnote font-semibold text-ios-orange">
+                                  <AlertTriangle className="h-[15px] w-[15px]" strokeWidth={2.25} aria-hidden="true" /> Remover
                                 </span>
                               ) : isSelected ? (
-                                <span className="text-[10px] font-medium text-primary">✓</span>
+                                <Check className="h-5 w-5 shrink-0 text-primary" strokeWidth={2.5} aria-label="Selecionado" />
                               ) : null}
                             </button>
                           );
-                        })}
-                      </div>
-                    )}
+                        })
+                      )}
+                    </div>
                   </div>
                 );
               })}
             </div>
           )}
-
-          {hasLineupConflicts && (
-            <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <p>
-                Há membros selecionados fora da disponibilidade atual. Remova os itens sinalizados para salvar a escala.
-              </p>
-            </div>
-          )}
-
-          <div className="flex justify-end gap-2 pt-2 sticky bottom-0 -mx-6 px-6 pb-1 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <Button variant="outline" className="rounded-xl" onClick={() => onOpenChange(false)}>
-              Cancelar
-            </Button>
-            <Button className="rounded-xl" onClick={handleSave} disabled={saving || hasLineupConflicts || !ready}>
-              {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              Salvar escala
-            </Button>
-          </div>
         </div>
       </DialogContent>
     </Dialog>

@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogToolbar } from "@/components/ui/dialog";
 import { GlassInput } from "@/components/GlassInput";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Ticket, Loader2, Clock } from "lucide-react";
+import { Clock } from "lucide-react";
 
 interface Props {
   open: boolean;
@@ -57,43 +56,47 @@ export function JoinTeamModal({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="glass rounded-2xl border-0 sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-lg font-semibold flex items-center gap-2">
-            <Ticket className="h-4 w-4" /> Entrar em uma equipe
-          </DialogTitle>
-        </DialogHeader>
-
+      <DialogContent className="sm:max-w-md">
         {pendingTeam ? (
-          <div className="text-center py-2">
-            <div className="h-14 w-14 rounded-2xl bg-yellow-500/10 flex items-center justify-center mx-auto mb-3">
-              <Clock className="h-6 w-6 text-yellow-500" />
+          <>
+            <DialogToolbar title="Entrar em uma equipe" confirm={{ label: "Ok", onClick: () => close(false) }} />
+            <div className="flex flex-col items-center text-center pt-2 pb-2">
+              <div className="grid place-items-center h-[60px] w-[60px] rounded-full bg-ios-orange/15 mb-4" aria-hidden="true">
+                <Clock className="h-7 w-7 text-ios-orange" strokeWidth={2} />
+              </div>
+              <p className="text-title3 text-foreground">Pedido enviado!</p>
+              <DialogDescription className="text-body text-muted-foreground mt-1.5">
+                Sua solicitação para entrar em <strong className="font-semibold text-foreground">{pendingTeam}</strong> foi
+                enviada. Assim que o líder aprovar, ela aparece nas suas equipes.
+              </DialogDescription>
             </div>
-            <p className="font-medium">Pedido enviado!</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Sua solicitação para entrar em <strong className="text-foreground">{pendingTeam}</strong> foi
-              enviada. Assim que o líder aprovar, ela aparece nas suas equipes.
-            </p>
-            <Button className="mt-5 rounded-xl h-11 px-6" onClick={() => close(false)}>Ok</Button>
-          </div>
+          </>
         ) : (
-          <div className="space-y-3 mt-2">
-            <p className="text-sm text-muted-foreground">Use o código de convite que o líder compartilhou.</p>
-            <div className="flex gap-2">
-              <GlassInput
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                onKeyDown={(e) => { if (e.key === "Enter") handleJoin(); }}
-                placeholder="Ex: JE8Y7H"
-                maxLength={12}
-                className="tracking-widest font-mono uppercase"
-                autoFocus
-              />
-              <Button onClick={handleJoin} disabled={joining || !code.trim()} className="shrink-0 h-12 px-5 rounded-xl gap-2">
-                {joining ? <Loader2 className="h-4 w-4 animate-spin" /> : "Entrar"}
-              </Button>
+          <>
+            <DialogToolbar
+              title="Entrar em uma equipe"
+              confirm={{ label: "Entrar", onClick: handleJoin, disabled: joining || !code.trim(), loading: joining }}
+            />
+            <div>
+              <DialogDescription className="mx-4 mb-1.5 text-footnote text-muted-foreground">
+                Use o código de convite que o líder compartilhou.
+              </DialogDescription>
+              <div className="rounded-card bg-card overflow-hidden">
+                <GlassInput
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleJoin(); }}
+                  placeholder="Ex: JE8Y7H"
+                  maxLength={12}
+                  aria-label="Código de convite"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  className="h-[52px] rounded-card bg-transparent px-4 text-body font-mono uppercase tracking-widest placeholder:font-sans placeholder:normal-case placeholder:tracking-normal placeholder:text-label-tertiary focus-visible:ring-inset focus-visible:ring-ios-blue/40"
+                  autoFocus
+                />
+              </div>
             </div>
-          </div>
+          </>
         )}
       </DialogContent>
     </Dialog>

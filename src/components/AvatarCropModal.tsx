@@ -1,9 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogToolbar } from "@/components/ui/dialog";
 
 interface AvatarCropModalProps {
   open: boolean;
@@ -87,34 +85,29 @@ export function AvatarCropModal({ open, onOpenChange, imageSrc, onCropDone }: Av
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass sm:rounded-2xl border-0 max-w-md">
-        <DialogHeader>
-          <DialogTitle>Recortar foto</DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-col items-center gap-4">
-          <ReactCrop
-            crop={crop}
-            onChange={(c) => setCrop(c)}
-            aspect={1}
-            circularCrop={false}
-            className="max-h-[60vh] rounded-lg overflow-hidden"
-          >
-            <img
-              ref={imgRef}
-              src={imageSrc}
-              alt="Crop"
-              onLoad={onImageLoad}
-              className="max-h-[60vh] object-contain"
-            />
-          </ReactCrop>
-          <div className="flex gap-2 w-full justify-end">
-            <Button variant="outline" className="rounded-xl" onClick={() => onOpenChange(false)}>
-              Cancelar
-            </Button>
-            <Button className="rounded-xl" onClick={handleConfirm} disabled={saving}>
-              {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              Confirmar
-            </Button>
+      <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+        <DialogToolbar
+          title="Recortar foto"
+          confirm={{ label: "Confirmar", onClick: handleConfirm, disabled: saving, loading: saving }}
+        />
+        {/* Área de mídia. A folha só arrasta pelo puxador/barra, então mexer no recorte não a fecha. */}
+        <div className="min-w-0 pb-2">
+          <div className="flex items-center justify-center overflow-hidden rounded-[20px] bg-fill-tertiary p-2">
+            <ReactCrop
+              crop={crop}
+              onChange={(c) => setCrop(c)}
+              aspect={1}
+              circularCrop={false}
+              className="max-h-[60dvh] overflow-hidden rounded-[12px]"
+            >
+              <img
+                ref={imgRef}
+                src={imageSrc}
+                alt="Crop"
+                onLoad={onImageLoad}
+                className="max-h-[60dvh] max-w-full object-contain"
+              />
+            </ReactCrop>
           </div>
         </div>
       </DialogContent>

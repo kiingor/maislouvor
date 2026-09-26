@@ -11,6 +11,16 @@ interface AudioTrimmerProps {
   onTrimmed: () => void;
 }
 
+/**
+ * O Canvas 2D não resolve `var(--token)`: lê o token HSL ("48 10% 10%") do elemento
+ * (respeita um escopo `.dark` local) e devolve uma cor concreta para o contexto.
+ */
+function tokenColor(el: Element, name: string, alpha = 1): string {
+  const raw = getComputedStyle(el).getPropertyValue(name).trim();
+  const [h, sat, l] = raw ? raw.split(/\s+/) : ["240", "2%", "57%"];
+  return `hsla(${h}, ${sat}, ${l}, ${alpha})`;
+}
+
 function formatTime(s: number) {
   const m = Math.floor(s / 60);
   const sec = Math.floor(s % 60);
@@ -35,6 +45,8 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
   const [playhead, setPlayhead] = useState(0);
   const [dragging, setDragging] = useState<"start" | "end" | "playhead" | null>(null);
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  // Redesenha a forma de onda quando o tema (classe .dark) ou a largura mudam.
+  const [paintKey, setPaintKey] = useState(0);
 
   // Load audio and decode waveform
   useEffect(() => {
@@ -86,19 +98,19 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
 
     ctx.clearRect(0, 0, w, h);
 
-    // Background
-    const isDark = document.documentElement.classList.contains("dark");
-    ctx.fillStyle = isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)";
-    ctx.fillRect(0, 0, w, h);
+    // Cores do sistema (o fundo é o preenchimento terciário do contêiner).
+    const barOut = tokenColor(canvas, "--muted-foreground", 0.45);
+    const tint = tokenColor(canvas, "--primary");
+    const band = tokenColor(canvas, "--primary", 0.07);
+    const surface = tokenColor(canvas, "--card");
+    const label = tokenColor(canvas, "--foreground");
 
-    // Draw trim regions (dimmed)
     const startPx = (start / buffer.duration) * w;
     const endPx = (end / buffer.duration) * w;
 
-    // Dimmed areas outside trim
-    ctx.fillStyle = isDark ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0.15)";
-    ctx.fillRect(0, 0, startPx, h);
-    ctx.fillRect(endPx, 0, w - endPx, h);
+    // Trecho selecionado: leve realce tintado
+    ctx.fillStyle = band;
+    ctx.fillRect(startPx, 0, Math.max(0, endPx - startPx), h);
 
     // Waveform bars
     const barWidth = 2;
@@ -118,49 +130,83 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
       const barH = avg * h * 0.85;
 
       const inTrim = x >= startPx && x <= endPx;
-      if (inTrim) {
-        ctx.fillStyle = "hsl(var(--primary))";
-      } else {
-        ctx.fillStyle = isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)";
-      }
+      ctx.fillStyle = inTrim ? tint : barOut;
       ctx.fillRect(x, (h - barH) / 2, barWidth, barH || 1);
     }
 
-    // Trim handles
-    const handleW = 4;
-    ctx.fillStyle = "hsl(var(--destructive))";
-    ctx.fillRect(startPx - handleW / 2, 0, handleW, h);
-    ctx.fillStyle = "hsl(var(--destructive))";
-    ctx.fillRect(endPx - handleW / 2, 0, handleW, h);
-
-    // Handle grip dots
+    // Trim handles (alças tintadas com pegas), sempre visíveis dentro do canvas
+    const handleW = 6;
     [startPx, endPx].forEach((px) => {
-      ctx.fillStyle = isDark ? "#fff" : "#000";
+      const hx = Math.max(0, Math.min(w - handleW, px - handleW / 2));
+      ctx.fillStyle = tint;
+      ctx.beginPath();
+      if (typeof ctx.roundRect === "function") ctx.roundRect(hx, 0, handleW, h, 3);
+      else ctx.rect(hx, 0, handleW, h);
+      ctx.fill();
+      ctx.fillStyle = surface;
       for (let d = -6; d <= 6; d += 6) {
         ctx.beginPath();
-        ctx.arc(px, h / 2 + d, 2, 0, Math.PI * 2);
+        ctx.arc(hx + handleW / 2, h / 2 + d, 1.25, 0, Math.PI * 2);
         ctx.fill();
       }
     });
 
-    // Playhead
+    // Playhead (contorno na cor da superfície para aparecer sobre as barras)
     if (currentPlayhead !== undefined) {
       const phPx = (currentPlayhead / buffer.duration) * w;
-      ctx.strokeStyle = "hsl(var(--foreground))";
-      ctx.lineWidth = 1.5;
+      ctx.lineCap = "round";
+      ctx.strokeStyle = surface;
+      ctx.lineWidth = 4;
       ctx.beginPath();
-      ctx.moveTo(phPx, 0);
-      ctx.lineTo(phPx, h);
+      ctx.moveTo(phPx, 2);
+      ctx.lineTo(phPx, h - 2);
+      ctx.stroke();
+      ctx.strokeStyle = label;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(phPx, 2);
+      ctx.lineTo(phPx, h - 2);
       ctx.stroke();
     }
   }, []);
 
-  // Redraw on trim changes
+  // Redraw on trim changes (and on theme/size changes)
   useEffect(() => {
     if (audioBufferRef.current) {
       drawWaveform(audioBufferRef.current, trimStart, trimEnd, playhead);
     }
-  }, [trimStart, trimEnd, playhead, drawWaveform]);
+  }, [trimStart, trimEnd, playhead, drawWaveform, paintKey]);
+
+  // Tema claro/escuro e largura do contêiner: só dispara um novo desenho.
+  useEffect(() => {
+    if (loading) return;
+    const bump = () => setPaintKey((k) => k + 1);
+    // <html class> muda a cada toque (main.tsx adiciona "pointer-mode" em todo
+    // pointerdown); só redesenha quando o tema realmente troca.
+    const root = document.documentElement;
+    let lastDark = root.classList.contains("dark");
+    const mo = new MutationObserver(() => {
+      const dark = root.classList.contains("dark");
+      if (dark === lastDark) return;
+      lastDark = dark;
+      bump();
+    });
+    mo.observe(root, { attributes: true, attributeFilter: ["class"] });
+    let ro: ResizeObserver | undefined;
+    if (canvasRef.current && typeof ResizeObserver !== "undefined") {
+      // Só redesenha quando a largura muda de fato (a 1ª notificação redesenha
+      // uma vez para acertar a largura final após a animação de abertura).
+      let lastWidth = -1;
+      ro = new ResizeObserver((entries) => {
+        const width = Math.round(entries[entries.length - 1]?.contentRect.width ?? 0);
+        if (width === lastWidth) return;
+        lastWidth = width;
+        bump();
+      });
+      ro.observe(canvasRef.current);
+    }
+    return () => { mo.disconnect(); ro?.disconnect(); };
+  }, [loading]);
 
   // Mouse handling for dragging trim handles
   const getTimeFromX = useCallback((clientX: number) => {
@@ -375,8 +421,8 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center gap-2 py-4 text-muted-foreground text-sm">
-        <Loader2 className="h-4 w-4 animate-spin" />
+      <div role="status" className="flex items-center justify-center gap-2 py-6 text-footnote text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} aria-hidden="true" />
         Carregando waveform...
       </div>
     );
@@ -385,64 +431,66 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
   const hasChanges = trimStart > 0.1 || trimEnd < duration - 0.1;
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground">Cortar áudio</span>
-        <div className="flex items-center gap-1 text-[10px] text-muted-foreground tabular-nums">
-          <span className="text-destructive font-medium">{formatTime(trimStart)}</span>
-          <span>—</span>
-          <span className="text-destructive font-medium">{formatTime(trimEnd)}</span>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+        <span className="text-subhead font-semibold text-foreground">Cortar áudio</span>
+        <div className="flex items-center gap-1 text-footnote tabular-nums text-muted-foreground">
+          <span className="font-medium text-foreground">{formatTime(trimStart)}</span>
+          <span aria-hidden="true">—</span>
+          <span className="font-medium text-foreground">{formatTime(trimEnd)}</span>
           <span className="ml-1">({formatTime(trimEnd - trimStart)})</span>
         </div>
       </div>
 
       <div
         ref={containerRef}
-        className="relative rounded-lg overflow-hidden border border-border cursor-col-resize select-none"
+        className="relative cursor-col-resize select-none overflow-hidden rounded-[12px] bg-fill-tertiary"
         style={{ touchAction: "none" }}
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
       >
         <canvas
           ref={canvasRef}
-          className="w-full"
+          className="block w-full"
           style={{ height: 72 }}
         />
       </div>
 
       <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="rounded-xl gap-1"
+        <button
+          type="button"
           onClick={togglePreview}
+          aria-label={playing ? "Parar" : "Ouvir"}
+          title={playing ? "Parar" : "Ouvir"}
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-fill-secondary text-foreground transition-transform active:scale-95"
         >
-          {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-          <span className="text-xs">{playing ? "Parar" : "Ouvir"}</span>
-        </Button>
+          {playing ? (
+            <Pause className="h-[18px] w-[18px]" fill="currentColor" aria-hidden="true" />
+          ) : (
+            <Play className="ml-0.5 h-[18px] w-[18px]" fill="currentColor" aria-hidden="true" />
+          )}
+        </button>
 
         {hasChanges && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="rounded-xl gap-1"
+          <button
+            type="button"
             onClick={resetTrim}
+            className="inline-flex min-h-[44px] items-center gap-1 rounded-[10px] px-2 text-subhead font-medium text-primary"
           >
-            <RotateCcw className="h-3.5 w-3.5" />
-            <span className="text-xs">Resetar</span>
-          </Button>
+            <RotateCcw className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
+            Resetar
+          </button>
         )}
 
         <div className="flex-1" />
 
         <Button
-          size="sm"
-          className="rounded-xl gap-1"
+          className="h-11 gap-1.5 rounded-full px-4 text-subhead font-semibold"
           onClick={applyTrim}
           disabled={trimming || !hasChanges}
         >
-          {trimming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Scissors className="h-3.5 w-3.5" />}
-          <span className="text-xs">{trimming ? "Cortando..." : "Aplicar corte"}</span>
+          {trimming ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Scissors aria-hidden="true" />}
+          {trimming ? "Cortando..." : "Aplicar corte"}
         </Button>
       </div>
     </div>

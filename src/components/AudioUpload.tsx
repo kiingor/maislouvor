@@ -1,9 +1,15 @@
 import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, Volume2, Loader2, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { AudioLines, Upload, Loader2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+/* Linha de lista agrupada iOS (o card vem do pai): 52pt, ícone em quadrado de 30pt e
+   separador recuado até o texto, oculto na primeira linha do grupo. */
+const row =
+  "relative flex min-h-[52px] items-center gap-3 px-4 py-1.5 before:pointer-events-none before:absolute before:left-[58px] before:right-0 before:top-0 before:border-t before:border-separator first:before:hidden";
+const rowIcon = "grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[8px] bg-fill-tertiary text-muted-foreground";
+const symbol = "h-[17px] w-[17px]";
 
 interface AudioUploadProps {
   songId: string;
@@ -58,54 +64,58 @@ export function AudioUpload({ songId, teamId, audioPath, onUpload, readOnly, com
     toast({ title: "Áudio removido" });
   };
 
+  const removeButton = (
+    <button
+      type="button"
+      onClick={handleRemove}
+      aria-label="Remover áudio"
+      title="Remover áudio"
+      className="-mr-2 grid h-11 w-11 shrink-0 place-items-center rounded-full text-ios-red transition-colors active:bg-fill-tertiary"
+    >
+      <Trash2 className="h-[18px] w-[18px]" aria-hidden="true" />
+    </button>
+  );
+
   return (
-    <div className="space-y-2">
+    <div>
       {signedUrl && compact ? (
-        <div className="flex items-center gap-2 rounded-xl glass-subtle px-3 py-2">
-          <Volume2 className="h-4 w-4 text-primary shrink-0" />
-          <span className="text-xs text-muted-foreground flex-1 truncate">Áudio enviado</span>
+        <div className={row}>
+          <span className={rowIcon} aria-hidden="true"><AudioLines className={symbol} /></span>
+          <span className="min-w-0 flex-1 truncate text-body text-foreground">Áudio enviado</span>
           {!readOnly && (
             <>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 rounded-lg gap-1 text-xs"
+              <button
+                type="button"
                 onClick={() => inputRef.current?.click()}
                 disabled={uploading}
+                className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-[10px] px-1.5 text-subhead font-medium text-primary disabled:opacity-40"
               >
-                {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                {uploading && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} aria-hidden="true" />}
                 Trocar
-              </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg" onClick={handleRemove}>
-                <Trash2 className="h-3.5 w-3.5 text-destructive" />
-              </Button>
+              </button>
+              {removeButton}
             </>
           )}
         </div>
       ) : signedUrl ? (
-        <div className="flex items-center gap-2">
-          <Volume2 className="h-4 w-4 text-primary shrink-0" />
-          <audio controls src={signedUrl} className="flex-1 h-8" />
-          {!readOnly && (
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={handleRemove}>
-              <Trash2 className="h-3.5 w-3.5 text-destructive" />
-            </Button>
-          )}
+        <div className={row}>
+          <span className={rowIcon} aria-hidden="true"><AudioLines className={symbol} /></span>
+          <audio controls src={signedUrl} className="h-10 min-w-0 flex-1" />
+          {!readOnly && removeButton}
         </div>
       ) : !readOnly ? (
-        <Button
-          variant="outline"
-          className="w-full rounded-xl gap-2"
+        <button
+          type="button"
+          className={cn(row, "w-full text-left transition-colors hover:bg-fill-quaternary active:bg-fill-tertiary disabled:pointer-events-none")}
           onClick={() => inputRef.current?.click()}
           disabled={uploading}
+          aria-busy={uploading || undefined}
         >
-          {uploading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Upload className="h-4 w-4" />
-          )}
-          {uploading ? "Enviando..." : "Upload de áudio"}
-        </Button>
+          <span className={cn(rowIcon, "text-primary")} aria-hidden="true">
+            {uploading ? <Loader2 className={cn(symbol, "animate-spin")} /> : <Upload className={symbol} />}
+          </span>
+          <span className="min-w-0 flex-1 text-body text-primary">{uploading ? "Enviando..." : "Upload de áudio"}</span>
+        </button>
       ) : null}
 
       <input

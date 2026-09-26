@@ -18,12 +18,22 @@ import { useLoopSequence, type LoopPoint } from "@/hooks/useLoopSequence";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Drawer, DrawerContent } from "@/components/ui/drawer";
+import { applyAppearance } from "@/lib/appearance";
+
+// Padrão estável: `= []` criava um array novo a cada render enquanto a consulta carregava,
+// e o efeito [songTracks] realimentava o estado em loop ("Maximum update depth exceeded").
+const NO_TRACKS: any[] = [];
+import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ToolbarButton } from "@/components/shell/ToolbarButton";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { isVocalRole } from "@/data/instruments";
 import {
-  ArrowLeft,
+  ChevronLeft,
+  Check,
+  ALargeSmall,
+  Volume2,
   Headphones,
   ChevronDown,
   ChevronUp,
@@ -52,7 +62,7 @@ import {
   Mic,
   Guitar,
 } from "lucide-react";
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
 
 type Instrument = "violao" | "guitarra" | "guitarra_worship" | "voz";
 
@@ -152,31 +162,156 @@ function stripChordsFromSegment(text: string): string {
     .trim();
 }
 
+/*
+ * Superfícies do palco (iOS 27, hierarquia systemBackground — sem agrupamento):
+ * o palco é branco/preto para o máximo contraste de leitura; painéis e cartões sobre ele
+ * usam a camada secundária, e as células dentro deles a terciária.
+ */
+const STAGE_BG = "bg-card dark:bg-background";
+const STAGE_SURFACE = "bg-background dark:bg-card";
+const STAGE_CELL = "bg-card dark:bg-grouped-tertiary";
+/** Separador hairline entre linhas, recuado até o texto (lista agrupada). */
+const ROW_SEPARATOR = "before:absolute before:right-0 before:top-0 before:border-t before:border-separator";
+/** Botão circular sem vidro (dentro de uma superfície já flutuante: nunca vidro sobre vidro). */
+const PLAIN_CIRCLE =
+  "relative grid h-11 w-11 shrink-0 place-items-center rounded-full text-foreground transition-[background-color,transform] duration-200 hover:bg-fill-tertiary active:scale-95 disabled:pointer-events-none disabled:opacity-30 motion-reduce:transition-none";
+/** Estado selecionado de um item da barra (a "lente" da barra de abas). */
+const LENS_ON = "bg-[var(--lens-rest)] text-primary";
+/** Folha opaca e sem desfoque (o palco pode rolar por baixo; blur seria recalculado a cada quadro).
+ *  --popover = #1C1C1E no escuro, sem a troca de --card que a folha faz para as células. */
+const OPAQUE_SHEET = "[--sheet-bg:hsl(var(--background))] dark:[--sheet-bg:hsl(var(--popover))] !backdrop-filter-none";
+/** Menus sobre o palco: material opaco (sem backdrop-filter sobre a letra que rola). O `!` vence
+ *  o `.liquid-glass-thick` do PopoverContent, que é CSS puro. */
+const OPAQUE_MENU = "!bg-popover !backdrop-filter-none";
+
+/** Stepper iOS (− | +): cápsula cinza 94×32, alvo de toque de 44pt. */
+function IosStepper({
+  onDecrease,
+  onIncrease,
+  canDecrease,
+  canIncrease,
+  decreaseLabel,
+  increaseLabel,
+}: {
+  onDecrease: () => void;
+  onIncrease: () => void;
+  canDecrease: boolean;
+  canIncrease: boolean;
+  decreaseLabel: string;
+  increaseLabel: string;
+}) {
+  const half =
+    "relative grid h-8 w-[46px] place-items-center text-foreground transition-colors active:bg-fill-tertiary disabled:pointer-events-none disabled:opacity-30 before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2";
+  return (
+    <div className="flex h-8 shrink-0 items-center overflow-hidden rounded-full bg-fill-tertiary">
+      <button type="button" onClick={onDecrease} disabled={!canDecrease} title={decreaseLabel} aria-label={decreaseLabel} className={half}>
+        <Minus className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
+      </button>
+      <span className="h-4 w-px bg-separator" aria-hidden="true" />
+      <button type="button" onClick={onIncrease} disabled={!canIncrease} title={increaseLabel} aria-label={increaseLabel} className={half}>
+        <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+/** Barra de um painel/folha: Fechar (círculo de vidro) à esquerda, título centralizado. */
+function PanelBar({ title, onClose, closeLabel }: { title: string; onClose: () => void; closeLabel: string }) {
+  return (
+    <div className="grid shrink-0 grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2 px-3 pb-2 pt-3 [@media(max-height:500px)]:pb-1 [@media(max-height:500px)]:pt-1.5">
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={closeLabel}
+        title={closeLabel}
+        className="liquid-glass grid h-11 w-11 place-items-center rounded-full text-foreground transition-transform duration-200 active:scale-95 motion-reduce:transition-none"
+      >
+        <X className="relative z-[4] h-[18px] w-[18px]" strokeWidth={2.4} aria-hidden="true" />
+      </button>
+      <h2 className="truncate text-center text-headline text-foreground">{title}</h2>
+      <span aria-hidden="true" className="h-11 w-11" />
+    </div>
+  );
+}
+
+/** Linhas do roteiro (músicas + momentos): usadas no menu do seletor e na barra lateral. */
+function RoteiroRows({
+  items,
+  currentIdx,
+  coverUrls,
+  onSelect,
+  variant,
+}: {
+  items: Array<{ kind: "song" | "block"; data: any }>;
+  currentIdx: number;
+  coverUrls: Record<string, string>;
+  onSelect: (idx: number) => void;
+  variant: "menu" | "list";
+}) {
+  const row = (active: boolean, idx: number) =>
+    [
+      "relative flex w-full min-h-[52px] items-center gap-3 px-3 py-2 text-left transition-colors duration-150",
+      "hover:bg-fill-quaternary active:bg-fill-tertiary motion-reduce:transition-none",
+      variant === "menu" ? "rounded-[14px]" : "",
+      active ? "bg-fill-tertiary" : "",
+      variant === "list" && idx > 0 ? `${ROW_SEPARATOR} before:left-[54px]` : "",
+    ].join(" ");
+  return (
+    <>
+      {items.map((it, idx) => {
+        const active = idx === currentIdx;
+        if (it.kind === "block") {
+          const b = it.data;
+          return (
+            <button key={`block-${b.id}`} type="button" onClick={() => onSelect(idx)} aria-current={active ? "true" : undefined} className={row(active, idx)}>
+              <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[8px] bg-fill-tertiary text-muted-foreground">
+                <Timer className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-subhead font-semibold text-foreground">{b.title}</span>
+                <span className="block truncate text-footnote text-muted-foreground">
+                  {(b.kind && b.kind !== "moment") ? b.kind : "Momento"}
+                  {b.duration_min ? ` · ${b.duration_min} min` : ""}
+                </span>
+              </span>
+              {active && <Check className="h-4 w-4 shrink-0 text-primary" strokeWidth={2.5} aria-hidden="true" />}
+            </button>
+          );
+        }
+        const s = it.data;
+        return (
+          <button key={`song-${s.id}-${idx}`} type="button" onClick={() => onSelect(idx)} aria-current={active ? "true" : undefined} className={row(active, idx)}>
+            <span className="grid h-[30px] w-[30px] shrink-0 place-items-center overflow-hidden rounded-[7px] bg-fill-tertiary">
+              {s.cover_path && coverUrls[s.cover_path] ? (
+                <img src={coverUrls[s.cover_path]} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <span className="text-caption1 font-semibold text-foreground/60">{s.title?.[0]?.toUpperCase() || "♪"}</span>
+              )}
+            </span>
+            <span className={`min-w-0 flex-1 truncate text-subhead ${active ? "font-semibold text-foreground" : "font-medium text-foreground"}`}>{s.title}</span>
+            {active && <Check className="h-4 w-4 shrink-0 text-primary" strokeWidth={2.5} aria-hidden="true" />}
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
 /** Inline timestamp editor panel */
 function TimestampEditor({
   segments,
   timestamps,
   activeSegIdx,
-  isDark,
   onSave,
   onClose,
   onJump,
-  subtleText,
-  accentBg,
-  borderSubtle,
-  hoverBg,
 }: {
   segments: string[];
   timestamps: number[];
   activeSegIdx: number;
-  isDark: boolean;
   onSave: (ts: number[]) => void;
   onClose: () => void;
   onJump: (i: number, time: number) => void;
-  subtleText: string;
-  accentBg: string;
-  borderSubtle: string;
-  hoverBg: string;
 }) {
   const [editableTs, setEditableTs] = useState<number[]>([...timestamps]);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
@@ -237,78 +372,95 @@ function TimestampEditor({
   };
 
   return (
-    <div className={`border-t ${borderSubtle} ${isDark ? "bg-black/40" : "bg-white/60"} backdrop-blur-sm max-h-64 overflow-y-auto`}>
-      <div className="flex items-center justify-between px-4 py-2 sticky top-0 z-10" style={{ background: "inherit" }}>
-        <span className="text-sm font-semibold flex items-center gap-2">
-          <List className="h-4 w-4" />
-          Timestamps ({timestamps.length} partes)
+    <div className={`relative z-40 mx-2 mb-2 max-h-64 overflow-y-auto overscroll-contain rounded-card ring-1 ring-separator sm:mx-3 lg:mx-4 ${STAGE_SURFACE}`}>
+      <div className={`sticky top-0 z-10 grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-2 px-3 pb-2 pt-3 ${STAGE_SURFACE}`}>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Fechar timestamps"
+          title="Fechar"
+          className="liquid-glass grid h-11 w-11 place-items-center rounded-full text-foreground transition-transform duration-200 active:scale-95 motion-reduce:transition-none"
+        >
+          <X className="relative z-[4] h-[18px] w-[18px]" strokeWidth={2.4} aria-hidden="true" />
+        </button>
+        <span className="flex min-w-0 items-center justify-center gap-1.5 truncate text-center text-headline">
+          <List className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="truncate">Timestamps ({timestamps.length} partes)</span>
         </span>
-        <div className="flex items-center gap-2">
-          {hasChanges && (
-            <Button size="sm" className="rounded-xl gap-1.5 h-7 text-xs px-3" onClick={handleSave}>
-              <Save className="h-3.5 w-3.5" /> Salvar
-            </Button>
-          )}
-          <button onClick={onClose} className={`p-1.5 rounded-lg ${hoverBg}`}>
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        {hasChanges ? (
+          <Button size="sm" className="gap-1.5" onClick={handleSave}>
+            <Save aria-hidden="true" /> Salvar
+          </Button>
+        ) : (
+          <span aria-hidden="true" className="h-11 w-11" />
+        )}
       </div>
       {saveError && (
-        <div className="mx-4 mb-2 px-3 py-2 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-xs">
+        <div role="alert" className="mx-3 mb-2 rounded-[14px] bg-ios-red/10 px-3 py-2 text-footnote text-ios-red">
           {saveError}
         </div>
       )}
-      <div className="px-4 pb-3 space-y-1">
-        {segments.map((seg, i) => {
-          const isOutOfOrder = i > 0 && editableTs[i] < editableTs[i - 1];
-          return (
-            <div
-              key={i}
-              className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-colors cursor-pointer ${
-                i === activeSegIdx ? "bg-primary/10 border border-primary/30" : `border border-transparent`
-              }`}
-              onClick={() => onJump(i, editableTs[i])}
-            >
-              <span className={`w-7 text-center font-bold text-xs ${subtleText}`}>{i + 1}</span>
-              {editingIdx === i ? (
-                <input
-                  autoFocus
-                  value={editValue}
-                  onChange={(e) => setEditValue(e.target.value)}
-                  onBlur={commitEdit}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitEdit();
-                    if (e.key === "Escape") setEditingIdx(null);
-                    e.stopPropagation();
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="w-20 text-center font-mono text-sm tabular-nums rounded-lg px-2 py-1.5 border border-primary bg-transparent focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              ) : (
-                <button
-                  onClick={(e) => { e.stopPropagation(); startEdit(i); }}
-                  className={`w-20 text-center font-mono text-sm tabular-nums rounded-lg px-2 py-1.5 ${accentBg} transition-colors flex items-center justify-center gap-1 ${isOutOfOrder ? "ring-1 ring-amber-500/50 text-amber-500" : ""}`}
-                  title="Clique para editar"
-                >
-                  {formatTime(editableTs[i])}
-                  <Pencil className="h-3 w-3 opacity-40" />
-                </button>
-              )}
-              <span className="flex-1 truncate text-xs">{segmentLabel(seg)}</span>
-            </div>
-          );
-        })}
+      <div className="px-3 pb-3">
+        <div className={`overflow-hidden rounded-[20px] ${STAGE_CELL}`}>
+          {segments.map((seg, i) => {
+            const isOutOfOrder = i > 0 && editableTs[i] < editableTs[i - 1];
+            return (
+              <div
+                key={i}
+                className={`relative flex min-h-[52px] cursor-pointer items-center gap-3 px-3 py-2 transition-colors ${
+                  i === activeSegIdx ? "bg-fill-tertiary" : "hover:bg-fill-quaternary"
+                } ${i > 0 ? `${ROW_SEPARATOR} before:left-12` : ""}`}
+                onClick={() => onJump(i, editableTs[i])}
+              >
+                <span className="w-6 shrink-0 text-center text-footnote font-semibold tabular-nums text-muted-foreground">{i + 1}</span>
+                {editingIdx === i ? (
+                  <input
+                    autoFocus
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onBlur={commitEdit}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitEdit();
+                      if (e.key === "Escape") setEditingIdx(null);
+                      e.stopPropagation();
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="h-8 w-[84px] shrink-0 rounded-full bg-fill-secondary px-2 text-center font-mono text-callout tabular-nums text-foreground outline-none ring-2 ring-ios-blue/60"
+                  />
+                ) : (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); startEdit(i); }}
+                    className={`relative flex h-8 w-[84px] shrink-0 items-center justify-center gap-1 rounded-full bg-fill-tertiary font-mono text-subhead tabular-nums transition-colors before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2 ${
+                      isOutOfOrder ? "text-ios-orange ring-1 ring-ios-orange/60" : "text-foreground"
+                    }`}
+                    title="Clique para editar"
+                  >
+                    {formatTime(editableTs[i])}
+                    <Pencil className="h-3 w-3 opacity-40" aria-hidden="true" />
+                  </button>
+                )}
+                <span className="min-w-0 flex-1 truncate text-subhead">{segmentLabel(seg)}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 }
 
-// Polished Cifra/Voz segmented control (used in the top bar on mobile/tablet and the sidebar on desktop)
+/** Controle segmentado flutuante (vidro): o segmento ativo ganha a "lente" cinza. */
+const SEG_TRACK = "liquid-glass inline-flex h-11 shrink-0 items-center gap-0.5 rounded-full p-1";
+const segItem = (active: boolean) =>
+  `relative z-[4] flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-full px-4 before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2 text-subhead text-foreground transition-colors duration-200 motion-reduce:transition-none ${
+    active ? "bg-fill font-semibold" : "font-medium hover:bg-fill-quaternary"
+  }`;
+
+// Cifra/Voz segmented control (used in the top bar on mobile/tablet)
 function ModeToggle({
   instrument,
   onChange,
-  isDark,
+  isDark: _isDark,
   className = "",
 }: {
   instrument: string;
@@ -316,24 +468,16 @@ function ModeToggle({
   isDark: boolean;
   className?: string;
 }) {
-  const track = isDark ? "bg-white/10" : "bg-black/[0.06]";
-  const inactive = isDark ? "text-white/55" : "text-black/50";
   const opts: { key: "violao" | "voz"; label: string }[] = [
     { key: "violao", label: "Cifra" },
     { key: "voz", label: "Voz" },
   ];
   return (
-    <div className={`inline-flex items-center rounded-full p-0.5 ${track} backdrop-blur-sm ${className}`}>
+    <div role="group" aria-label="Modo de exibição" className={`${SEG_TRACK} ${className}`}>
       {opts.map((o) => {
         const active = o.key === "voz" ? instrument === "voz" : instrument !== "voz";
         return (
-          <button
-            key={o.key}
-            onClick={() => onChange(o.key)}
-            className={`flex-1 px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
-              active ? "bg-primary text-primary-foreground shadow-sm" : `${inactive} hover:opacity-80`
-            }`}
-          >
+          <button key={o.key} type="button" aria-pressed={active} onClick={() => onChange(o.key)} className={segItem(active)}>
             {o.label}
           </button>
         );
@@ -347,7 +491,7 @@ function ModeToggle({
 function RoleToggle({
   role,
   onChange,
-  isDark,
+  isDark: _isDark,
   className = "",
 }: {
   role: "cantor" | "instrumentista" | null;
@@ -355,25 +499,17 @@ function RoleToggle({
   isDark: boolean;
   className?: string;
 }) {
-  const track = isDark ? "bg-white/10" : "bg-black/[0.06]";
-  const inactive = isDark ? "text-white/55" : "text-black/50";
   const opts: { key: "cantor" | "instrumentista"; label: string; Icon: typeof Mic }[] = [
     { key: "cantor", label: "Cantor", Icon: Mic },
     { key: "instrumentista", label: "Instr.", Icon: Guitar },
   ];
   return (
-    <div className={`inline-flex items-center rounded-full p-0.5 ${track} backdrop-blur-sm ${className}`} title="Visão por função">
+    <div role="group" className={`${SEG_TRACK} ${className}`} title="Visão por função">
       {opts.map((o) => {
         const active = role === o.key;
         return (
-          <button
-            key={o.key}
-            onClick={() => onChange(o.key)}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-              active ? "bg-primary text-primary-foreground shadow-sm" : `${inactive} hover:opacity-80`
-            }`}
-          >
-            <o.Icon className="h-3 w-3" />
+          <button key={o.key} type="button" aria-pressed={active} onClick={() => onChange(o.key)} className={`${segItem(active)} px-3.5`}>
+            <o.Icon className="h-[15px] w-[15px]" strokeWidth={2.25} aria-hidden="true" />
             <span className="hidden sm:inline">{o.label}</span>
           </button>
         );
@@ -451,6 +587,9 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
   // Measured height of the (absolute) top bar, so content can clear it.
   const topBarRef = useRef<HTMLDivElement>(null);
   const [topBarH, setTopBarH] = useState(0);
+  // Altura medida da barra de transporte: o mini player do YouTube flutua logo acima dela.
+  const transportRef = useRef<HTMLDivElement>(null);
+  const [transportH, setTransportH] = useState(0);
 
   // Roteiro (culto) — unified list of songs + blocks. blockIdx !== null means a
   // "momento" (non-song) is showing in the center. autoRoteiro advances by item duration.
@@ -733,7 +872,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
   }, [currentSongId]);
 
   // Fetch tracks for current song
-  const { data: songTracks = [] } = useQuery({
+  const { data: songTracks = NO_TRACKS } = useQuery({
     queryKey: ["presentation-tracks", currentSongId],
     queryFn: async () => {
       const { data } = await supabase
@@ -1510,12 +1649,57 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
     return () => ro.disconnect();
   }, [songs.length, isMobile]);
 
+  useEffect(() => {
+    const el = transportRef.current;
+    if (!el) return;
+    const update = () => setTransportH(el.offsetHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [songs.length, isMobile]);
+
   // Keep the page background matching the present theme so the device safe areas
   // never reveal the light body background (the white strip at the bottom).
-  useEffect(() => {
+  // Layout effect: applied before the first paint, so entering never flashes the wrong palette.
+  useLayoutEffect(() => {
     const prev = document.body.style.backgroundColor;
-    document.body.style.backgroundColor = isDark ? "#0a0a0a" : "#f5f5f5";
+    // Mesma cor do palco (STAGE_BG): branco no claro, preto no escuro.
+    document.body.style.backgroundColor = isDark ? "hsl(var(--background))" : "hsl(var(--card))";
     return () => { document.body.style.backgroundColor = prev; };
+  }, [isDark]);
+
+  // O palco tem tema próprio (prefs.theme), independente do sistema. Aplicado no <html>
+  // para que folhas, menus e diálogos (portais) e as variantes dark: sigam o palco.
+  // Ao sair, devolve a Aparência escolhida pelo usuário (lib/appearance).
+  // useLayoutEffect: roda antes da primeira pintura, sem piscar a paleta errada ao entrar.
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const scheme = window.matchMedia?.("(prefers-color-scheme: dark)");
+    const apply = () => root.classList.toggle("dark", isDark);
+    root.setAttribute("data-stage-theme", isDark ? "dark" : "light");
+    apply();
+    // main.tsx reaplica o tema do sistema quando ele muda; este ouvinte roda depois e mantém o do palco.
+    scheme?.addEventListener?.("change", apply);
+    // Barra de status (PWA/Android) e barra do Safari na cor do palco (STAGE_BG), não na do sistema:
+    // index.html traz theme-color por esquema; enquanto o palco está aberto, todas levam a cor dele.
+    const metas = Array.from(document.head.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]'));
+    let created: HTMLMetaElement | null = null;
+    if (!metas.length) {
+      created = document.createElement("meta");
+      created.name = "theme-color";
+      document.head.appendChild(created);
+      metas.push(created);
+    }
+    const prevColors = metas.map((m) => m.content);
+    metas.forEach((m) => { m.content = isDark ? "#000000" : "#FFFFFF"; });
+    return () => {
+      scheme?.removeEventListener?.("change", apply);
+      root.removeAttribute("data-stage-theme");
+      metas.forEach((m, i) => { m.content = prevColors[i]; });
+      created?.remove();
+      applyAppearance();
+    };
   }, [isDark]);
 
   useEffect(() => {
@@ -1919,246 +2103,254 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
 
   if (isLoading) {
     return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center">
-        <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className={`fixed inset-0 flex items-center justify-center ${STAGE_BG}`}>
+        <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" aria-label="Carregando" />
       </div>
     );
   }
 
   if (!songs.length) {
     return (
-      <div className="fixed inset-0 bg-black flex flex-col items-center justify-center gap-4">
-        <p className="text-white/60">Nenhuma música neste {source === "repertorio" ? "repertório" : "culto"}.</p>
-        <Button variant="outline" onClick={() => navigate(-1)}>Voltar</Button>
+      <div className={`fixed inset-0 flex flex-col items-center justify-center gap-2 px-8 text-center ${STAGE_BG}`}>
+        <Music className="mb-2 h-[52px] w-[52px] text-label-tertiary" strokeWidth={1.75} aria-hidden="true" />
+        <p className="text-title3 text-foreground">Nenhuma música neste {source === "repertorio" ? "repertório" : "culto"}.</p>
+        <Button variant="outline" className="mt-4" onClick={() => navigate(-1)}>Voltar</Button>
       </div>
     );
   }
 
-  const themeClasses = isDark
-    ? "bg-background text-foreground"
-    : "bg-background text-foreground";
-
-  const subtleText = isDark ? "text-white/50" : "text-black/50";
-  const borderSubtle = isDark ? "border-white/10" : "border-black/10";
-  const hoverBg = isDark ? "hover:bg-white/10" : "hover:bg-black/10";
-  const accentBg = isDark ? "bg-white/10" : "bg-black/10";
-  const transportBg = isDark ? "bg-black/80" : "bg-white/80";
-
   const fontScale = prefs.fontSize || 1;
   const chordFontScale = prefs.chordFontScale ?? 1;
+  // Painéis e barra lateral começam abaixo da barra superior medida (antes: pt-14 fixo).
+  const belowTopBar = { paddingTop: topBarH ? topBarH + 4 : 56 };
+  // Painel lateral flutuante (desktop): cartão opaco sobre o palco, estilo inspetor do iPadOS.
+  const inspectorShell = "relative z-20 order-first flex h-full shrink-0 flex-col pb-3 pl-3";
+  const inspectorCard = `flex min-h-0 flex-1 flex-col overflow-hidden rounded-card ring-1 ring-separator shadow-[0_18px_40px_-18px_var(--lg-shadow)] ${STAGE_SURFACE}`;
+  const toolItem = (active: boolean) =>
+    `relative flex h-12 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[18px] px-1 text-caption2 font-semibold transition-colors duration-200 motion-reduce:transition-none lg:w-16 lg:flex-none [@media(max-height:500px)]:w-16 [@media(max-height:500px)]:flex-none ${
+      active ? LENS_ON : "text-foreground hover:bg-fill-quaternary"
+    }`;
+
+  const metronomeBody = (
+    <div className="flex flex-col gap-4">
+      <Metronome
+        key={currentSongId}
+        initialBpm={(currentSong as any)?.bpm ?? 100}
+        onBpmChange={persistBpm}
+        running={clickArmed ? audioPlaying : undefined}
+      />
+      <label className={`flex min-h-[52px] cursor-pointer items-center justify-between gap-3 rounded-card px-4 py-2 ${STAGE_CELL}`}>
+        <span className="text-body">Tocar junto com a música</span>
+        <Switch checked={clickArmed} onCheckedChange={setClickArmed} />
+      </label>
+    </div>
+  );
 
   return (
-    <div className={`fixed inset-0 ${themeClasses} ${isDark ? 'dark' : ''} flex flex-col select-none overflow-hidden`}>
-      {/* Radial gradient background */}
-      <div
-        className="absolute inset-0 pointer-events-none z-0"
-        style={{
-          background: `radial-gradient(ellipse at 30% 40%, hsl(var(--primary) / 0.15) 0%, transparent 60%), 
-                       radial-gradient(ellipse at 70% 60%, hsl(var(--primary) / 0.08) 0%, transparent 60%)`,
-        }}
-      />
-
+    <div className={`fixed inset-0 ${STAGE_BG} text-foreground ${isDark ? 'dark' : 'light'} flex flex-col select-none overflow-hidden`}>
       {/* Main Area */}
       <div className="flex-1 flex min-h-0 relative overflow-hidden">
-        {/* Top bar */}
-        <div ref={topBarRef} className="absolute top-0 left-0 right-0 z-30 flex flex-col pt-[max(env(safe-area-inset-top),1.25rem)]">
-          {/* Linha 1 — utilitários (ocupa a largura toda: controles à esquerda, toggle à direita) */}
-          <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2">
-            <button onClick={() => navigate(backPath)} className={`p-2 rounded-xl ${accentBg} backdrop-blur-sm ${hoverBg} transition-colors shrink-0`}>
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => updatePrefs({ theme: isDark ? "light" : "dark" })}
-              className={`p-2 rounded-xl ${accentBg} backdrop-blur-sm ${hoverBg} transition-colors shrink-0`}
-              title={isDark ? "Modo claro" : "Modo escuro"}
-            >
-              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
-            {/* Tamanho da letra */}
-            <div className={`flex items-center gap-0.5 rounded-xl ${accentBg} backdrop-blur-sm px-1 shrink-0`}>
-              <button
-                onClick={decreaseFontSize}
-                disabled={fontSizeIndex === 0}
-                className={`p-1.5 rounded-lg transition-colors disabled:opacity-30 ${hoverBg}`}
-                title="Diminuir fonte"
-              >
-                <Minus className="h-3.5 w-3.5" />
-              </button>
-              <span className={`text-[10px] font-bold w-6 text-center ${subtleText}`}>{FONT_SIZES[fontSizeIndex].label}</span>
-              <button
-                onClick={increaseFontSize}
-                disabled={fontSizeIndex === FONT_SIZES.length - 1}
-                className={`p-1.5 rounded-lg transition-colors disabled:opacity-30 ${hoverBg}`}
-                title="Aumentar fonte"
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-            </div>
+        {/* Top bar — controles flutuantes em Liquid Glass (44pt). Duas linhas no celular, uma no desktop. */}
+        <div ref={topBarRef} className="absolute inset-x-0 top-0 z-30 px-3 pb-2 pt-[max(env(safe-area-inset-top),12px)] lg:px-4">
+          <div className="flex flex-wrap items-center gap-x-2">
+            <ToolbarButton
+              icon={<ChevronLeft strokeWidth={2.4} />}
+              onClick={() => navigate(backPath)}
+              aria-label="Voltar"
+              title="Voltar"
+              className="shrink-0 lg:order-1"
+            />
 
-            {/* Tamanho dos acordes — independente da letra (só no modo cifra) */}
-            {!isVoz && (
-              <div className={`flex items-center gap-0.5 rounded-xl ${accentBg} backdrop-blur-sm px-1 shrink-0`} title="Tamanho dos acordes">
-                <button
-                  onClick={decreaseChordFont}
-                  disabled={chordFontIndex === 0}
-                  className={`p-1.5 rounded-lg transition-colors disabled:opacity-30 ${hoverBg}`}
-                  title="Diminuir acordes"
-                >
-                  <Minus className="h-3.5 w-3.5" />
+            {/* Seletor do roteiro — celular/tablet (no desktop a lista fica na barra lateral).
+                Menu ancorado: a barra superior não muda de altura ao abrir. */}
+            {/* Não modal (paridade com a lista inline de antes): tocar fora fecha o menu e o toque chega
+                ao controle tocado (play, zonas de segmento); sem trava de foco nem de rolagem. */}
+            <Popover modal={false} open={showMobileSongList} onOpenChange={setShowMobileSongList}>
+              <PopoverTrigger asChild>
+                <button type="button" className="glass-button liquid-glass capsule min-w-0 flex-1 justify-start !pl-2 lg:hidden">
+                  <span className="relative z-[4] grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-[7px] bg-fill-tertiary">
+                    {(currentSong as any)?.cover_path && coverUrls[(currentSong as any).cover_path] ? (
+                      <img src={coverUrls[(currentSong as any).cover_path]} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <Music className="h-4 w-4 text-muted-foreground" strokeWidth={2.25} aria-hidden="true" />
+                    )}
+                  </span>
+                  <span className="relative z-[4] min-w-0 flex-1 truncate text-left">{currentSong?.title || "Música"}</span>
+                  <ChevronDown
+                    className={`relative z-[4] h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ${showMobileSongList ? "rotate-180" : ""}`}
+                    strokeWidth={2.75}
+                    aria-hidden="true"
+                  />
                 </button>
-                <span className={`text-[10px] font-bold w-6 text-center ${subtleText}`}>C</span>
-                <button
-                  onClick={increaseChordFont}
-                  disabled={chordFontIndex === CHORD_FONT_SCALES.length - 1}
-                  className={`p-1.5 rounded-lg transition-colors disabled:opacity-30 ${hoverBg}`}
-                  title="Aumentar acordes"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
+              </PopoverTrigger>
+              {/* onCloseAutoFocus: o foco não volta ao gatilho (um <button>), senão os atalhos globais
+                  (espaço, setas do pedal, n, Esc) ficam ignorados até tocar em outro lugar.
+                  alignOffset: a borda esquerda do menu alinha à margem da barra (Voltar 44 + gap 8); no celular
+                  a largura cobre a barra de margem a margem. */}
+              <PopoverContent
+                align="start"
+                alignOffset={-52}
+                onCloseAutoFocus={(e) => e.preventDefault()}
+                className={`w-[min(24rem,calc(100vw-24px))] max-h-[min(65dvh,520px)] overflow-y-auto overscroll-contain p-1.5 ${OPAQUE_MENU} ${isDark ? "dark" : ""}`}
+              >
+                <div className="flex min-h-11 items-center justify-between gap-3 px-3 pb-1 pt-1.5">
+                  <span className="text-footnote font-semibold text-muted-foreground">{hasBlocks ? "Roteiro" : "Repertório"}</span>
+                  {hasBlocks && (
+                    <label className="flex cursor-pointer items-center gap-2" title="Avançar automaticamente pelo tempo de cada item">
+                      <span className="text-subhead text-foreground">Auto roteiro</span>
+                      <Switch checked={autoRoteiro} onCheckedChange={setAutoRoteiro} />
+                    </label>
+                  )}
+                </div>
+                <RoteiroRows
+                  variant="menu"
+                  items={roteiro}
+                  currentIdx={currentItemIdx}
+                  coverUrls={coverUrls}
+                  onSelect={(idx) => { selectItem(idx); setShowMobileSongList(false); }}
+                />
+              </PopoverContent>
+            </Popover>
 
-            {/* Toggle fixado à direita: Voz/Cifra (mobile) ou Cantor/Instrumentista (desktop) */}
-            <div className="ml-auto flex items-center shrink-0">
-              <div className="hidden lg:flex">
-                <RoleToggle role={roleView} onChange={applyRoleView} isDark={isDark} />
-              </div>
-              <ModeToggle
-                instrument={prefs.instrument}
-                onChange={(key) => updatePrefs({ instrument: key })}
-                isDark={isDark}
-                className="lg:hidden"
-              />
-            </div>
-          </div>
+            <div className="hidden lg:order-3 lg:block lg:flex-1" aria-hidden="true" />
 
-          {/* Linha 2 — música selecionada + tom na mesma linha, alinhados */}
-          <div className="flex items-center gap-2 px-3 pb-2 min-w-0">
-            {/* Seletor de música — mobile/tablet (no desktop a lista fica na barra lateral) */}
-            <button
-              onClick={() => setShowMobileSongList((v) => !v)}
-              className={`lg:hidden flex items-center gap-1.5 flex-1 min-w-0 px-3 py-2 rounded-xl ${accentBg} backdrop-blur-sm ${hoverBg} transition-colors`}
-            >
-              <Music className="h-4 w-4 shrink-0" />
-              <span className="text-xs font-medium truncate flex-1 text-left">{currentSong?.title || "Música"}</span>
-              {showMobileSongList ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
-            </button>
             {currentSongId && !activeBlock && (
-              <button
+              <ToolbarButton
+                icon={<Headphones />}
                 aria-label="Áudios adicionais"
                 title="Áudios adicionais"
                 onClick={() => { pauseForAdditionalAudio(); setShowAdditionalAudio(true); }}
-                className={`p-2 rounded-xl shrink-0 ${accentBg} ${hoverBg} transition-colors`}
-              >
-                <Headphones className="h-4 w-4" />
-              </button>
+                className="shrink-0 lg:order-5"
+              />
             )}
+
+            {/* Texto e tema (estilo "Temas e ajustes" do Livros): tamanho da letra, dos acordes e tema. */}
+            <Popover modal={false}>
+              <PopoverTrigger asChild>
+                <ToolbarButton icon={<ALargeSmall />} aria-label="Texto e tema" title="Texto e tema" className="shrink-0 lg:order-6" />
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                onCloseAutoFocus={(e) => e.preventDefault()}
+                className={`w-[min(20rem,calc(100vw-24px))] p-1.5 ${OPAQUE_MENU} ${isDark ? "dark" : ""}`}
+              >
+                <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-1">
+                  <span className="text-body">Letra</span>
+                  <span className="flex items-center gap-2.5">
+                    <span className="w-7 text-center text-subhead font-semibold tabular-nums text-muted-foreground">{FONT_SIZES[fontSizeIndex].label}</span>
+                    <IosStepper
+                      onDecrease={decreaseFontSize}
+                      onIncrease={increaseFontSize}
+                      canDecrease={fontSizeIndex > 0}
+                      canIncrease={fontSizeIndex < FONT_SIZES.length - 1}
+                      decreaseLabel="Diminuir fonte"
+                      increaseLabel="Aumentar fonte"
+                    />
+                  </span>
+                </div>
+                {/* Tamanho dos acordes — independente da letra (só no modo cifra) */}
+                {!isVoz && (
+                  <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-1" title="Tamanho dos acordes">
+                    <span className="text-body">Acordes</span>
+                    <span className="flex items-center gap-2.5">
+                      <span className="w-7 text-center text-subhead font-semibold tabular-nums text-muted-foreground">{CHORD_FONT_SCALES[chordFontIndex].label}</span>
+                      <IosStepper
+                        onDecrease={decreaseChordFont}
+                        onIncrease={increaseChordFont}
+                        canDecrease={chordFontIndex > 0}
+                        canIncrease={chordFontIndex < CHORD_FONT_SCALES.length - 1}
+                        decreaseLabel="Diminuir acordes"
+                        increaseLabel="Aumentar acordes"
+                      />
+                    </span>
+                  </div>
+                )}
+                <div className="-mx-1.5 my-1 h-2 bg-fill-quaternary" aria-hidden="true" />
+                <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-1">
+                  <span className="text-body">Tema</span>
+                  <div role="group" aria-label="Tema" className="inline-flex h-8 items-center gap-0.5 rounded-full bg-fill-tertiary p-0.5">
+                    {([
+                      { key: "light", label: "Claro", title: "Modo claro", Icon: Sun },
+                      { key: "dark", label: "Escuro", title: "Modo escuro", Icon: Moon },
+                    ] as const).map((o) => {
+                      const active = (o.key === "dark") === isDark;
+                      return (
+                        <button
+                          key={o.key}
+                          type="button"
+                          aria-pressed={active}
+                          title={o.title}
+                          onClick={() => updatePrefs({ theme: o.key })}
+                          className={`relative flex h-7 items-center gap-1 rounded-full px-2.5 text-footnote font-medium transition-colors before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2 ${
+                            active ? "bg-card shadow-sm dark:bg-prominent" : "text-foreground"
+                          }`}
+                        >
+                          <o.Icon className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />
+                          {o.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Quebra de linha no celular: segunda linha com modo e tom.
+                Em paisagem baixa (altura ≤ 500) fica tudo numa linha, para sobrar palco. */}
+            <div className="basis-full lg:hidden [@media(max-height:500px)]:hidden" aria-hidden="true" />
+
+            <ModeToggle
+              instrument={prefs.instrument}
+              onChange={(key) => updatePrefs({ instrument: key })}
+              isDark={isDark}
+              className="mt-2 lg:hidden [@media(max-height:500px)]:mt-0"
+            />
+            <div className="hidden lg:order-2 lg:flex">
+              <RoleToggle role={roleView} onChange={applyRoleView} isDark={isDark} />
+            </div>
+
             {/* Tom / capotraste — interativo (modo cifra). Transpõe a cifra offline,
                 pro usuário estudar; funciona com ou sem stems. */}
             {!isVoz && countdown === null && !activeBlock && segments.length > 0 && (
-              <div className={`flex items-center gap-1 shrink-0 pl-1.5 pr-2 py-1 rounded-xl ${accentBg} backdrop-blur-sm border ${borderSubtle} text-[11px] font-medium`}>
-                <button
-                  onClick={() => setTranspose((t) => Math.max(-6, t - 1))}
-                  className={`h-6 w-6 rounded-lg flex items-center justify-center ${hoverBg} disabled:opacity-30`}
-                  disabled={transpose <= -6}
-                  title="Descer ½ tom"
-                >
-                  <Minus className="h-3.5 w-3.5" />
-                </button>
-                <span className="whitespace-nowrap px-0.5 flex items-center gap-1">
-                  <Guitar className="h-3.5 w-3.5 text-primary shrink-0" />
-                  Tom <strong className="text-primary">{effectiveKeyLabel ?? (transpose > 0 ? `+${transpose}` : transpose)}</strong>
-                </span>
-                <button
-                  onClick={() => setTranspose((t) => Math.min(6, t + 1))}
-                  className={`h-6 w-6 rounded-lg flex items-center justify-center ${hoverBg} disabled:opacity-30`}
-                  disabled={transpose >= 6}
-                  title="Subir ½ tom"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-                {transpose !== baseTranspose && (
+              <div className="ml-auto mt-2 flex shrink-0 items-center gap-2 lg:order-4 lg:ml-0 lg:mt-0 [@media(max-height:500px)]:mt-0">
+                <div className="liquid-glass flex h-11 items-center rounded-full px-0.5">
                   <button
-                    onClick={() => setTranspose(baseTranspose)}
-                    className={`h-6 w-6 rounded-lg flex items-center justify-center ${hoverBg}`}
-                    title="Tom original"
+                    type="button"
+                    onClick={() => setTranspose((t) => Math.max(-6, t - 1))}
+                    className="relative z-[4] grid h-11 w-11 place-items-center rounded-full text-foreground disabled:opacity-30"
+                    disabled={transpose <= -6}
+                    title="Descer ½ tom"
+                    aria-label="Descer ½ tom"
                   >
-                    <RotateCcw className="h-3 w-3" />
+                    <Minus className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
                   </button>
+                  <span className="relative z-[4] flex min-w-[60px] flex-col items-center px-1 text-center">
+                    <span className="whitespace-nowrap text-subhead">
+                      Tom <strong className="font-semibold">{effectiveKeyLabel ?? (transpose > 0 ? `+${transpose}` : transpose)}</strong>
+                    </span>
+                    {capoHint && (
+                      <span className="whitespace-nowrap text-caption2 text-muted-foreground">
+                        capo {capoHint.capo}ª · <strong className="font-semibold text-foreground">{capoHint.shapeKey}</strong>
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setTranspose((t) => Math.min(6, t + 1))}
+                    className="relative z-[4] grid h-11 w-11 place-items-center rounded-full text-foreground disabled:opacity-30"
+                    disabled={transpose >= 6}
+                    title="Subir ½ tom"
+                    aria-label="Subir ½ tom"
+                  >
+                    <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
+                  </button>
+                </div>
+                {transpose !== baseTranspose && (
+                  <ToolbarButton icon={<RotateCcw />} onClick={() => setTranspose(baseTranspose)} title="Tom original" aria-label="Tom original" />
                 )}
-                {capoHint && (<span className={`${subtleText} whitespace-nowrap`}>· capo {capoHint.capo}ª · <strong className="text-foreground">{capoHint.shapeKey}</strong></span>)}
               </div>
             )}
           </div>
-
-          {/* Mobile collapsible roteiro list (músicas + blocos) */}
-          {showMobileSongList && (
-            <div className={`lg:hidden mx-3 mb-2 rounded-xl ${isDark ? "bg-black/70" : "bg-white/70"} backdrop-blur-md border ${borderSubtle} max-h-72 overflow-y-auto hide-scrollbar`}>
-              {/* Roteiro header */}
-              <div className={`flex items-center justify-between px-3 pt-2.5 pb-1.5 border-b ${borderSubtle}`}>
-                <span className={`text-[10px] font-semibold uppercase tracking-wider ${subtleText}`}>
-                  {hasBlocks ? "Roteiro" : "Repertório"}
-                </span>
-                {hasBlocks && (
-                  <label className="flex items-center gap-1.5 cursor-pointer" title="Avançar automaticamente pelo tempo de cada item">
-                    <span className={`text-[9px] font-medium ${subtleText}`}>Auto roteiro</span>
-                    <Switch checked={autoRoteiro} onCheckedChange={setAutoRoteiro} className="scale-75" />
-                  </label>
-                )}
-              </div>
-              {/* Roteiro list */}
-              <div className="flex flex-col gap-0.5 p-2">
-                {roteiro.map((it, idx) => {
-                  const active = idx === currentItemIdx;
-                  if (it.kind === "block") {
-                    const b = it.data as any;
-                    return (
-                      <button
-                        key={`mblock-${b.id}`}
-                        onClick={() => { selectItem(idx); setShowMobileSongList(false); }}
-                        className={`flex items-start gap-2 rounded-lg px-2.5 py-2 transition-all text-left border-l-2 ${
-                          active ? "bg-primary/15 border-primary" : `border-primary/40 opacity-70 hover:opacity-100 ${hoverBg}`
-                        }`}
-                      >
-                        <Timer className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
-                        <div className="min-w-0">
-                          <div className={`text-xs font-semibold truncate ${active ? "" : subtleText}`}>{b.title}</div>
-                          <div className={`text-[10px] ${subtleText} truncate`}>
-                            {(b.kind && b.kind !== "moment") ? b.kind : "Momento"}
-                            {b.duration_min ? ` · ${b.duration_min} min` : ""}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  }
-                  const s = it.data as any;
-                  return (
-                    <button
-                      key={`msong-${s.id}-${idx}`}
-                      onClick={() => { selectItem(idx); setShowMobileSongList(false); }}
-                      className={`flex items-center gap-2 rounded-lg px-2.5 py-2 transition-all text-left ${
-                        active ? "bg-primary/15 border border-primary/30" : `border border-transparent opacity-70 hover:opacity-100 ${hoverBg}`
-                      }`}
-                    >
-                      <div className="w-7 h-7 rounded-md overflow-hidden shrink-0">
-                        {s.cover_path && coverUrls[s.cover_path] ? (
-                          <img src={coverUrls[s.cover_path]} alt={s.title} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className={`w-full h-full ${accentBg} flex items-center justify-center text-[9px] font-bold ${subtleText}`}>
-                            {s.title?.[0]?.toUpperCase() || "♪"}
-                          </div>
-                        )}
-                      </div>
-                      <span className={`text-xs font-medium truncate ${active ? "" : subtleText}`}>
-                        {s.title}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
         </div>
 
         {/* Lateral touch zones — only in padrao mode */}
@@ -2180,32 +2372,32 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
         {/* Content Viewer */}
         <div className="flex-1 flex items-center justify-center px-6 pb-6 lg:px-12 lg:pb-12 overflow-hidden z-0" style={{ paddingTop: topBarH ? topBarH + 12 : undefined }}>
           {activeBlock ? (
-            <div className="text-center space-y-5 animate-in fade-in max-w-2xl">
+            <div className="max-w-2xl space-y-4 text-center animate-in fade-in">
               {(activeBlock.kind && activeBlock.kind !== "moment") && (
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">{activeBlock.kind}</p>
+                <p className="text-subhead font-semibold text-muted-foreground">{activeBlock.kind}</p>
               )}
-              <h1 className="text-4xl lg:text-6xl font-bold leading-tight">{activeBlock.title}</h1>
+              <h1 className="text-large-title lg:text-6xl lg:leading-tight lg:tracking-normal">{activeBlock.title}</h1>
               {activeBlock.notes && (
-                <p className={`text-lg lg:text-xl leading-relaxed whitespace-pre-wrap ${subtleText}`}>{activeBlock.notes}</p>
+                <p className="whitespace-pre-wrap text-title3 font-normal text-muted-foreground lg:text-2xl">{activeBlock.notes}</p>
               )}
               {currentItemDuration > 0 && (
-                <p className="text-5xl font-bold text-primary tabular-nums pt-2">
+                <p className="pt-2 text-7xl font-light tabular-nums tracking-tight">
                   {formatTime(autoRoteiro ? blockRemaining : currentItemDuration)}
                 </p>
               )}
               {currentItemIdx < roteiro.length - 1 && (
-                <Button onClick={() => selectItem(currentItemIdx + 1)} className="rounded-xl gap-2 mt-2">
-                  <SkipForward className="h-4 w-4" /> Próximo
+                <Button size="lg" onClick={() => selectItem(currentItemIdx + 1)} className="mt-2 gap-2">
+                  <SkipForward fill="currentColor" aria-hidden="true" /> Próximo
                 </Button>
               )}
             </div>
           ) : countdown !== null ? (
-            <div className="text-center space-y-4 animate-in fade-in">
-              <p className={`${subtleText} text-lg`}>Próxima música em</p>
-              <p className="text-6xl font-bold text-primary tabular-nums">{countdown}</p>
-              <p className="text-xl font-medium">{(songs[songIdx + 1] as any)?.title}</p>
-              <Button onClick={goNextSong} className="rounded-xl gap-2 mt-4">
-                <SkipForward className="h-4 w-4" /> Ir agora
+            <div className="space-y-3 text-center animate-in fade-in">
+              <p className="text-title3 font-normal text-muted-foreground">Próxima música em</p>
+              <p className="text-8xl font-light tabular-nums tracking-tight">{countdown}</p>
+              <p className="text-title2">{(songs[songIdx + 1] as any)?.title}</p>
+              <Button size="lg" onClick={goNextSong} className="mt-4 gap-2">
+                <SkipForward fill="currentColor" aria-hidden="true" /> Ir agora
               </Button>
             </div>
           ) : activeText ? (
@@ -2225,77 +2417,32 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
               artist={(currentSong as any)?.artist ?? null}
             />
           ) : (
-            <p className={subtleText}>Sem cifra disponível para esta música.</p>
+            <p className="text-body text-muted-foreground">Sem cifra disponível para esta música.</p>
           )}
         </div>
 
-        {/* Right Sidebar — Song list (vertical) + Chord Diagrams */}
+        {/* Right Sidebar — roteiro (lista agrupada) + Chord Diagrams */}
         {countdown === null && (
-          <div className={`hidden lg:flex flex-col ${isVoz ? "w-44" : "w-56"} border-l ${borderSubtle} overflow-y-auto z-20`}>
-            {/* Roteiro — vertical (músicas + blocos do culto) */}
-            <div className={`flex flex-col gap-1 p-3 border-b ${borderSubtle}`}>
-              <div className="flex items-center justify-between px-1 mb-1">
-                <span className={`text-[10px] font-semibold uppercase tracking-wider ${subtleText}`}>
-                  {hasBlocks ? "Roteiro" : "Repertório"}
-                </span>
-                {hasBlocks && (
-                  <label className="flex items-center gap-1.5 cursor-pointer" title="Avançar automaticamente pelo tempo de cada item">
-                    <span className={`text-[9px] font-medium ${subtleText}`}>Auto</span>
-                    <Switch checked={autoRoteiro} onCheckedChange={setAutoRoteiro} className="scale-75" />
-                  </label>
-                )}
-              </div>
-              {roteiro.map((it, idx) => {
-                const active = idx === currentItemIdx;
-                if (it.kind === "block") {
-                  const b = it.data as any;
-                  return (
-                    <button
-                      key={`block-${b.id}`}
-                      onClick={() => selectItem(idx)}
-                      className={`flex items-start gap-2 rounded-lg px-2 py-1.5 transition-all text-left border-l-2 ${
-                        active ? "bg-primary/15 border-primary" : `border-primary/40 opacity-60 hover:opacity-100 ${hoverBg}`
-                      }`}
-                    >
-                      <Timer className="h-3.5 w-3.5 mt-0.5 shrink-0 text-primary" />
-                      <div className="min-w-0">
-                        <div className={`text-[11px] font-semibold truncate ${active ? "" : subtleText}`}>{b.title}</div>
-                        <div className={`text-[9px] ${subtleText} truncate`}>
-                          {(b.kind && b.kind !== "moment") ? b.kind : "Momento"}
-                          {b.duration_min ? ` · ${b.duration_min} min` : ""}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                }
-                const s = it.data as any;
-                return (
-                  <button
-                    key={`song-${s.id}-${idx}`}
-                    onClick={() => selectItem(idx)}
-                    className={`flex items-center gap-2 rounded-lg px-2 py-1.5 transition-all text-left ${
-                      active ? "bg-primary/15 border border-primary/30" : `border border-transparent opacity-60 hover:opacity-100 ${hoverBg}`
-                    }`}
-                  >
-                    <div className="w-7 h-7 rounded-md overflow-hidden shrink-0">
-                      {s.cover_path && coverUrls[s.cover_path] ? (
-                        <img src={coverUrls[s.cover_path]} alt={s.title} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className={`w-full h-full ${accentBg} flex items-center justify-center text-[9px] font-bold ${subtleText}`}>
-                          {s.title?.[0]?.toUpperCase() || "♪"}
-                        </div>
-                      )}
-                    </div>
-                    <span className={`text-[11px] font-medium truncate ${active ? "" : subtleText}`}>
-                      {s.title}
-                    </span>
-                  </button>
-                );
-              })}
+          // Margem (não padding) abaixo da barra superior: ao rolar, a lista é cortada na borda da
+          // coluna em vez de passar por trás dos botões de vidro da barra.
+          <div className={`hidden lg:flex flex-col ${isVoz ? "w-56" : "w-64"} shrink-0 overflow-y-auto hide-scrollbar px-3 pb-3 z-20`} style={{ marginTop: belowTopBar.paddingTop }}>
+            {/* shrink-0 em todos os filhos: a coluna (overflow-y-auto) é quem rola; sem isso o cartão
+                encolhe, corta as últimas linhas e a coluna nunca transborda. */}
+            <div className="mb-1.5 flex min-h-11 shrink-0 items-center justify-between gap-2 px-1">
+              <h2 className="text-headline">{hasBlocks ? "Roteiro" : "Repertório"}</h2>
+              {hasBlocks && (
+                <label className="flex cursor-pointer items-center gap-2" title="Avançar automaticamente pelo tempo de cada item">
+                  <span className="text-footnote text-muted-foreground">Auto</span>
+                  <Switch checked={autoRoteiro} onCheckedChange={setAutoRoteiro} />
+                </label>
+              )}
+            </div>
+            <div className={`shrink-0 overflow-hidden rounded-card ${STAGE_SURFACE}`}>
+              <RoteiroRows variant="list" items={roteiro} currentIdx={currentItemIdx} coverUrls={coverUrls} onSelect={selectItem} />
             </div>
 
             {/* Chord diagrams (Voz/Cifra é controlado pelo RoleToggle no topo) */}
-            <div className="flex flex-col p-4 gap-3">
+            <div className="flex shrink-0 flex-col gap-3 p-4">
               {!isVoz && !isTransicao && chords.length > 0 && (
                 <div className="grid grid-cols-2 gap-3">
                   {chords.map((c) => (
@@ -2304,7 +2451,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
                 </div>
               )}
               {isVoz && (
-                <p className={`text-xs ${subtleText} text-center leading-relaxed`}>Modo voz: apenas letra</p>
+                <p className="text-center text-footnote text-muted-foreground">Modo voz: apenas letra</p>
               )}
             </div>
           </div>
@@ -2312,97 +2459,71 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
 
         {/* Mixer Panel */}
         {showMixer && hasTracks && !isMobile && countdown === null && (
-          <div className="order-first h-full shrink-0 pt-14" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-            <TrackMixer
-              tracks={songTracks}
-              trackStates={trackStates}
-              onTrackStatesChange={setTrackStates}
-              isDark={isDark}
-              onClose={() => setShowMixer(false)}
-              transpose={transpose}
-              onTransposeChange={setTranspose}
-              detectedKey={detectedKey}
-              detecting={detectingKey}
-              loading={stemsWanted && !stemsLoaded}
-            />
+          <div className={`${inspectorShell} w-[320px]`} style={belowTopBar} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+            <div className={inspectorCard}>
+              <TrackMixer
+                tracks={songTracks}
+                trackStates={trackStates}
+                onTrackStatesChange={setTrackStates}
+                isDark={isDark}
+                onClose={() => setShowMixer(false)}
+                transpose={transpose}
+                onTransposeChange={setTranspose}
+                detectedKey={detectedKey}
+                detecting={detectingKey}
+                loading={stemsWanted && !stemsLoaded}
+              />
+            </div>
           </div>
         )}
 
         {/* Loop Panel — desktop sidebar */}
         {showLoopPanel && !isMobile && currentSongId && countdown === null && (
-          <div className="order-first h-full shrink-0 w-[360px] pt-14 overflow-hidden" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-            <LoopPanel
-              songId={currentSongId}
-              currentTime={audioProgress}
-              duration={audioDuration}
-              isPlaying={audioPlaying}
-              isPreviewing={isPreviewingLoop}
-              onSeek={handleLoopSeek}
-              onTogglePlayback={togglePlay}
-              onPreview={handlePreviewLoop}
-              selectedLoops={selectedLoops}
-              activeLoopId={activeLoop?.id ?? null}
-              currentRepetition={currentRepetition}
-              playbackRate={playbackRate}
-              onSelectLoop={handleSelectLoop}
-              onRemoveLoop={handleRemoveLoop}
-              onPlaybackRateChange={handlePlaybackRateChange}
-              isDark={isDark}
-              onClose={closeLoopPanel}
-            />
+          <div className={`${inspectorShell} w-[360px] overflow-hidden`} style={belowTopBar} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+            <div className={inspectorCard}>
+              <LoopPanel
+                songId={currentSongId}
+                currentTime={audioProgress}
+                duration={audioDuration}
+                isPlaying={audioPlaying}
+                isPreviewing={isPreviewingLoop}
+                onSeek={handleLoopSeek}
+                onTogglePlayback={togglePlay}
+                onPreview={handlePreviewLoop}
+                selectedLoops={selectedLoops}
+                activeLoopId={activeLoop?.id ?? null}
+                currentRepetition={currentRepetition}
+                playbackRate={playbackRate}
+                onSelectLoop={handleSelectLoop}
+                onRemoveLoop={handleRemoveLoop}
+                onPlaybackRateChange={handlePlaybackRateChange}
+                isDark={isDark}
+                onClose={closeLoopPanel}
+              />
+            </div>
           </div>
         )}
 
         {/* Metronome Panel — desktop sidebar */}
         {showMetronome && !isMobile && countdown === null && (
-          <div className="order-first h-full shrink-0 w-72 pt-14 overflow-hidden" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-            <div className={`${isDark ? "bg-black/90" : "bg-white/90"} backdrop-blur-md border-r ${borderSubtle} h-full flex flex-col overflow-y-auto`}>
-              <div className={`flex items-center justify-between px-3 py-2.5 border-b ${borderSubtle}`}>
-                <div className="flex items-center gap-1.5">
-                  <Timer className="h-3.5 w-3.5" />
-                  <span className="text-xs font-semibold">Metrônomo</span>
-                </div>
-                <button onClick={() => setShowMetronome(false)} className={`p-1 rounded-lg ${hoverBg} transition-colors`}>
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <div className="p-4 flex flex-col gap-3">
-                <Metronome
-                  key={currentSongId}
-                  initialBpm={(currentSong as any)?.bpm ?? 100}
-                  onBpmChange={persistBpm}
-                  running={clickArmed ? audioPlaying : undefined}
-                />
-                <label className={`flex items-center justify-between gap-2 px-2 py-2 rounded-lg ${accentBg} cursor-pointer`}>
-                  <span className="text-xs font-medium">Tocar junto com a música</span>
-                  <Switch checked={clickArmed} onCheckedChange={setClickArmed} />
-                </label>
-              </div>
+          <div className={`${inspectorShell} w-[320px] overflow-hidden`} style={belowTopBar} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+            <div className={inspectorCard}>
+              <DrawerTitle className="sr-only">Metrônomo</DrawerTitle>
+            <PanelBar title="Metrônomo" onClose={() => setShowMetronome(false)} closeLabel="Fechar metrônomo" />
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-2">{metronomeBody}</div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Metronome — mobile drawer */}
+      {/* Metronome — mobile drawer (folha iOS opaca) */}
       {isMobile && (
         <Drawer open={showMetronome} onOpenChange={setShowMetronome}>
-          <DrawerContent className={`max-h-[60vh] bg-background text-foreground ${isDark ? "dark" : ""}`}>
-            <div className="px-4 pb-6 pt-2">
-              <div className="flex items-center gap-1.5 mb-4">
-                <Timer className="h-4 w-4" />
-                <span className="text-sm font-semibold">Metrônomo</span>
-              </div>
-              <Metronome
-                key={currentSongId}
-                initialBpm={(currentSong as any)?.bpm ?? 100}
-                onBpmChange={persistBpm}
-                running={clickArmed ? audioPlaying : undefined}
-              />
-              <label className={`mt-3 flex items-center justify-between gap-2 px-2 py-2 rounded-lg ${accentBg} cursor-pointer`}>
-                <span className="text-sm font-medium">Tocar junto com a música</span>
-                <Switch checked={clickArmed} onCheckedChange={setClickArmed} />
-              </label>
-            </div>
+          <DrawerContent className={`max-h-[70dvh] ${OPAQUE_SHEET} ${isDark ? "dark" : ""}`}>
+            <DrawerTitle className="sr-only">Metrônomo</DrawerTitle>
+            <PanelBar title="Metrônomo" onClose={() => setShowMetronome(false)} closeLabel="Fechar metrônomo" />
+            {/* Sem data-vaul-no-drag (como antes): a folha inteira arrasta para fechar — não há slider aqui. */}
+            <div className="min-h-0 overflow-y-auto px-4 pb-4 pt-2">{metronomeBody}</div>
           </DrawerContent>
         </Drawer>
       )}
@@ -2451,10 +2572,11 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
         />
       )}
 
-      {/* Mixer — mobile drawer (bandeja, igual ao loop e ao metrônomo) */}
+      {/* Mixer — mobile drawer (folha, igual ao loop e ao metrônomo) */}
       {isMobile && hasTracks && (
         <Drawer open={showMixer} onOpenChange={setShowMixer}>
-          <DrawerContent className={`max-h-[85vh] bg-background text-foreground ${isDark ? "dark" : ""}`}>
+          <DrawerContent className={`max-h-[85dvh] ${OPAQUE_SHEET} ${isDark ? "dark" : ""}`}>
+            <DrawerTitle className="sr-only">Mixer de faixas</DrawerTitle>
             <TrackMixer
               tracks={songTracks}
               trackStates={trackStates}
@@ -2476,7 +2598,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
       {!isTransicao && !isVoz && segments.length > 1 && countdown === null && !activeBlock && (
         <div
           ref={timelineRef}
-          className={`flex items-center gap-2 px-4 py-2 overflow-x-auto border-t ${borderSubtle}`}
+          className="flex items-center gap-2 overflow-x-auto px-4 py-2"
         >
           {segments.map((seg, i) => {
             const lines = seg.split("\n").filter(l => l.trim()).slice(0, 3);
@@ -2501,27 +2623,25 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
                     }
                   }
                 }}
-                className={`shrink-0 w-36 rounded-lg px-3 py-2 text-left transition-all border ${
+                className={`w-36 shrink-0 rounded-[16px] px-3 py-2 text-left transition-colors ${
                   i === segIdx
-                    ? "bg-primary text-primary-foreground shadow-md scale-105 border-primary"
+                    ? "bg-prominent text-prominent-foreground"
                     : i < segIdx
-                    ? `${accentBg} ${subtleText} border-transparent`
-                    : `${isDark ? "bg-white/5" : "bg-black/5"} ${subtleText} border-transparent ${hoverBg}`
+                    ? "bg-fill-tertiary text-muted-foreground"
+                    : "bg-fill-quaternary text-muted-foreground hover:bg-fill-tertiary"
                 }`}
               >
-                <div className="flex items-center justify-between mb-0.5">
-                  <span className="text-[9px] font-semibold uppercase tracking-wider opacity-60">
+                <div className="mb-0.5 flex items-center justify-between">
+                  <span className="text-caption2 font-semibold opacity-70">
                     Parte {i + 1}
                   </span>
                   {displayTs !== undefined && (
-                    <span className={`text-[9px] tabular-nums font-mono ${
-                      i === segIdx ? "opacity-80" : "text-primary opacity-70"
-                    }`}>
+                    <span className="font-mono text-caption2 tabular-nums opacity-70">
                       {formatTime(displayTs)}
                     </span>
                   )}
                 </div>
-                <pre className="font-mono text-[10px] leading-tight whitespace-pre-wrap line-clamp-3 overflow-hidden">
+                <pre className="line-clamp-3 overflow-hidden whitespace-pre-wrap font-mono text-caption2">
                   {preview}
                 </pre>
               </button>
@@ -2536,7 +2656,6 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
           segments={segments}
           timestamps={segmentTimestamps!}
           activeSegIdx={segIdx}
-          isDark={isDark}
           onSave={saveEditedTimestamps}
           onClose={() => setShowTimestampEditor(false)}
           onJump={(i, time) => {
@@ -2546,27 +2665,26 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
               setAudioProgress(time);
             }
           }}
-          subtleText={subtleText}
-          accentBg={accentBg}
-          borderSubtle={borderSubtle}
-          hoverBg={hoverBg}
         />
       )}
 
-      {/* Transport Controls — 3 linhas no mobile (play+timeline / funções / scroll), 1 linha no desktop */}
+      {/* Transport Controls — painel flutuante de vidro (no fluxo, nunca sobre a letra).
+          3 linhas no celular (play+timeline / funções / scroll), 1 linha no desktop.
+          Paisagem baixa (< lg e altura ≤ 500): 2 linhas — play+timeline / funções + scroll lado a lado. */}
       <div
-        className={`flex flex-col lg:flex-row lg:flex-nowrap lg:items-center gap-x-2 gap-y-2 lg:gap-y-0 px-4 py-2 border-t ${borderSubtle} ${transportBg} backdrop-blur-sm transition-opacity duration-300 z-50 ${
+        ref={transportRef}
+        className={`relative z-50 shrink-0 px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-1 transition-opacity duration-300 sm:px-3 lg:px-4 ${
           controlsVisible ? "opacity-100" : "opacity-0"
         }`}
       >
+        <div className="liquid-glass flex flex-col gap-y-1 rounded-[28px] px-2.5 py-2 lg:flex-row lg:flex-nowrap lg:items-center lg:gap-x-3 lg:px-3 [@media(max-width:1023px)_and_(max-height:500px)]:flex-row [@media(max-width:1023px)_and_(max-height:500px)]:flex-wrap [@media(max-width:1023px)_and_(max-height:500px)]:items-center [@media(max-width:1023px)_and_(max-height:500px)]:gap-x-3">
         {/* ===== Linha 1 — Play + Timeline ===== */}
-        <div className="flex items-center gap-2 w-full lg:flex-1 lg:min-w-0">
+        <div className="relative z-[4] flex w-full min-w-0 items-center gap-2.5 lg:flex-1">
           {/* Play button — desativado (visual) quando a música não está publicada;
               o clique ainda dispara o aviso "Música não publicada". */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className={`rounded-xl shrink-0 h-12 w-12 ${hoverBg} ${notPublished ? "opacity-40" : ""}`}
+          <button
+            type="button"
+            className={`grid h-12 w-12 shrink-0 place-items-center rounded-full bg-prominent text-prominent-foreground shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_4px_12px_-4px_var(--lg-shadow)] transition-transform duration-200 active:scale-95 motion-reduce:transition-none ${notPublished ? "opacity-40" : ""}`}
             onClick={togglePlay}
             aria-disabled={notPublished}
             aria-label={audioPlaying || buffering || isPlaying ? "Pausar música" : "Reproduzir música"}
@@ -2576,19 +2694,21 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
                 com som parado); sem áudio, segue o timer de rolagem da letra. */}
             {(hasAudioFile || hasTracks)
               ? (buffering
-                  ? <Loader2 className="h-6 w-6 animate-spin" />
-                  : audioPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />)
-              : isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
-          </Button>
+                  ? <Loader2 className="h-[22px] w-[22px] animate-spin" aria-hidden="true" />
+                  : audioPlaying ? <Pause className="h-[22px] w-[22px]" fill="currentColor" aria-hidden="true" /> : <Play className="ml-0.5 h-[22px] w-[22px]" fill="currentColor" aria-hidden="true" />)
+              : isPlaying ? <Pause className="h-[22px] w-[22px]" fill="currentColor" aria-hidden="true" /> : <Play className="ml-0.5 h-[22px] w-[22px]" fill="currentColor" aria-hidden="true" />}
+          </button>
 
-          {/* Audio timeline */}
+          {/* Audio timeline — barra fina estilo Música (cresce ao tocar) */}
           {hasAudioFile ? (
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              <span className={`text-[10px] ${subtleText} tabular-nums whitespace-nowrap`}>
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              {/* gap-3: o botão de 14px no início da trilha não encosta no tempo decorrido. */}
+              <span className="w-8 shrink-0 text-right text-caption2 tabular-nums text-foreground/70">
                 {formatTime(audioProgress)}
               </span>
+              {/* lg:min-w: na linha única do desktop a trilha nunca some (os rótulos cedem espaço). */}
               <div
-                className="relative flex-1 min-w-0 mx-1 py-2.5 cursor-pointer touch-none select-none"
+                className="group relative min-w-0 flex-1 cursor-pointer touch-none select-none py-3 lg:min-w-[120px]"
                 onPointerDown={(e) => {
                   if (!audioDuration) return;
                   e.currentTarget.setPointerCapture(e.pointerId);
@@ -2603,33 +2723,33 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
                   seekToTime(pct * audioDuration);
                 }}
               >
-                <div className={`relative h-3 rounded-full ${accentBg}`}>
-                  {/* Loop markers on progress bar */}
+                <div className="relative h-1.5 rounded-full bg-fill transition-[height] duration-150 group-active:h-2.5 motion-reduce:transition-none">
+                  {/* Loop markers on progress bar (cores do sistema) */}
                   {audioDuration > 0 && allLoops.map((loop, i) => {
                     const isActive = activeLoop?.id === loop.id;
                     const isSelected = selectedLoops.some((selected) => selected.id === loop.id);
                     const colors = [
-                      "bg-blue-400/30",
-                      "bg-green-400/30",
-                      "bg-amber-400/30",
-                      "bg-pink-400/30",
-                      "bg-purple-400/30",
-                      "bg-cyan-400/30",
+                      "bg-ios-blue/35",
+                      "bg-ios-green/35",
+                      "bg-ios-orange/35",
+                      "bg-ios-yellow/40",
+                      "bg-ios-red/30",
+                      "bg-ios-gray/40",
                     ];
                     const activeColors = [
-                      "bg-blue-500/50",
-                      "bg-green-500/50",
-                      "bg-amber-500/50",
-                      "bg-pink-500/50",
-                      "bg-purple-500/50",
-                      "bg-cyan-500/50",
+                      "bg-ios-blue/70",
+                      "bg-ios-green/70",
+                      "bg-ios-orange/70",
+                      "bg-ios-yellow/80",
+                      "bg-ios-red/60",
+                      "bg-ios-gray/70",
                     ];
                     return (
                       <div
                         key={loop.id}
                         className={`absolute top-0 bottom-0 rounded-full pointer-events-none ${
                           isSelected ? activeColors[i % activeColors.length] : colors[i % colors.length]
-                        } ${isActive ? "ring-1 ring-primary" : ""}`}
+                        } ${isActive ? "ring-1 ring-foreground/60" : ""}`}
                         style={{
                           left: `${(loop.start_time / audioDuration) * 100}%`,
                           width: `${((loop.end_time - loop.start_time) / audioDuration) * 100}%`,
@@ -2638,29 +2758,30 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
                     );
                   })}
                   <div
-                    className="h-full rounded-full bg-primary relative z-10"
+                    className="relative z-10 h-full rounded-full bg-foreground"
                     style={{ width: `${audioDuration ? (audioProgress / audioDuration) * 100 : 0}%` }}
                   />
                   {/* Thumb arrastável */}
                   <div
-                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-4 w-4 rounded-full bg-primary shadow-md ring-2 ring-background z-20 pointer-events-none"
+                    className="pointer-events-none absolute top-1/2 z-20 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground shadow-[0_1px_4px_var(--lg-shadow)] transition-transform duration-150 group-active:scale-125 motion-reduce:transition-none"
                     style={{ left: `${audioDuration ? (audioProgress / audioDuration) * 100 : 0}%` }}
                   />
                 </div>
               </div>
-              <span className={`text-[10px] ${subtleText} tabular-nums whitespace-nowrap`}>
+              <span className="w-8 shrink-0 text-caption2 tabular-nums text-foreground/70">
                 {formatTime(audioDuration)}
               </span>
               {!stemsLoaded && (
-                <div className="hidden sm:flex items-center gap-1 ml-1">
-                  <Music className={`h-3.5 w-3.5 ${subtleText}`} />
+                <div className="hidden items-center gap-1.5 sm:flex">
+                  <Volume2 className="h-4 w-4 text-muted-foreground" strokeWidth={2.25} aria-hidden="true" />
                   <Slider
                     value={[audioVolume]}
                     onValueChange={([v]) => handleVolumeChange(v)}
                     min={0}
                     max={1}
                     step={0.05}
-                    className="w-16"
+                    className="w-20"
+                    aria-label="Volume"
                   />
                 </div>
               )}
@@ -2668,76 +2789,83 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
           ) : null}
 
           {/* Minimizar / expandir a barra */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className={`rounded-xl shrink-0 h-9 w-9 ml-auto lg:ml-0 ${hoverBg} ${subtleText}`}
+          <button
+            type="button"
+            className={`${PLAIN_CIRCLE} ml-auto text-muted-foreground lg:ml-0`}
             onClick={() => setTransportMinimized((v) => !v)}
             title={transportMinimized ? "Expandir controles" : "Minimizar controles"}
+            aria-label={transportMinimized ? "Expandir controles" : "Minimizar controles"}
           >
-            {transportMinimized ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-          </Button>
+            {transportMinimized ? <ChevronUp className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" /> : <ChevronDown className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />}
+          </button>
         </div>
 
         {!transportMinimized && (
         <>
         {/* ===== Linha 2 — Funções ===== */}
-        <div className="flex items-center gap-1.5 w-full lg:w-auto">
+        <div className="relative z-[4] flex w-full items-center gap-1 lg:w-auto [@media(max-width:1023px)_and_(max-height:500px)]:w-auto">
           {/* Voltar música */}
-          <Button
-            variant="outline"
-            size="icon"
-            className={`rounded-xl shrink-0 h-11 w-11 border ${borderSubtle} ${hoverBg} disabled:opacity-30`}
+          <button
+            type="button"
+            className={PLAIN_CIRCLE}
             onClick={goPrevSong}
             disabled={isFirstSong}
             title="Música anterior"
+            aria-label="Música anterior"
           >
-            <SkipBack className="h-5 w-5" />
-          </Button>
+            <SkipBack className="h-5 w-5" fill="currentColor" aria-hidden="true" />
+          </button>
 
           {/* Mixer */}
           {hasTracks && (
-            <Button
-              variant="ghost"
-              className={`rounded-xl flex-1 min-w-0 h-11 gap-1.5 px-2 ${showMixer ? "text-primary bg-primary/10" : ""} ${hoverBg}`}
+            <button
+              type="button"
+              className={toolItem(showMixer)}
               onClick={() => setShowMixer((v) => !v)}
               title="Mixer de faixas"
+              aria-pressed={showMixer}
             >
-              <SlidersHorizontal className="h-4 w-4 shrink-0" />
-              <span className="text-xs font-medium truncate">Mixer</span>
-            </Button>
+              <SlidersHorizontal className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden="true" />
+              <span className="max-w-full truncate">Mixer</span>
+            </button>
           )}
 
           {/* Loop / Ensaio */}
           {hasAudioFile && (
-            <Button
-              variant="ghost"
-              className={`rounded-xl flex-1 min-w-0 h-11 gap-1.5 px-2 ${showLoopPanel ? "text-primary bg-primary/10" : ""} ${hoverBg}`}
+            <button
+              type="button"
+              className={toolItem(showLoopPanel)}
               onClick={() => { if (showLoopPanel) closeLoopPanel(); else setShowLoopPanel(true); }}
               title="Modo Ensaio"
+              aria-pressed={showLoopPanel}
             >
-              <Repeat className="h-4 w-4 shrink-0" />
-              <span className="text-xs font-medium truncate">Loop</span>
-            </Button>
+              <Repeat className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden="true" />
+              <span className="max-w-full truncate">Loop</span>
+            </button>
           )}
 
           {/* Tap / Metrônomo */}
-          <Button
-            variant="ghost"
-            className={`rounded-xl flex-1 min-w-0 h-11 gap-1.5 px-2 ${showMetronome || (clickArmed && audioPlaying) ? "text-primary bg-primary/10" : ""} ${hoverBg}`}
+          <button
+            type="button"
+            className={toolItem(showMetronome)}
             onClick={() => setShowMetronome((v) => !v)}
             title="Metrônomo / Tap"
+            aria-pressed={showMetronome}
           >
-            <Timer className="h-4 w-4 shrink-0" />
-            <span className="text-xs font-medium truncate">Tap</span>
-          </Button>
+            {/* A lente acompanha o painel (o mesmo estado do aria-pressed). O click tocando junto
+                com a música, com o painel fechado, aparece como um ponto de destaque. */}
+            {clickArmed && audioPlaying && !showMetronome && (
+              <span className="absolute right-[calc(50%-17px)] top-1.5 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+            )}
+            <Timer className={`h-5 w-5 shrink-0 ${clickArmed && audioPlaying ? "text-primary" : ""}`} strokeWidth={2.25} aria-hidden="true" />
+            <span className="max-w-full truncate">Tap</span>
+          </button>
 
         {/* Media button */}
         {hasMedia && !hasAudioFile && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className={`rounded-xl shrink-0 h-11 w-11 ${hoverBg} ${showMediaPlayer ? "text-primary" : ""}`}
+          <button
+            type="button"
+            className={`${PLAIN_CIRCLE} ${showMediaPlayer ? LENS_ON : ""}`}
             onClick={() => {
               if (youtubeId) {
                 setShowMediaPlayer((v) => !v);
@@ -2746,17 +2874,17 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
               }
             }}
             title="Tocar música"
+            aria-label="Tocar música"
           >
-            <Music className="h-5 w-5" />
-          </Button>
+            <Music className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
+          </button>
         )}
 
         {/* Edit timestamps */}
         {!isTransicao && hasSync && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className={`rounded-xl shrink-0 h-11 w-11 ${showTimestampEditor ? "text-primary" : ""} ${hoverBg}`}
+          <button
+            type="button"
+            className={`${PLAIN_CIRCLE} ${showTimestampEditor ? LENS_ON : ""}`}
             onClick={() => {
               setShowTimestampEditor((v) => {
                 const next = !v;
@@ -2768,62 +2896,70 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
               });
             }}
             title="Editar timestamps"
+            aria-label="Editar timestamps"
           >
-            <List className="h-5 w-5" />
-          </Button>
+            <List className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
+          </button>
         )}
 
           {/* Avançar música */}
-          <Button
-            variant="outline"
-            size="icon"
-            className={`rounded-xl shrink-0 h-11 w-11 border ${borderSubtle} ${hoverBg} disabled:opacity-30`}
+          <button
+            type="button"
+            className={PLAIN_CIRCLE}
             onClick={goNextSong}
             disabled={isLastSong}
             title="Próxima música"
+            aria-label="Próxima música"
           >
-            <SkipForward className="h-5 w-5" />
-          </Button>
+            <SkipForward className="h-5 w-5" fill="currentColor" aria-hidden="true" />
+          </button>
         </div>
 
         {/* ===== Linha 3 — Tempo de scroll ===== */}
-        <div className="flex items-center gap-2 w-full lg:w-auto lg:ml-auto">
-          <Button
-            variant="ghost"
-            size="icon"
-            className={`rounded-xl shrink-0 h-11 w-11 ${isAutoScrolling ? "text-primary bg-primary/10" : ""} ${hoverBg}`}
+        {/* Entre lg e xl a linha única não comporta os rótulos: Lento/Rápido e px/s só a partir de xl
+            (o ícone de velocidade continua), para a trilha de áudio não sumir. */}
+        <div className="relative z-[4] flex w-full items-center gap-2 lg:ml-auto lg:w-auto [@media(max-width:1023px)_and_(max-height:500px)]:w-auto [@media(max-width:1023px)_and_(max-height:500px)]:min-w-[220px] [@media(max-width:1023px)_and_(max-height:500px)]:flex-1">
+          <button
+            type="button"
+            className={`${PLAIN_CIRCLE} ${isAutoScrolling ? LENS_ON : ""}`}
             onClick={() => setIsAutoScrolling((v) => !v)}
             title={isAutoScrolling ? "Parar rolagem" : "Iniciar rolagem"}
+            aria-label={isAutoScrolling ? "Parar rolagem" : "Iniciar rolagem"}
+            aria-pressed={isAutoScrolling}
           >
-            <ChevronsDown className={`h-5 w-5 ${isAutoScrolling ? "animate-bounce" : ""}`} />
-          </Button>
-          <Gauge className={`h-3.5 w-3.5 ${subtleText} shrink-0 hidden md:block`} />
-          <span className={`text-[10px] ${subtleText} whitespace-nowrap`}>Lento</span>
+            <ChevronsDown className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
+          </button>
+          <Gauge className="hidden h-4 w-4 shrink-0 text-muted-foreground md:block" strokeWidth={2.25} aria-hidden="true" />
+          <span className="whitespace-nowrap text-caption1 text-muted-foreground lg:hidden xl:inline">Lento</span>
           <Slider
             value={[scrollSpeed]}
             onValueChange={([v]) => handleScrollSpeedChange(v)}
             min={5}
             max={120}
             step={1}
-            className="flex-1 lg:w-32 lg:flex-initial"
+            className="flex-1 lg:w-24 lg:flex-initial xl:w-32"
+            aria-label="Velocidade da rolagem"
           />
-          <span className={`text-[10px] ${subtleText} whitespace-nowrap`}>Rápido</span>
-          <span className={`text-[10px] font-mono ${subtleText} w-10 text-right hidden md:inline`}>{scrollSpeed}px/s</span>
+          <span className="whitespace-nowrap text-caption1 text-muted-foreground lg:hidden xl:inline">Rápido</span>
+          <span className="hidden w-12 text-right font-mono text-caption2 tabular-nums text-muted-foreground md:inline lg:hidden xl:inline">{scrollSpeed}px/s</span>
         </div>
         </>
         )}
+        </div>
       </div>
 
-      {/* YouTube Mini Player */}
+      {/* YouTube Mini Player — cartão flutuante logo acima da barra de transporte (como antes: não cobre
+          o início da letra nem as zonas de toque do topo). O ✕ fica no canto de fora, longe dos controles do vídeo. */}
       {showMediaPlayer && youtubeId && (
-        <div className="fixed bottom-24 right-4 z-50 rounded-xl overflow-hidden shadow-2xl border border-white/20">
-          <div className="relative">
-            <button
-              onClick={() => setShowMediaPlayer(false)}
-              className="absolute -top-2 -right-2 z-10 bg-black/80 text-white rounded-full p-1"
-            >
-              <X className="h-3 w-3" />
-            </button>
+        <div className="fixed right-4 z-50" style={{ bottom: (transportH || 88) + 8 }}>
+          <button
+            onClick={() => setShowMediaPlayer(false)}
+            aria-label="Fechar vídeo"
+            className="liquid-glass absolute -right-2 -top-2 z-10 grid h-8 w-8 place-items-center rounded-full text-foreground before:absolute before:-inset-1.5"
+          >
+            <X className="relative z-[4] h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
+          </button>
+          <div className="overflow-hidden rounded-[20px] bg-card shadow-[0_18px_40px_-12px_var(--lg-shadow)] ring-1 ring-separator">
             <iframe
               src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=1`}
               width="280"

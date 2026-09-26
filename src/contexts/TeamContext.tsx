@@ -42,6 +42,36 @@ interface TeamContextValue {
 }
 
 const STORAGE_KEY = "louvor_current_team";
+const CACHE_PREFIX = "louvor_team_cache:";
+
+type TeamSnapshot = { teams: TeamMembership[]; pendingTeams: PendingTeam[]; profileId: string | null };
+
+/** Id do usuário da sessão salva pelo supabase-js (sem rede), para separar o cache por conta. */
+function sessionUserId(): string | null {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && /^sb-.+-auth-token$/.test(k)) return JSON.parse(localStorage.getItem(k) || "null")?.user?.id ?? null;
+    }
+  } catch { /* sem storage */ }
+  return null;
+}
+// Última equipe carregada: o shell remonta (ex.: ao sair do Modo ensaio) e abre o app já com
+// abas e permissões, em vez de 1s de conteúdo vazio. Sempre revalidado em segundo plano;
+// as permissões reais continuam no servidor (RLS).
+function readTeamCache(): TeamSnapshot | null {
+  const uid = sessionUserId();
+  if (!uid) return null;
+  try { return JSON.parse(localStorage.getItem(CACHE_PREFIX + uid) || "null"); } catch { return null; }
+}
+function writeTeamCache(s: TeamSnapshot | null) {
+  const uid = sessionUserId();
+  if (!uid) return;
+  try {
+    if (s) localStorage.setItem(CACHE_PREFIX + uid, JSON.stringify(s));
+    else localStorage.removeItem(CACHE_PREFIX + uid);
+  } catch { /* sem storage */ }
+}
 
 const TeamContext = createContext<TeamContextValue>({
   currentTeam: null,
@@ -61,18 +91,20 @@ const TeamContext = createContext<TeamContextValue>({
 });
 
 export function TeamProvider({ children }: { children: ReactNode }) {
-  const [teams, setTeams] = useState<TeamMembership[]>([]);
-  const [pendingTeams, setPendingTeams] = useState<PendingTeam[]>([]);
+  const [cached] = useState(readTeamCache);
+  const [teams, setTeams] = useState<TeamMembership[]>(() => cached?.teams ?? []);
+  const [pendingTeams, setPendingTeams] = useState<PendingTeam[]>(() => cached?.pendingTeams ?? []);
   const [currentTeamId, setCurrentTeamId] = useState<string | null>(
     () => (typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null)
   );
-  const [profileId, setProfileId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [profileId, setProfileId] = useState<string | null>(() => cached?.profileId ?? null);
+  const [loading, setLoading] = useState(!cached);
 
-  const fetchTeams = useCallback(async () => {
-    setLoading(true);
+  // silent: revalidação da montagem com cache (não volta a "carregando"); refetch() segue como antes.
+  const fetchTeams = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setTeams([]); setPendingTeams([]); setProfileId(null); setLoading(false); return; }
+    if (!user) { writeTeamCache(null); setTeams([]); setPendingTeams([]); setProfileId(null); setLoading(false); return; }
 
     const { data: profile } = await supabase
       .from("profiles")
@@ -118,17 +150,18 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       .eq("profile_id", profile.id)
       .eq("status", "pending");
     const activeIds = new Set(list.map((t) => t.id));
-    setPendingTeams(
-      ((pendingReqs as any[]) ?? [])
-        .filter((r) => r.team_id && !activeIds.has(r.team_id))
-        .map((r) => ({ id: r.team_id, name: r.teams?.name ?? "Equipe", requestId: r.id }))
-    );
+    const pending = ((pendingReqs as any[]) ?? [])
+      .filter((r) => r.team_id && !activeIds.has(r.team_id))
+      .map((r) => ({ id: r.team_id, name: r.teams?.name ?? "Equipe", requestId: r.id }));
+    setPendingTeams(pending);
+    writeTeamCache({ teams: list, pendingTeams: pending, profileId: profile.id });
 
     setCurrentTeamId((prev) => (prev && list.some((t) => t.id === prev) ? prev : list[0]?.id ?? null));
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchTeams(); }, [fetchTeams]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchTeams({ silent: !!cached }); }, [fetchTeams]);
 
   useEffect(() => {
     if (typeof localStorage === "undefined") return;
@@ -160,7 +193,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
   return (
     <TeamContext.Provider
-      value={{ currentTeam, teams, pendingTeams, userRole, permissions, profileId, isAdmin, isEditor, isViewer, canEdit, can, loading, switchTeam, refetch: fetchTeams }}
+      value={{ currentTeam, teams, pendingTeams, userRole, permissions, profileId, isAdmin, isEditor, isViewer, canEdit, can, loading, switchTeam, refetch: () => fetchTeams() }}
     >
       {children}
     </TeamContext.Provider>

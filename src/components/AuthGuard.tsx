@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Loader } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -33,8 +34,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+      // Indicador de atividade do iOS (raios), discreto sobre o fundo do sistema.
+      <div role="status" className="flex min-h-dvh items-center justify-center bg-background">
+        <Loader className="size-7 animate-spin text-muted-foreground motion-reduce:animate-none" strokeWidth={2.25} aria-hidden="true" />
+        <span className="sr-only">Carregando…</span>
       </div>
     );
   }

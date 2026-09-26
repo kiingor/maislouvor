@@ -2,8 +2,6 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import * as Tone from "tone";
 import { supabase } from "@/integrations/supabase/client";
 import { Slider } from "@/components/ui/slider";
-import { Button } from "@/components/ui/button";
-import { GlassCard } from "@/components/GlassCard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Play, Pause, Volume2, VolumeX, RotateCcw, SlidersHorizontal, Loader2, Minus, Plus, Music2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -230,51 +228,74 @@ export function StemPreviewPlayer({
   const hasSolo = states.some((s) => s.solo);
   const targetKey = detectedKey ? transposeKeyName(detectedKey.pc, detectedKey.mode, semitones) : null;
 
+  // Lista agrupada iOS: um único card (sem card dentro de card), linhas com separador recuado.
+  const row =
+    "relative flex min-h-[52px] items-center gap-3 px-4 py-2.5 before:pointer-events-none before:absolute before:left-4 before:right-0 before:top-0 before:border-t before:border-separator first:before:hidden";
+  const stepBtn =
+    "grid h-11 min-w-[44px] place-items-center px-3 text-foreground transition-colors active:bg-fill-secondary disabled:opacity-30";
+  const toggleBtn =
+    "relative h-8 min-w-[44px] rounded-full px-2 text-footnote font-bold transition-colors after:absolute after:inset-x-0 after:-inset-y-1.5";
+
   return (
-    <GlassCard className="p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-sm font-semibold">
-          <SlidersHorizontal className="h-4 w-4" /> Mixer — ouvir as faixas
-        </div>
+    <div className="min-w-0">
+      <div className="mx-4 mb-1.5 flex items-center justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-1.5 text-footnote text-muted-foreground">
+          <SlidersHorizontal className="h-[15px] w-[15px] shrink-0" strokeWidth={2.25} aria-hidden="true" /> Mixer — ouvir as faixas
+        </span>
         <button
+          type="button"
           onClick={resetAll}
-          className="p-1.5 rounded-lg hover:bg-accent transition-colors text-muted-foreground"
+          className="-my-3 -mr-3 grid h-11 w-11 shrink-0 place-items-center rounded-full text-primary transition-colors active:bg-fill-tertiary"
           title="Redefinir volumes"
+          aria-label="Redefinir volumes"
         >
-          <RotateCcw className="h-3.5 w-3.5" />
+          <RotateCcw className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
         </button>
       </div>
 
-      {/* Transport */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={togglePlay}
-          disabled={loading}
-          className="h-10 w-10 shrink-0 rounded-full bg-foreground text-background flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-50"
-        >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
-        </button>
-        <span className="text-[11px] tabular-nums text-muted-foreground w-9 text-right">{fmt(current)}</span>
-        <Slider value={[current]} min={0} max={duration || 1} step={0.1} onValueChange={([v]) => seek(v)} className="flex-1" />
-        <span className="text-[11px] tabular-nums text-muted-foreground w-9">{fmt(duration)}</span>
-      </div>
-      {loading && <p className="text-[11px] text-muted-foreground text-center -mt-1">Carregando faixas…</p>}
+      <div className="overflow-hidden rounded-card bg-card">
+        {/* Transport (estilo mini player do Música) */}
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={togglePlay}
+              disabled={loading}
+              aria-label={playing ? "Pausar faixas" : "Ouvir faixas"}
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-prominent text-prominent-foreground transition-transform active:scale-95 disabled:opacity-50"
+            >
+              {loading ? (
+                <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden="true" />
+              ) : playing ? (
+                <Pause className="h-[18px] w-[18px]" fill="currentColor" aria-hidden="true" />
+              ) : (
+                <Play className="ml-0.5 h-[18px] w-[18px]" fill="currentColor" aria-hidden="true" />
+              )}
+            </button>
+            <span className="w-9 text-right text-caption1 tabular-nums text-muted-foreground">{fmt(current)}</span>
+            <Slider value={[current]} min={0} max={duration || 1} step={0.1} onValueChange={([v]) => seek(v)} className="flex-1" />
+            <span className="w-9 text-caption1 tabular-nums text-muted-foreground">{fmt(duration)}</span>
+          </div>
+          {loading && <p role="status" className="mt-1.5 text-center text-caption1 text-muted-foreground">Carregando faixas…</p>}
+        </div>
 
-      {/* Tom (key / pitch) */}
-      <div className="rounded-xl bg-accent/40 p-3 space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <Music2 className="h-3.5 w-3.5" /> Tom
+        {/* Tom (key / pitch) */}
+        <div className={row}>
+          <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[8px] bg-fill-tertiary text-muted-foreground" aria-hidden="true">
+            <Music2 className="h-[17px] w-[17px]" />
           </span>
+          <span className="min-w-0 flex-1 text-body text-foreground">Tom</span>
           {detecting ? (
-            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-              <Loader2 className="h-3 w-3 animate-spin" /> detectando…
+            <span className="flex items-center gap-1.5 text-footnote text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.25} aria-hidden="true" /> detectando…
             </span>
           ) : (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Tom orig.</span>
+            <div className="flex items-center gap-2">
+              <span className="text-footnote text-muted-foreground">Tom orig.</span>
               <Select value={detectedKey?.name ?? ""} onValueChange={handleSetKey}>
-                <SelectTrigger className="h-7 w-[68px] rounded-lg text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectTrigger className="h-11 w-[76px] rounded-full border-0 bg-fill-tertiary px-3 text-subhead font-semibold">
+                  <SelectValue placeholder="—" />
+                </SelectTrigger>
                 <SelectContent className="max-h-60">
                   {KEY_OPTIONS.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}
                 </SelectContent>
@@ -282,69 +303,81 @@ export function StemPreviewPlayer({
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl shrink-0" onClick={() => setSemitones((s) => Math.max(-6, s - 1))} disabled={semitones <= -6}>
-            <Minus className="h-4 w-4" />
-          </Button>
-          <div className="flex-1 text-center">
-            <div className="text-xl font-bold leading-none">
+        <div className={row}>
+          <div className="min-w-0 flex-1">
+            <div className="text-title2 tabular-nums text-foreground">
               {targetKey ?? (semitones === 0 ? "—" : `${semitones > 0 ? "+" : ""}${semitones}`)}
             </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">
+            <div className="text-footnote text-muted-foreground">
               {semitones === 0 ? "tom original" : `${semitones > 0 ? "+" : ""}${semitones} semitom${Math.abs(semitones) > 1 ? "s" : ""}`}
             </div>
           </div>
-          <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl shrink-0" onClick={() => setSemitones((s) => Math.min(6, s + 1))} disabled={semitones >= 6}>
-            <Plus className="h-4 w-4" />
-          </Button>
           {semitones !== 0 && (
-            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl shrink-0" onClick={() => setSemitones(0)} title="Voltar ao tom original">
-              <RotateCcw className="h-3.5 w-3.5" />
-            </Button>
+            <button
+              type="button"
+              onClick={() => setSemitones(0)}
+              title="Voltar ao tom original"
+              aria-label="Voltar ao tom original"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-fill-tertiary text-muted-foreground transition-colors active:bg-fill-secondary"
+            >
+              <RotateCcw className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
+            </button>
           )}
+          {/* Stepper iOS: cápsula − | + */}
+          <div className="flex h-11 shrink-0 items-center overflow-hidden rounded-full bg-fill-tertiary">
+            <button type="button" className={stepBtn} onClick={() => setSemitones((s) => Math.max(-6, s - 1))} disabled={semitones <= -6} aria-label="Descer meio tom">
+              <Minus className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
+            </button>
+            <span className="h-5 w-px bg-separator" aria-hidden="true" />
+            <button type="button" className={stepBtn} onClick={() => setSemitones((s) => Math.min(6, s + 1))} disabled={semitones >= 6} aria-label="Subir meio tom">
+              <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* Per-track mixer */}
-      <div className="space-y-3">
+        {/* Per-track mixer */}
         {states.map((track) => {
           const effMuted = track.muted || (hasSolo && !track.solo);
           return (
-            <div key={track.id} className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className={cn("text-xs font-medium truncate flex-1", effMuted && "opacity-40")}>{track.track_name}</span>
-                <div className="flex items-center gap-1">
+            <div key={track.id} className={cn(row, "flex-col items-stretch gap-1.5")}>
+              <div className="flex items-center gap-2">
+                <span className={cn("min-w-0 flex-1 truncate text-body", effMuted ? "text-muted-foreground" : "text-foreground")}>{track.track_name}</span>
+                <div className="flex items-center gap-1.5">
                   <button
+                    type="button"
                     onClick={() => toggleMute(track.id)}
-                    className={cn(
-                      "text-[10px] font-bold w-6 h-5 rounded flex items-center justify-center transition-colors",
-                      track.muted ? "bg-destructive/80 text-destructive-foreground" : "bg-accent text-muted-foreground"
-                    )}
+                    aria-pressed={track.muted}
+                    aria-label={`Mudo ${track.track_name}`}
+                    className={cn(toggleBtn, track.muted ? "bg-ios-red text-white" : "bg-fill-tertiary text-muted-foreground")}
                     title="Mudo"
                   >
                     M
                   </button>
                   <button
+                    type="button"
                     onClick={() => toggleSolo(track.id)}
-                    className={cn(
-                      "text-[10px] font-bold w-6 h-5 rounded flex items-center justify-center transition-colors",
-                      track.solo ? "bg-amber-500/80 text-black" : "bg-accent text-muted-foreground"
-                    )}
+                    aria-pressed={track.solo}
+                    aria-label={`Solo ${track.track_name}`}
+                    className={cn(toggleBtn, track.solo ? "bg-prominent text-prominent-foreground" : "bg-fill-tertiary text-muted-foreground")}
                     title="Solo"
                   >
                     S
                   </button>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                {effMuted ? <VolumeX className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <Volume2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+              <div className="flex items-center gap-2.5">
+                {effMuted ? (
+                  <VolumeX className="h-4 w-4 shrink-0 text-muted-foreground" strokeWidth={2.25} aria-hidden="true" />
+                ) : (
+                  <Volume2 className="h-4 w-4 shrink-0 text-muted-foreground" strokeWidth={2.25} aria-hidden="true" />
+                )}
                 <Slider value={[track.volume]} min={0} max={1} step={0.05} onValueChange={([v]) => setVolume(track.id, v)} className={cn("flex-1", effMuted && "opacity-40")} />
-                <span className="text-[10px] tabular-nums w-7 text-right text-muted-foreground">{Math.round(track.volume * 100)}</span>
+                <span className="w-8 text-right text-caption1 tabular-nums text-muted-foreground">{Math.round(track.volume * 100)}</span>
               </div>
             </div>
           );
         })}
       </div>
-    </GlassCard>
+    </div>
   );
 }

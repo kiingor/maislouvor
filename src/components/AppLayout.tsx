@@ -1,22 +1,28 @@
-import { useState, useEffect } from "react";
-import { useNavigate, Outlet } from "react-router-dom";
+import { useState, useEffect, Suspense } from "react";
+import { prefetchAppScreens } from "@/lib/routeLoaders";
+import { useNavigate, Outlet, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { syncPushSubscription, registerNativePush } from "@/lib/push";
 import { useTeam } from "@/contexts/TeamContext";
-import { Home, Music, LogOut, Menu, X, User, CalendarDays, CalendarCheck, MessageCircle, Megaphone, Sparkles, BarChart3 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Home, Music, LogOut, UserRound, CalendarDays, CalendarCheck, MessageCircle, Megaphone, BarChart3 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { TeamProvider } from "@/contexts/TeamContext";
+import { ShellProvider, useShell } from "@/contexts/ShellContext";
 import { NotificationBell } from "@/components/NotificationBell";
-import { BottomNav } from "@/components/BottomNav";
 import { SendNotificationModal } from "@/components/SendNotificationModal";
 import { TeamSwitcher } from "@/components/TeamSwitcher";
 import { BrandMark } from "@/components/BrandMark";
+import { AppearanceSegmented } from "@/components/AppearanceControl";
+import { TopBar } from "@/components/shell/TopBar";
+import { TabBar } from "@/components/shell/TabBar";
+import { ScrollEdge } from "@/components/shell/ScrollEdge";
 
 function AppLayoutInner() {
   const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
+  const shell = useShell()!;
   const [notifModalOpen, setNotifModalOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const { can } = useTeam();
 
   // Push: web (sync da assinatura) + nativo Android (registro FCM).
@@ -24,6 +30,27 @@ function AppLayoutInner() {
     syncPushSubscription();
     registerNativePush((link) => navigate(link));
   }, [navigate]);
+
+  // Pré-carrega as outras telas depois que o app abriu (troca de aba instantânea).
+  useEffect(() => {
+    const t = setTimeout(prefetchAppScreens, 1200);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Borda de rolagem superior só quando há conteúdo passando por baixo da barra.
+  useEffect(() => {
+    const el = shell.scrollEl;
+    if (!el) return;
+    const onScroll = () => setScrolled(el.scrollTop > 2);
+    onScroll();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [shell.scrollEl]);
+
+  // Cada tela começa do topo.
+  useEffect(() => {
+    shell.scrollEl?.scrollTo({ top: 0 });
+  }, [location.pathname, shell.scrollEl]);
 
   const navItems = [
     { title: "Início", href: "/app/home", icon: Home },
@@ -35,7 +62,7 @@ function AppLayoutInner() {
     { title: "Relatórios", href: "/app/relatorios", icon: BarChart3, resource: "cultos" as const, action: "editar" as const },
     // OCULTO até a gamificação ser liberada:
     // { title: "Jornada", href: "/app/gamificacao", icon: Sparkles },
-    { title: "Usuário", href: "/app/settings", icon: User },
+    { title: "Usuário", href: "/app/settings", icon: UserRound },
   ].filter((item) => !item.resource || can(item.resource, (item as any).action ?? "ver"));
 
   const handleLogout = async () => {
@@ -44,105 +71,98 @@ function AppLayoutInner() {
   };
 
   return (
-    <div className="min-h-screen flex bg-background relative overflow-hidden">
-      {/* Ambient glass orbs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-foreground/[0.03] blur-3xl" />
-        <div className="absolute top-1/3 -right-48 w-[500px] h-[500px] rounded-full bg-foreground/[0.02] blur-3xl" />
-        <div className="absolute -bottom-24 left-1/3 w-80 h-80 rounded-full bg-foreground/[0.03] blur-3xl" />
-      </div>
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-foreground/10 backdrop-blur-sm z-40 lg:hidden animate-in-fade"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      <aside
-        className={cn(
-          "fixed lg:sticky top-0 left-0 z-50 h-screen w-64 flex flex-col transition-transform duration-300 ease-out",
-          "lg:translate-x-0",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        )}
-      >
-        <div className="m-3 flex-1 flex flex-col rounded-2xl glass-sidebar overflow-hidden">
-          <div className="flex items-center justify-between p-5 pb-4">
-            <div className="flex items-center gap-2.5">
-              <div className="h-9 w-9 rounded-md bg-foreground flex items-center justify-center shadow-lg">
-                <BrandMark className="h-5 w-5 text-background" />
-              </div>
-              <div>
-                <span className="text-lg font-semibold tracking-tight leading-none">+Louvor</span>
-                <span className="block text-[10px] font-light text-muted-foreground tracking-wide">Gestão de Louvor</span>
-              </div>
+    <div className="h-[100dvh] flex bg-background overflow-hidden">
+      {/* Desktop: barra lateral de vidro flutuante (estilo iPadOS). */}
+      <aside className="hidden lg:flex w-72 shrink-0 p-3">
+        <div className="liquid-glass-thick flex-1 flex flex-col rounded-[26px] overflow-hidden">
+          <div className="relative z-[4] flex items-center gap-2.5 px-5 pt-5 pb-4">
+            {/* Mesma cor do ícone do app (grafite da marca) nos dois temas. */}
+            <div className="h-9 w-9 rounded-[10px] bg-[#1C1B17] dark:ring-1 dark:ring-inset dark:ring-white/10 flex items-center justify-center">
+              <BrandMark className="h-5 w-5 text-white" />
             </div>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="lg:hidden p-1 rounded-lg hover:bg-white/10 transition-colors"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <div>
+              <span className="block text-headline leading-none">+Louvor</span>
+              <span className="block text-caption1 text-muted-foreground mt-1">Gestão de Louvor</span>
+            </div>
           </div>
 
-          <div className="px-3 pb-3">
+          <div className="relative z-[4] px-3 pb-3">
             <TeamSwitcher />
           </div>
 
-          <nav className="flex-1 px-3 space-y-0.5">
+          <nav className="relative z-[4] flex-1 px-3 space-y-0.5 overflow-y-auto" aria-label="Seções">
             {navItems.map((item) => (
               <NavLink
                 key={item.href}
                 to={item.href}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-all duration-200"
-                activeClassName="bg-accent/80 text-foreground shadow-sm"
-                onClick={() => setSidebarOpen(false)}
+                className="flex items-center gap-3 h-11 px-3 rounded-[12px] text-subhead font-medium text-foreground hover:bg-fill-tertiary transition-colors"
+                activeClassName="bg-fill-secondary !text-primary font-semibold"
               >
-                <item.icon className="h-4 w-4" />
+                <item.icon className="h-[19px] w-[19px]" strokeWidth={2} aria-hidden="true" />
                 {item.title}
               </NavLink>
             ))}
           </nav>
 
-          <div className="p-3 border-t border-white/[0.08] space-y-0.5">
+          <div className="relative z-[4] p-3 border-t border-separator space-y-0.5">
+            <div className="px-1 pb-2">
+              <AppearanceSegmented compact />
+            </div>
             {can("avisos", "editar") && (
               <button
-                onClick={() => { setNotifModalOpen(true); setSidebarOpen(false); }}
-                className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-all duration-200"
+                onClick={() => setNotifModalOpen(true)}
+                className="flex items-center gap-3 w-full h-11 px-3 rounded-[12px] text-subhead font-medium hover:bg-fill-tertiary transition-colors"
               >
-                <Megaphone className="h-4 w-4" />
+                <Megaphone className="h-[19px] w-[19px]" aria-hidden="true" />
                 Enviar aviso
               </button>
             )}
-            <div className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-all duration-200">
+            <div className="flex items-center gap-3 w-full min-h-11 px-3 rounded-[12px] text-subhead font-medium hover:bg-fill-tertiary transition-colors">
               <NotificationBell variant="sidebar" />
             </div>
             <button
               onClick={handleLogout}
-              className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-200"
+              className="flex items-center gap-3 w-full h-11 px-3 rounded-[12px] text-subhead font-medium text-ios-red hover:bg-ios-red/10 transition-colors"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-[19px] w-[19px]" aria-hidden="true" />
               Sair
             </button>
           </div>
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="shrink-0 z-30 flex items-center gap-2 px-4 lg:hidden pt-[max(env(safe-area-inset-top),1rem)] pb-1 min-h-[calc(3.25rem+env(safe-area-inset-top))]">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-2 rounded-xl hover:bg-accent transition-colors shrink-0"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-          <TeamSwitcher compact />
-        </header>
-
-        <main className="flex-1 overflow-y-auto p-4 lg:px-8 lg:pt-6 lg:pb-8 pb-[calc(4rem+env(safe-area-inset-bottom))]">
-          <Outlet />
+      {/* Coluna de conteúdo: camada de conteúdo rolável + camada funcional flutuante. */}
+      <div className="relative flex-1 min-w-0 h-full overflow-hidden">
+        <main
+          ref={shell.setScrollEl}
+          className="shell-scroll absolute inset-0 overflow-y-auto overflow-x-hidden"
+        >
+          <div className="mx-auto w-full max-w-6xl px-4 min-[430px]:px-5 lg:px-8 pt-[calc(max(env(safe-area-inset-top),12px)+56px)] lg:pt-8 pb-[calc(max(env(safe-area-inset-bottom),8px)+96px)] lg:pb-10">
+            {/* Suspense aqui dentro: se uma tela ainda estiver baixando, só o conteúdo espera —
+                barras, abas e equipe continuam montadas (antes o app inteiro virava "Carregando…"). */}
+            <Suspense fallback={<div className="min-h-[60dvh]" aria-busy="true" />}>
+              <Outlet />
+            </Suspense>
+          </div>
         </main>
 
-        <BottomNav hidden={sidebarOpen} />
+        {/* Celular: borda de rolagem progressiva sob as barras flutuantes. */}
+        {!shell.hideTopBar && (
+          <ScrollEdge
+            position="top"
+            active={scrolled}
+            className="lg:hidden"
+            style={{ height: "calc(max(env(safe-area-inset-top), 12px) + 66px)", top: 0 }}
+          />
+        )}
+        <ScrollEdge
+          position="bottom"
+          active={!shell.hideTabBar}
+          className={shell.hideTabBar ? "hidden" : "lg:hidden"}
+          style={{ height: "calc(max(env(safe-area-inset-bottom), 8px) + 92px)", bottom: 0 }}
+        />
+        <TopBar onSendNotice={() => setNotifModalOpen(true)} onLogout={handleLogout} />
+        <TabBar hidden={shell.hideTabBar} />
         <SendNotificationModal open={notifModalOpen} onOpenChange={setNotifModalOpen} />
       </div>
     </div>
@@ -152,7 +172,9 @@ function AppLayoutInner() {
 export function AppLayout() {
   return (
     <TeamProvider>
-      <AppLayoutInner />
+      <ShellProvider>
+        <AppLayoutInner />
+      </ShellProvider>
     </TeamProvider>
   );
 }

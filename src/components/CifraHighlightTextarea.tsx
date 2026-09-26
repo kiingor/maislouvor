@@ -25,14 +25,22 @@ function lineKind(line: string): LineKind {
  * Highlight is line-based (same `isChordLine` used by the transpose), so the colored
  * lines are exactly the ones that get transposed — no surprises.
  */
+/**
+ * Tipografia compartilhada pelo <pre> e pelo <textarea>: precisam ser IDÊNTICAS (fonte,
+ * tamanho, entrelinha, espaçamento, padding e quebra), senão o cursor se desalinha.
+ * Mono de 15pt: mais legível que 14 sem perder muitas colunas no iPhone (o viewport do
+ * app já impede o zoom do Safari ao focar).
+ */
+const EDITOR_TYPE = "m-0 px-4 py-3.5 font-mono text-subhead leading-6 tracking-normal whitespace-pre-wrap break-words";
+
 export function CifraHighlightTextarea({ value, className, readOnly, placeholder, ...rest }: Props) {
   const lines = value.split("\n");
 
   return (
-    <div className={cn("relative rounded-xl glass-input overflow-hidden", className)}>
+    <div className={cn("relative overflow-hidden rounded-card bg-card text-foreground", className)}>
       <pre
         aria-hidden
-        className="m-0 p-4 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words min-h-[260px] pointer-events-none"
+        className={cn(EDITOR_TYPE, "min-h-[260px] pointer-events-none")}
         style={{ wordBreak: "break-word" }}
       >
         {lines.map((ln, i) => {
@@ -41,7 +49,7 @@ export function CifraHighlightTextarea({ value, className, readOnly, placeholder
             kind === "chord"
               ? "text-primary font-semibold"
               : kind === "section"
-              ? "text-primary/60 font-semibold"
+              ? "text-muted-foreground font-semibold"
               : undefined;
           return (
             <span key={i} className={cls}>
@@ -57,7 +65,10 @@ export function CifraHighlightTextarea({ value, className, readOnly, placeholder
         readOnly={readOnly}
         placeholder={placeholder}
         spellCheck={false}
-        className="absolute inset-0 h-full w-full m-0 p-4 border-0 font-mono text-sm leading-relaxed bg-transparent text-transparent caret-foreground resize-none overflow-hidden whitespace-pre-wrap break-words focus:outline-none focus:ring-0 placeholder:text-muted-foreground/60"
+        className={cn(
+          EDITOR_TYPE,
+          "absolute inset-0 h-full w-full border-0 bg-transparent text-transparent caret-primary resize-none overflow-hidden focus:outline-none focus:ring-0 focus-visible:outline-none placeholder:text-label-tertiary",
+        )}
         style={{ wordBreak: "break-word" }}
         {...rest}
       />

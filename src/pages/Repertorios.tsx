@@ -1,24 +1,54 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
-import { GlassCard } from "@/components/GlassCard";
-import { GlassInput } from "@/components/GlassInput";
-import { SongCard } from "@/components/SongCard";
+import { SongCard, SongList, SongSearchField } from "@/components/SongCard";
 import { AddSongModal } from "@/components/AddSongModal";
 import { RepertorioModal } from "@/components/RepertorioModal";
 import { SetlistGeneratorModal } from "@/components/SetlistGeneratorModal";
 import { CreateTeamModal } from "@/components/CreateTeamModal";
+import { PageHeader } from "@/components/shell/PageHeader";
+import { ToolbarButton } from "@/components/shell/ToolbarButton";
 import { Button } from "@/components/ui/button";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Music, Plus, MoreVertical, Pencil, Trash2, Users, BarChart3, Sparkles, ListMusic, Search } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Music, Plus, MoreHorizontal, Pencil, Trash2, Users, Sparkles, ListMusic, ChevronRight, type LucideIcon } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { lazy, Suspense } from "react";
 
 const RepertorioDashboard = lazy(() => import("@/components/RepertorioDashboard"));
+
+/** Estado vazio (spec §5): símbolo 28pt terciário, título Body secundário e, se houver, uma ação. */
+function EmptyState({ icon: Icon, title, description, action }: { icon: LucideIcon; title: string; description?: string; action?: ReactNode }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-card bg-card px-6 py-10 text-center">
+      <Icon className="mb-3 h-7 w-7 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+      <h3 className="text-body text-muted-foreground">{title}</h3>
+      {description && <p className="mt-1 max-w-xs text-footnote text-muted-foreground">{description}</p>}
+      {action && <div className="mt-5">{action}</div>}
+    </div>
+  );
+}
+
+/** Linhas-fantasma dentro de um grupo enquanto carrega. */
+function SkeletonRows({ count, artwork = false }: { count: number; artwork?: boolean }) {
+  return (
+    <div className="overflow-hidden rounded-card bg-card" aria-hidden="true">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="relative flex min-h-[60px] items-center gap-3 px-4 py-2.5">
+          {i > 0 && <span className={`absolute right-0 top-0 border-t border-separator ${artwork ? "left-[72px]" : "left-[58px]"}`} />}
+          <span className={`shrink-0 animate-pulse bg-fill-tertiary ${artwork ? "h-11 w-11 rounded-[10px]" : "h-[30px] w-[30px] rounded-[8px]"}`} />
+          <span className="flex-1 space-y-1.5">
+            <span className="block h-4 w-2/5 animate-pulse rounded-full bg-fill-tertiary" />
+            <span className="block h-3 w-1/4 animate-pulse rounded-full bg-fill-quaternary" />
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function Repertorios() {
   const { currentTeam, can, loading: teamLoading } = useTeam();
@@ -103,206 +133,209 @@ export default function Repertorios() {
     setDeleteSong(null);
   };
 
+  const openCreate = () => { setEditId(null); setEditName(""); setCreateOpen(true); };
+
   // No team yet
   if (!teamLoading && !currentTeam) {
     return (
       <div className="animate-in-up">
-        <GlassCard className="p-12 flex flex-col items-center justify-center text-center">
-          <div className="h-16 w-16 rounded-2xl bg-accent flex items-center justify-center mb-4">
-            <Users className="h-7 w-7 text-muted-foreground" />
-          </div>
-          <h3 className="text-lg font-medium mb-1">Crie sua equipe</h3>
-          <p className="text-muted-foreground text-sm max-w-xs mb-6">
-            Crie uma equipe para começar a organizar seus repertórios.
-          </p>
-          <Button className="rounded-xl gap-2" onClick={() => setCreateTeamOpen(true)}>
-            <Plus className="h-4 w-4" /> Criar equipe
-          </Button>
-        </GlassCard>
+        <PageHeader title="Repertórios" />
+        <EmptyState
+          icon={Users}
+          title="Crie sua equipe"
+          description="Crie uma equipe para começar a organizar seus repertórios."
+          action={
+            <Button onClick={() => setCreateTeamOpen(true)}>
+              <Plus aria-hidden="true" /> Criar equipe
+            </Button>
+          }
+        />
         <CreateTeamModal open={createTeamOpen} onOpenChange={setCreateTeamOpen} />
       </div>
     );
   }
 
+  // Ações da barra superior: dependem do segmento ativo (HIG > Toolbars).
+  const actions =
+    activeTab === "repertorios" && canEdit ? (
+      <>
+        <ToolbarButton icon={<Sparkles />} aria-label="Gerar setlist" title="Gerar setlist" onClick={() => setGenerateOpen(true)} />
+        <ToolbarButton icon={<Plus strokeWidth={2.25} />} aria-label="Novo repertório" title="Novo repertório" onClick={openCreate} />
+      </>
+    ) : activeTab === "musicas" && canEditSongs ? (
+      <ToolbarButton icon={<Plus strokeWidth={2.25} />} aria-label="Nova música" title="Nova música" onClick={() => setAddLibraryOpen(true)} />
+    ) : undefined;
+
   return (
-    <div className="animate-in-up">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Repertórios</h1>
-          <p className="text-muted-foreground text-sm mt-1">Organize as músicas da sua equipe</p>
-        </div>
-        {canEdit && activeTab === "repertorios" && (
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setGenerateOpen(true)} className="rounded-xl gap-2">
-              <Sparkles className="h-4 w-4" /> <span className="hidden sm:inline">Gerar setlist</span>
-            </Button>
-            <Button onClick={() => { setEditId(null); setEditName(""); setCreateOpen(true); }} className="rounded-xl gap-2">
-              <Plus className="h-4 w-4" /> Novo
-            </Button>
-          </div>
-        )}
-        {canEditSongs && activeTab === "musicas" && (
-          <Button onClick={() => setAddLibraryOpen(true)} className="rounded-xl gap-2">
-            <Plus className="h-4 w-4" /> Nova música
-          </Button>
-        )}
-      </div>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="mb-6">
-          <TabsTrigger value="repertorios" className="gap-1.5">
-            <Music className="h-3.5 w-3.5" /> Repertórios
-          </TabsTrigger>
-          <TabsTrigger value="musicas" className="gap-1.5">
-            <ListMusic className="h-3.5 w-3.5" /> Músicas
-          </TabsTrigger>
-          <TabsTrigger value="dashboard" className="gap-1.5">
-            <BarChart3 className="h-3.5 w-3.5" /> Dashboard
-          </TabsTrigger>
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full animate-in-up">
+      <PageHeader title="Repertórios" subtitle="Organize as músicas da sua equipe" actions={actions}>
+        <TabsList className="grid w-full grid-cols-3 lg:max-w-md">
+          <TabsTrigger value="repertorios">Repertórios</TabsTrigger>
+          <TabsTrigger value="musicas">Músicas</TabsTrigger>
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
         </TabsList>
+      </PageHeader>
 
-        <TabsContent value="repertorios">
-          {isLoading || teamLoading ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {[1, 2, 3].map((i) => (
-                <GlassCard key={i} className="p-6 h-28 animate-pulse" />
-              ))}
-            </div>
-          ) : repertorios.length === 0 ? (
-            <GlassCard className="p-12 flex flex-col items-center justify-center text-center">
-              <div className="h-16 w-16 rounded-2xl bg-accent flex items-center justify-center mb-4">
-                <Music className="h-7 w-7 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-medium mb-1">Nenhum repertório ainda</h3>
-              <p className="text-muted-foreground text-sm max-w-xs">
-                {canEdit ? "Crie seu primeiro repertório para começar." : "Seus repertórios aparecerão aqui."}
-              </p>
-              {canEdit && (
-                <Button className="mt-6 rounded-xl gap-2" onClick={() => { setEditId(null); setEditName(""); setCreateOpen(true); }}>
-                  <Plus className="h-4 w-4" /> Criar repertório
+      <TabsContent value="repertorios" className="mt-0">
+        {isLoading || teamLoading ? (
+          <SkeletonRows count={3} />
+        ) : repertorios.length === 0 ? (
+          <EmptyState
+            icon={Music}
+            title="Nenhum repertório ainda"
+            description={canEdit ? "Crie seu primeiro repertório para começar." : "Seus repertórios aparecerão aqui."}
+            action={
+              canEdit && (
+                <Button onClick={openCreate}>
+                  <Plus aria-hidden="true" /> Criar repertório
                 </Button>
-              )}
-            </GlassCard>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {repertorios.map((r: any) => (
-                <GlassCard
-                  key={r.id}
-                  className="p-6 cursor-pointer hover-lift group relative"
-                  onClick={() => navigate(`/app/repertorios/${r.id}`)}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center">
-                        <Music className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                      <div>
-                        <h3 className="font-medium text-sm">{r.name}</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {new Date(r.created_at).toLocaleDateString("pt-BR")}
-                        </p>
-                      </div>
-                    </div>
-                    {canEdit && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Button size="icon" variant="ghost" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setEditId(r.id); setEditName(r.name); setCreateOpen(true); }}>
-                            <Pencil className="h-3.5 w-3.5 mr-2" /> Renomear
-                          </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive" onClick={(e) => { e.stopPropagation(); setDeleteId(r.id); }}>
-                            <Trash2 className="h-3.5 w-3.5 mr-2" /> Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
+              )
+            }
+          />
+        ) : (
+          <ul className="overflow-hidden rounded-card bg-card" aria-label="Repertórios">
+            {repertorios.map((r: any, i: number) => (
+              // A linha toda navega (o clique do botão sobe até o <li>); o menu "…" fica fora do botão.
+              <li
+                key={r.id}
+                onClick={() => navigate(`/app/repertorios/${r.id}`)}
+                className="relative flex min-h-[60px] cursor-pointer items-center gap-3 py-2.5 pl-4 pr-3 transition-colors active:bg-fill-tertiary has-[[data-row-control]:active]:bg-transparent"
+              >
+                {i > 0 && <span aria-hidden="true" className="pointer-events-none absolute left-[58px] right-0 top-0 border-t border-separator" />}
+                <button type="button" className="flex min-w-0 flex-1 items-center gap-3 rounded-[10px] text-left">
+                  <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[8px] bg-fill-tertiary text-muted-foreground">
+                    <ListMusic className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-body text-foreground">{r.name}</span>
+                    <span className="block text-footnote text-muted-foreground">
+                      {new Date(r.created_at).toLocaleDateString("pt-BR")}
+                    </span>
+                  </span>
+                </button>
+                {canEdit && (
+                  <div
+                    data-row-control=""
+                    className="-my-1 -mx-1.5 flex shrink-0 items-center"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={`Mais ações para ${r.name}`}
+                          title="Mais ações"
+                          className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors active:bg-fill-tertiary"
+                        >
+                          <MoreHorizontal className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => { setEditId(r.id); setEditName(r.name); setCreateOpen(true); }}>
+                          <Pencil />
+                          Renomear
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-ios-red focus:text-ios-red" onClick={() => setDeleteId(r.id)}>
+                          <Trash2 />
+                          Excluir
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
-                </GlassCard>
-              ))}
-            </div>
-          )}
-        </TabsContent>
+                )}
+                {/* O menu "…" já é o acessório da linha; o chevron só aparece sem ele. */}
+                {!canEdit && (
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-label-tertiary" strokeWidth={2.5} aria-hidden="true" />
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </TabsContent>
 
-        <TabsContent value="musicas">
-          <div className="relative mb-4 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <GlassInput
-              placeholder="Buscar por título ou artista…"
-              value={songSearch}
-              onChange={(e) => setSongSearch(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          {libLoading || teamLoading ? (
-            <div className="space-y-2">
-              {[1, 2, 3, 4].map((i) => <GlassCard key={i} className="h-16 animate-pulse" />)}
-            </div>
-          ) : filteredSongs.length === 0 ? (
-            <GlassCard className="p-12 flex flex-col items-center justify-center text-center">
-              <div className="h-16 w-16 rounded-2xl bg-accent flex items-center justify-center mb-4">
-                <ListMusic className="h-7 w-7 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-medium mb-1">
-                {songSearch.trim() ? "Nenhuma música encontrada" : "Nenhuma música cadastrada"}
-              </h3>
-              <p className="text-muted-foreground text-sm max-w-xs">
-                {songSearch.trim()
-                  ? "Tente outro termo de busca."
-                  : canEditSongs
-                  ? "Cadastre músicas aqui — elas ficam disponíveis para qualquer repertório."
-                  : "As músicas da equipe aparecerão aqui."}
-              </p>
-              {canEditSongs && !songSearch.trim() && (
-                <Button className="mt-6 rounded-xl gap-2" onClick={() => setAddLibraryOpen(true)}>
-                  <Plus className="h-4 w-4" /> Nova música
+      <TabsContent value="musicas" className="mt-0">
+        <SongSearchField
+          value={songSearch}
+          onChange={setSongSearch}
+          placeholder="Buscar por título ou artista…"
+          className="mb-5 lg:max-w-md"
+        />
+        {libLoading || teamLoading ? (
+          <SkeletonRows count={4} artwork />
+        ) : filteredSongs.length === 0 ? (
+          <EmptyState
+            icon={ListMusic}
+            title={songSearch.trim() ? "Nenhuma música encontrada" : "Nenhuma música cadastrada"}
+            description={
+              songSearch.trim()
+                ? "Tente outro termo de busca."
+                : canEditSongs
+                ? "Cadastre músicas aqui — elas ficam disponíveis para qualquer repertório."
+                : "As músicas da equipe aparecerão aqui."
+            }
+            action={
+              canEditSongs && !songSearch.trim() && (
+                <Button onClick={() => setAddLibraryOpen(true)}>
+                  <Plus aria-hidden="true" /> Nova música
                 </Button>
-              )}
-            </GlassCard>
-          ) : (
-            <>
-              <p className="text-xs text-muted-foreground mb-2 px-1">
-                {filteredSongs.length} música{filteredSongs.length !== 1 ? "s" : ""} na biblioteca da equipe
-              </p>
-              <div className="space-y-2">
-                {filteredSongs.map((s: any, i: number) => (
-                  <SongCard
-                    key={s.id}
-                    song={s}
-                    index={i}
-                    repertorios={library.repMap[s.id]}
-                    onClick={() => navigate(`/app/songs/${s.id}`)}
-                    actions={canEditSongs ? (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setDeleteSong({ id: s.id, title: s.title }); }}
-                        className="h-8 w-8 shrink-0 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-accent/40 transition-colors"
-                        title="Excluir música"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    ) : undefined}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </TabsContent>
-
-        <TabsContent value="dashboard">
-          <Suspense fallback={
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {[1, 2, 3, 4].map((i) => (
-                <GlassCard key={i} className="p-6 h-24 animate-pulse" />
+              )
+            }
+          />
+        ) : (
+          <section aria-label="Biblioteca da equipe">
+            <p className="mx-4 mb-1.5 text-footnote text-muted-foreground">
+              {filteredSongs.length} música{filteredSongs.length !== 1 ? "s" : ""} na biblioteca da equipe
+            </p>
+            <SongList>
+              {filteredSongs.map((s: any, i: number) => (
+                <SongCard
+                  key={s.id}
+                  variant="row"
+                  song={s}
+                  index={i}
+                  repertorios={library.repMap[s.id]}
+                  onClick={() => navigate(`/app/songs/${s.id}`)}
+                  chevron={!canEditSongs}
+                  actions={canEditSongs ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={`Mais ações para ${s.title}`}
+                          title="Mais ações"
+                          className="grid h-11 w-11 place-items-center rounded-full text-muted-foreground transition-colors active:bg-fill-tertiary"
+                        >
+                          <MoreHorizontal className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem className="text-ios-red focus:text-ios-red" onClick={() => setDeleteSong({ id: s.id, title: s.title })}>
+                          <Trash2 />
+                          Excluir música
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : undefined}
+                />
               ))}
-            </div>
-          }>
-            <RepertorioDashboard />
-          </Suspense>
-        </TabsContent>
-      </Tabs>
+            </SongList>
+          </section>
+        )}
+      </TabsContent>
+
+      <TabsContent value="dashboard" className="mt-0">
+        <Suspense fallback={
+          <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4" aria-hidden="true">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-[92px] animate-pulse rounded-card bg-card" />
+            ))}
+          </div>
+        }>
+          <RepertorioDashboard />
+        </Suspense>
+      </TabsContent>
 
       <RepertorioModal open={createOpen} onOpenChange={setCreateOpen} editId={editId} editName={editName} />
       <SetlistGeneratorModal open={generateOpen} onOpenChange={setGenerateOpen} />
@@ -316,7 +349,9 @@ export default function Repertorios() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Excluir</AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Excluir
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -337,6 +372,6 @@ export default function Repertorios() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </Tabs>
   );
 }

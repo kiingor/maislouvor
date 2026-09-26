@@ -4,7 +4,10 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
-const labelVariants = cva("text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70");
+/** Rótulo de campo (subhead médio). Para cabeçalho de grupo use footnote em text-muted-foreground. */
+const labelVariants = cva(
+  "text-subhead font-medium text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-60",
+);
 
 const Label = React.forwardRef<
   React.ElementRef<typeof LabelPrimitive.Root>,

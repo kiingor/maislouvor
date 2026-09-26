@@ -1,14 +1,21 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { SongContentModal } from "@/components/SongContentModal";
 import { SongAudioAttachmentsDialog } from "@/components/SongAudioAttachmentsDialog";
 import { Music, FileText, Youtube, Volume2, ChevronRight, MessageSquare, Headphones } from "lucide-react";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+
+// Lista agrupada dentro da folha (protótipo `.group` / `.group-label`).
+const group = "overflow-hidden rounded-card bg-card";
+const groupLabel = "mx-4 mb-1.5 block text-footnote text-muted-foreground";
+const row = "relative flex min-h-[48px] items-center gap-3 px-4";
+const rowSeparator = "before:absolute before:top-0 before:right-0 before:left-4 before:border-t before:border-border";
+// Separador recuado até o texto (16 + ícone 30 + 12).
+const iconRowSeparator = "before:absolute before:top-0 before:right-0 before:left-[58px] before:border-t before:border-border";
 
 interface SongSummaryModalProps {
   open: boolean;
@@ -107,115 +114,110 @@ export function SongSummaryModal({ open, onOpenChange, songId, cultoNotes, culto
     },
   ];
 
+  const infoRows = [
+    song.key_original ? { label: "Tom original", value: song.key_original } : null,
+    song.key_current ? { label: "Tom atual", value: song.key_current } : null,
+    song.theme ? { label: "Tema", value: song.theme } : null,
+  ].filter(Boolean) as { label: string; value: string }[];
+  const hasTags = !!(song.tags && song.tags.length > 0);
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto p-0 gap-0 rounded-2xl">
+        <DialogContent className="sm:max-w-md gap-5">
           <VisuallyHidden>
             <DialogTitle>{song.title}</DialogTitle>
           </VisuallyHidden>
 
-          {/* Cover + Info card */}
-          <div className="p-5 pb-4">
-            <div className="flex gap-4 items-start">
-              {coverUrl ? (
-                <img
-                  src={coverUrl}
-                  alt={song.title}
-                  className="h-24 w-24 rounded-xl object-cover shrink-0"
-                />
-              ) : (
-                <div className="h-24 w-24 rounded-xl bg-accent flex items-center justify-center shrink-0">
-                  <Music className="h-8 w-8 text-muted-foreground/40" />
-                </div>
-              )}
-              <div className="min-w-0 flex-1">
-                <h2 className="text-lg font-semibold leading-tight">{song.title}</h2>
-                {song.artist && (
-                  <p className="text-sm text-muted-foreground mt-0.5">{song.artist}</p>
-                )}
-                {repertorios.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {repertorios.map((name: string, i: number) => (
-                      <Badge key={i} variant="secondary" className="text-[10px]">
-                        {name}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Info details */}
-            {(song.key_original || song.key_current || song.theme || (song.tags && song.tags.length > 0)) && (
-              <div className="mt-4 p-3 rounded-xl bg-accent/50 space-y-2">
-                <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
-                  {song.key_original && (
-                    <div>
-                      <span className="text-muted-foreground text-xs">Tom original</span>
-                      <p className="font-medium">{song.key_original}</p>
-                    </div>
-                  )}
-                  {song.key_current && (
-                    <div>
-                      <span className="text-muted-foreground text-xs">Tom atual</span>
-                      <p className="font-medium">{song.key_current}</p>
-                    </div>
-                  )}
-                  {song.theme && (
-                    <div>
-                      <span className="text-muted-foreground text-xs">Tema</span>
-                      <p className="font-medium">{song.theme}</p>
-                    </div>
-                  )}
-                </div>
-                {song.tags && song.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {song.tags.map((tag: string, i: number) => (
-                      <span key={i} className="text-[11px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
+          {/* Capa + título (centralizados, como no app Música) */}
+          <div data-dialog-header="" className="flex flex-col items-center px-10 text-center max-sm:touch-none">
+            {coverUrl ? (
+              <img
+                src={coverUrl}
+                alt={song.title}
+                className="h-24 w-24 shrink-0 rounded-[16px] object-cover"
+              />
+            ) : (
+              <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-[16px] bg-fill-tertiary">
+                <Music className="h-8 w-8 text-muted-foreground" strokeWidth={2} aria-hidden="true" />
               </div>
             )}
-
-            {/* Culto Notes */}
-            {cultoNotes && (
-              <div className="mt-4 p-3 rounded-xl bg-accent/50">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Observação</span>
-                </div>
-                <p className="text-sm leading-relaxed">{cultoNotes}</p>
-                {cultoNotesAuthor?.full_name && (
-                  <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-border/50">
-                    <Avatar className="h-5 w-5">
-                      {cultoNotesAuthor.avatar_url && <AvatarImage src={cultoNotesAuthor.avatar_url} />}
-                      <AvatarFallback className="text-[8px] bg-accent">
-                        {cultoNotesAuthor.full_name.charAt(0).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-[11px] text-muted-foreground">por {cultoNotesAuthor.full_name}</span>
-                  </div>
-                )}
+            <h2 className="mt-3 text-title3 text-foreground break-words">{song.title}</h2>
+            {song.artist && <p className="mt-0.5 text-subhead text-muted-foreground">{song.artist}</p>}
+            {repertorios.length > 0 && (
+              <div className="mt-2 flex flex-wrap justify-center gap-1">
+                {repertorios.map((name: string, i: number) => (
+                  <span key={i} className="rounded-full bg-fill-tertiary px-2 py-0.5 text-caption1 font-medium text-muted-foreground">
+                    {name}
+                  </span>
+                ))}
               </div>
             )}
           </div>
 
+          {/* Info details */}
+          {(infoRows.length > 0 || hasTags) && (
+            <div className={group}>
+              {infoRows.map((r, i) => (
+                <div key={r.label} className={`${row} justify-between ${i > 0 ? rowSeparator : ""}`}>
+                  <span className="text-body text-foreground">{r.label}</span>
+                  <span className="min-w-0 truncate text-body text-muted-foreground">{r.value}</span>
+                </div>
+              ))}
+              {hasTags && (
+                <div className={`relative flex flex-wrap gap-1.5 px-4 py-3 ${infoRows.length > 0 ? rowSeparator : ""}`}>
+                  {song.tags.map((tag: string, i: number) => (
+                    <span key={i} className="rounded-full bg-fill-tertiary px-2.5 py-0.5 text-footnote font-medium text-foreground">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Culto Notes */}
+          {cultoNotes && (
+            <div>
+              <p className={`${groupLabel} flex items-center gap-1.5`}>
+                <MessageSquare className="h-[13px] w-[13px]" strokeWidth={2.25} aria-hidden="true" /> Observação
+              </p>
+              <div className={group}>
+                <p className="px-4 py-3 text-body text-foreground whitespace-pre-line break-words">{cultoNotes}</p>
+                {cultoNotesAuthor?.full_name && (
+                  <div className={`${row} min-h-[40px] gap-2 py-2 ${rowSeparator}`}>
+                    <Avatar className="h-5 w-5">
+                      {cultoNotesAuthor.avatar_url && <AvatarImage src={cultoNotesAuthor.avatar_url} />}
+                      <AvatarFallback className="text-caption2">
+                        {cultoNotesAuthor.full_name.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-footnote text-muted-foreground">por {cultoNotesAuthor.full_name}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Menu list */}
-          <div className="border-t border-border">
-            {menuItems.map((item) => (
+          <div className={group}>
+            {menuItems.map((item, i) => (
               <button
                 key={item.key}
+                type="button"
                 disabled={!item.available}
                 onClick={item.onClick}
-                className="w-full flex items-center gap-3 px-5 py-3.5 text-sm font-medium transition-colors hover:bg-accent/60 disabled:opacity-40 disabled:cursor-not-allowed border-b border-border last:border-b-0"
+                className={`relative flex w-full min-h-[52px] items-center gap-3 px-4 py-2 text-left transition-colors active:bg-fill-tertiary disabled:cursor-not-allowed disabled:opacity-40 ${
+                  i > 0 ? iconRowSeparator : ""
+                }`}
               >
-                <item.icon className="h-4 w-4 text-muted-foreground" />
-                <span className="flex-1 text-left">{item.label}</span>
-                {item.available && <ChevronRight className="h-4 w-4 text-muted-foreground/60" />}
+                <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] bg-fill-tertiary" aria-hidden="true">
+                  <item.icon className="h-4 w-4 text-foreground" strokeWidth={2.25} />
+                </span>
+                <span className="flex-1 text-body text-foreground">{item.label}</span>
+                {item.available && (
+                  <ChevronRight className="h-[14px] w-[14px] text-label-tertiary" strokeWidth={2.5} aria-hidden="true" />
+                )}
               </button>
             ))}
           </div>
@@ -242,30 +244,34 @@ export function SongSummaryModal({ open, onOpenChange, songId, cultoNotes, culto
 
       {/* Audio popup */}
       <Dialog open={mediaOpen === "audio"} onOpenChange={(o) => !o && setMediaOpen(null)}>
-        <DialogContent className="max-w-sm rounded-2xl">
-          <DialogTitle className="text-base font-semibold">{song.title} — Áudio</DialogTitle>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="truncate">{song.title} — Áudio</DialogTitle>
+          </DialogHeader>
           {audioUrl && (
-            <audio controls autoPlay className="w-full mt-2" src={audioUrl} preload="metadata" />
+            <audio controls autoPlay className="w-full" src={audioUrl} preload="metadata" />
           )}
         </DialogContent>
       </Dialog>
 
       {/* Video popup */}
       <Dialog open={mediaOpen === "video"} onOpenChange={(o) => !o && setMediaOpen(null)}>
-        <DialogContent className="max-w-lg rounded-2xl p-0 overflow-hidden">
-          <VisuallyHidden>
-            <DialogTitle>{song.title} — Vídeo</DialogTitle>
-          </VisuallyHidden>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="truncate">{song.title} — Vídeo</DialogTitle>
+          </DialogHeader>
           {youtubeId && (
-            <AspectRatio ratio={16 / 9}>
-              <iframe
-                src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1`}
-                className="w-full h-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                title="YouTube"
-              />
-            </AspectRatio>
+            <div className="overflow-hidden rounded-[16px] bg-fill-tertiary">
+              <AspectRatio ratio={16 / 9}>
+                <iframe
+                  src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1`}
+                  className="h-full w-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  title="YouTube"
+                />
+              </AspectRatio>
+            </div>
           )}
         </DialogContent>
       </Dialog>

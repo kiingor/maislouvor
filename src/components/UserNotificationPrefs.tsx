@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { GlassCard } from "@/components/GlassCard";
 import { Switch } from "@/components/ui/switch";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Bell, BellRing, CalendarPlus, Clock, Music2, MessagesSquare, Check } from "lucide-react";
+import { BellRing, CalendarPlus, Clock, Music2, MessagesSquare, Check, Loader2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { enablePushOnThisDevice, pushPermission, pushSupported } from "@/lib/push";
+import { cn } from "@/lib/utils";
 
 type PrefKey = "nova_escala" | "lembrete_culto" | "musica_culto" | "mensagens";
 
@@ -21,6 +20,27 @@ const PREFS: { key: PrefKey; label: string; description: string; icon: LucideIco
 interface UserNotificationPrefsProps {
   profileTableId: string | null;
   prefs: Record<string, unknown> | null | undefined;
+}
+
+/** Ícone de linha: quadrado de 30pt neutro (preenchimento terciário); cor só para status. */
+function IconTile({ icon: Icon, className }: { icon: LucideIcon; className?: string }) {
+  return (
+    <span className={cn("flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] bg-fill-tertiary text-muted-foreground", className)}>
+      <Icon className="h-[17px] w-[17px]" strokeWidth={2.25} aria-hidden="true" />
+    </span>
+  );
+}
+
+/** Linha de lista agrupada: o separador começa no texto (recuo de 58pt), como no iOS. */
+function Row({ tile, children }: { tile: ReactNode; children: ReactNode }) {
+  return (
+    <div className="group/row flex items-center gap-3 pl-4">
+      {tile}
+      <div className="flex min-h-[52px] min-w-0 flex-1 items-center gap-3 border-t border-separator py-2.5 pr-4 group-first/row:border-t-0">
+        {children}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -92,49 +112,60 @@ export function UserNotificationPrefs({ profileTableId, prefs }: UserNotificatio
   };
 
   return (
-    <GlassCard className="p-4 space-y-3">
-      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-        <Bell className="h-3 w-3" /> Notificações
-      </label>
+    <section aria-labelledby="notification-prefs-title">
+      <h2 id="notification-prefs-title" className="mx-4 mb-1.5 text-footnote text-muted-foreground">
+        Notificações
+      </h2>
 
       {/* Push neste aparelho (navegador / PWA) */}
       {pushSupported() && (
-        pushPerm === "granted" ? (
-          <div className="flex items-center gap-2 rounded-xl bg-primary/10 text-primary px-3 py-2.5 text-sm">
-            <Check className="h-4 w-4 shrink-0" />
-            <span>Notificações ativadas neste aparelho</span>
+        <div className="mb-6">
+          <div className="overflow-hidden rounded-card bg-card">
+            {pushPerm === "granted" ? (
+              <Row tile={<IconTile icon={Check} className="bg-ios-green text-white" />}>
+                <p className="text-body">Notificações ativadas neste aparelho</p>
+              </Row>
+            ) : (
+              <button
+                type="button"
+                onClick={handleEnablePush}
+                disabled={pushLoading}
+                aria-busy={pushLoading || undefined}
+                className="flex min-h-[52px] w-full items-center gap-3 px-4 py-2.5 text-left transition-colors active:bg-fill-quaternary disabled:opacity-60"
+              >
+                <IconTile icon={BellRing} />
+                <span className="min-w-0 flex-1 text-body font-medium text-primary">
+                  {pushLoading ? "Ativando..." : pushPerm === "denied" ? "Permitir notificações" : "Ativar notificações neste aparelho"}
+                </span>
+                {pushLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden="true" />}
+              </button>
+            )}
           </div>
-        ) : (
-          <div className="rounded-xl bg-accent/40 px-3 py-3 space-y-2">
-            <p className="text-xs text-muted-foreground">
+          {pushPerm !== "granted" && (
+            <p className="mx-4 mt-1.5 text-footnote text-muted-foreground">
               Receba avisos e escalas mesmo com o app fechado, direto na tela do aparelho.
             </p>
-            <Button onClick={handleEnablePush} disabled={pushLoading} className="w-full rounded-lg gap-2 h-10">
-              <BellRing className="h-4 w-4" />
-              {pushLoading ? "Ativando..." : pushPerm === "denied" ? "Permitir notificações" : "Ativar notificações neste aparelho"}
-            </Button>
-          </div>
-        )
+          )}
+        </div>
       )}
 
-      <div className="divide-y divide-border/50">
-        {PREFS.map(({ key, label, description, icon: Icon }) => (
-          <div key={key} className="flex items-center justify-between gap-3 py-3 first:pt-1 last:pb-1">
-            <div className="flex items-start gap-2 min-w-0">
-              <Icon className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
-              <div className="min-w-0">
-                <p className="text-sm font-medium leading-tight">{label}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-              </div>
+      <div className="overflow-hidden rounded-card bg-card">
+        {PREFS.map(({ key, label, description, icon }) => (
+          <Row key={key} tile={<IconTile icon={icon} />}>
+            <div className="min-w-0 flex-1">
+              <p id={`notif-pref-${key}`} className="text-body">{label}</p>
+              <p id={`notif-pref-${key}-desc`} className="text-footnote text-muted-foreground">{description}</p>
             </div>
             <Switch
               checked={values[key]}
               onCheckedChange={(v) => handleToggle(key, v)}
               disabled={!profileTableId || savingKey === key}
+              aria-labelledby={`notif-pref-${key}`}
+              aria-describedby={`notif-pref-${key}-desc`}
             />
-          </div>
+          </Row>
         ))}
       </div>
-    </GlassCard>
+    </section>
   );
 }

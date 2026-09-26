@@ -3,15 +3,22 @@ import { Capacitor } from "@capacitor/core";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Check, Copy, Link2, Loader2, Send, Share2 } from "lucide-react";
+import { Check, Copy, Link2, Loader2, Send } from "lucide-react";
 import { appOrigin } from "@/lib/appUrl";
 
 import { buildCultoShareText, type ShareRoteiroItem } from "@/lib/shareText";
 import type { VoiceAssignment } from "@/lib/voices";
+
+// Lista agrupada dentro da folha (protótipo `.group` / `.group-label`).
+// Na folha, --card já vira branco (claro) / #2C2C2E (escuro) — ver ui/dialog.tsx.
+const group = "overflow-hidden rounded-card bg-card";
+const groupLabel = "mx-4 mb-1.5 block text-footnote text-muted-foreground";
+const row = "relative flex min-h-[52px] items-center gap-3 px-4";
+const rowSeparator = "before:absolute before:top-0 before:right-0 before:left-4 before:border-t before:border-border";
 
 /**
  * `crypto.randomUUID` não existe em contexto não seguro (testar o app pelo IP
@@ -191,58 +198,86 @@ export function CultoShareModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass sm:rounded-2xl border-0 max-w-sm sm:max-w-lg max-h-[88vh] p-0 flex flex-col">
-        <DialogHeader className="p-5 pb-2">
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <Share2 className="h-4 w-4" /> Compartilhar culto
-          </DialogTitle>
-          <p className="text-xs text-muted-foreground">
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Compartilhar culto</DialogTitle>
+          <DialogDescription className="text-center">
             Mensagem pronta com a escala e o repertório — tom, BPM e link de cada canção.
-          </p>
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="px-5 pb-2 flex flex-wrap gap-x-4 gap-y-1.5">
-          {toggles.map((t) => (
-            <label key={t.key} className="flex items-center gap-1.5 cursor-pointer">
-              <Checkbox checked={t.value} disabled={t.disabled || publishing} onCheckedChange={(v) => t.set(!!v)} />
-              <span className="text-xs text-muted-foreground">{t.label}</span>
-            </label>
-          ))}
-        </div>
+        <div className="space-y-6">
+          <div>
+            <p className={groupLabel} id="share-include-label">Incluir</p>
+            <div className={group} role="group" aria-labelledby="share-include-label">
+              {toggles.map((t, i) => {
+                const switchId = `share-toggle-${t.key}`;
+                return (
+                  <div key={t.key} className={`${row} ${i > 0 ? rowSeparator : ""}`}>
+                    <label
+                      htmlFor={switchId}
+                      className={`min-w-0 flex-1 py-2 ${t.disabled || publishing ? "cursor-default" : "cursor-pointer"}`}
+                    >
+                      <span className="block text-body text-foreground">{t.label}</span>
+                      {t.key === "url" && (
+                        <span className="block text-footnote text-muted-foreground">
+                          {publicUrl ? "Link público ativo" : "Gera um link público do roteiro"}
+                        </span>
+                      )}
+                    </label>
+                    {t.key === "url" && publishing && (
+                      <Loader2 className="h-[17px] w-[17px] animate-spin text-muted-foreground" aria-label="Publicando" />
+                    )}
+                    <Switch
+                      id={switchId}
+                      checked={t.value}
+                      disabled={t.disabled || publishing}
+                      onCheckedChange={(v) => t.set(!!v)}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
-        <div className="px-5 flex-1 min-h-0">
-          <Textarea
-            value={text}
-            onChange={(e) => setEdited(e.target.value)}
-            spellCheck={false}
-            className="h-[38vh] min-h-[180px] text-xs leading-relaxed rounded-xl bg-accent/30 border-border/50 font-mono resize-none"
-          />
-        </div>
+          <div>
+            <label htmlFor="share-text" className={groupLabel}>Mensagem</label>
+            <div className={group}>
+              <Textarea
+                id="share-text"
+                value={text}
+                onChange={(e) => setEdited(e.target.value)}
+                spellCheck={false}
+                className="h-[38vh] min-h-[180px] resize-none rounded-none bg-transparent font-mono text-footnote leading-[18px] focus-visible:outline-none focus-visible:ring-0 [html:not(.pointer-mode)_&:focus-visible]:ring-[3px] [html:not(.pointer-mode)_&:focus-visible]:ring-inset [html:not(.pointer-mode)_&:focus-visible]:ring-ios-blue"
+              />
+            </div>
+          </div>
 
-        <div className="p-5 pt-3 space-y-2">
-          <Button className="w-full h-11 rounded-xl gap-2" onClick={openWhatsApp}>
-            <Send className="h-4 w-4" /> Enviar no WhatsApp
-          </Button>
-          <div className="flex gap-2">
-            <Button variant="outline" className="flex-1 rounded-xl gap-2 h-10" onClick={() => copy("text")}>
-              {copied === "text" ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-              Copiar texto
+          <div className="space-y-2">
+            <Button className="w-full gap-2" onClick={openWhatsApp}>
+              <Send aria-hidden="true" /> Enviar no WhatsApp
             </Button>
-            <Button
-              variant="outline"
-              className="flex-1 rounded-xl gap-2 h-10"
-              disabled={publishing || (!publicUrl && !canPublish)}
-              onClick={() => copy("link")}
-            >
-              {publishing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : copied === "link" ? (
-                <Check className="h-4 w-4 text-green-500" />
-              ) : (
-                <Link2 className="h-4 w-4" />
-              )}
-              Copiar link
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="secondary" className="flex-1 gap-2" onClick={() => copy("text")}>
+                {copied === "text" ? <Check className="text-ios-green" aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                Copiar texto
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex-1 gap-2"
+                disabled={publishing || (!publicUrl && !canPublish)}
+                onClick={() => copy("link")}
+              >
+                {publishing ? (
+                  <Loader2 className="animate-spin" aria-hidden="true" />
+                ) : copied === "link" ? (
+                  <Check className="text-ios-green" aria-hidden="true" />
+                ) : (
+                  <Link2 aria-hidden="true" />
+                )}
+                Copiar link
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>

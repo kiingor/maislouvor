@@ -1,22 +1,36 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
-import { GlassCard } from "@/components/GlassCard";
-import { Badge } from "@/components/ui/badge";
+import { DESKTOP_QUERY, useMediaQuery } from "@/contexts/ShellContext";
+import { PageHeader } from "@/components/shell/PageHeader";
+import { NotificationBell } from "@/components/NotificationBell";
+import { TeamSwitcher } from "@/components/TeamSwitcher";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarDays, Music, Church, CalendarCheck, ChevronRight, Guitar, CheckCircle2, XCircle, Clock, Users, Plus, Mail, Play, Eye } from "lucide-react";
+import {
+  CalendarDays,
+  CalendarCheck,
+  CalendarMinus,
+  Music,
+  Church,
+  ChevronRight,
+  CheckCircle2,
+  XCircle,
+  Play,
+  ShieldCheck,
+} from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { instrumentIcon } from "@/data/instruments";
-import { CreateTeamModal } from "@/components/CreateTeamModal";
 import { NoTeamOnboarding } from "@/components/NoTeamOnboarding";
-import { HomeAlerts, HomeAlertLineup } from "@/components/HomeAlerts";
+import { HomeAlerts, HomeAlertLineup, getHomeAlerts } from "@/components/HomeAlerts";
 import { HomeWeekAvailability } from "@/components/HomeWeekAvailability";
 import { HomeTeamFeed } from "@/components/HomeTeamFeed";
+import { StatTile } from "@/components/UserStatsCard";
+import { cn } from "@/lib/utils";
 import {
   DEFAULT_AVAILABILITY_MODE,
   activeAvailabilityStatus,
@@ -29,16 +43,48 @@ const roleLabels: Record<string, string> = {
   viewer: "Membro",
 };
 
-const statusConfig: Record<string, { label: string; icon: any; className: string }> = {
-  pending: { label: "Pendente", icon: Clock, className: "text-yellow-500 bg-yellow-500/10 border-yellow-500/30" },
-  accepted: { label: "Aceito", icon: CheckCircle2, className: "text-green-500 bg-green-500/10 border-green-500/30" },
-  declined: { label: "Recusado", icon: XCircle, className: "text-red-500 bg-red-500/10 border-red-500/30" },
+// Status em cápsula (spec §5): fundo da cor a 15% e texto na cor.
+const statusConfig: Record<string, { label: string; className: string }> = {
+  pending: { label: "Pendente", className: "text-ios-orange bg-ios-orange/15" },
+  accepted: { label: "Aceito", className: "text-ios-green bg-ios-green/15" },
+  declined: { label: "Recusado", className: "text-ios-red bg-ios-red/15" },
 };
+
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const fmtLong = (d: string) => cap(format(new Date(d + "T12:00:00"), "EEEE, dd 'de' MMMM", { locale: ptBR }));
+
+/** Linha de lista agrupada (spec §5). */
+const rowClass = "relative flex w-full items-center gap-3 min-h-[52px] px-4 py-2.5 text-left";
+const pressableRow = "transition-colors active:bg-grouped-tertiary [@media(hover:hover)]:hover:bg-fill-quaternary";
+
+/** Separador hairline recuado até o texto (58px = margem 16 + ícone 30 + espaço 12). */
+function Separator() {
+  return <span aria-hidden="true" className="absolute top-0 left-[58px] right-0 border-t border-separator" />;
+}
+
+function RowIcon({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "grid place-items-center h-[30px] w-[30px] shrink-0 rounded-[8px] bg-fill-tertiary text-muted-foreground [&_svg]:h-4 [&_svg]:w-4",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+const Chevron = () => (
+  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-label-tertiary" strokeWidth={2.5} aria-hidden="true" />
+);
 
 export default function Home() {
   const navigate = useNavigate();
-  const { currentTeam, userRole, profileId, loading: teamLoading } = useTeam();
+  const { currentTeam, userRole, profileId, loading: teamLoading, can } = useTeam();
   const { toast } = useToast();
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
 
   const [profile, setProfile] = useState<any>(null);
   const [member, setMember] = useState<any>(null);
@@ -52,12 +98,13 @@ export default function Home() {
   const [myAvailabilityByDate, setMyAvailabilityByDate] = useState<Record<string, AvailabilityStatus>>({});
   const [memberId, setMemberId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [createTeamOpen, setCreateTeamOpen] = useState(false);
   const availabilityMode = currentTeam?.availability_mode ?? DEFAULT_AVAILABILITY_MODE;
 
-  const fetchAll = async () => {
+  /** `silent`: atualiza sem trocar a tela pelo esqueleto (ex.: depois de salvar um dia da semana),
+   *  para não perder a rolagem nem o título recolhido. As consultas são as mesmas. */
+  const fetchAll = async (opts?: { silent?: boolean }) => {
     if (!profileId || !currentTeam) return;
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     const today = format(new Date(), "yyyy-MM-dd");
     const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
     const monthEnd = format(endOfMonth(new Date()), "yyyy-MM-dd");
@@ -170,30 +217,45 @@ export default function Home() {
 
   const confirmLineup = (lineupId: string) => updateLineupStatus(lineupId, "accepted");
 
-  if (teamLoading) {
-    return (
-      <div className="space-y-4 max-w-6xl mx-auto">
-        <Skeleton className="h-32 w-full rounded-2xl" />
-        <Skeleton className="h-24 w-full rounded-2xl" />
-        <Skeleton className="h-24 w-full rounded-2xl" />
+  // No celular, sino e equipe vão para a barra superior; no desktop já estão na barra lateral.
+  const header = (
+    <PageHeader
+      title="Início"
+      actions={
+        isDesktop ? undefined : (
+          <>
+            <NotificationBell variant="toolbar" />
+            <TeamSwitcher variant="toolbar" />
+          </>
+        )
+      }
+    />
+  );
+
+  const skeleton = (
+    <div className="mx-auto w-full max-w-2xl">
+      {header}
+      <div className="space-y-[26px]" aria-busy="true">
+        <Skeleton className="h-[150px] w-full rounded-card bg-card" />
+        <Skeleton className="h-[128px] w-full rounded-card bg-card" />
+        <Skeleton className="h-[72px] w-full rounded-card bg-card" />
       </div>
-    );
-  }
+    </div>
+  );
+
+  if (teamLoading) return skeleton;
 
   // User belongs to no team yet — onboarding: entrar por código ou criar equipe
   if (!currentTeam) {
-    return <NoTeamOnboarding />;
-  }
-
-  if (loading) {
     return (
-      <div className="space-y-4 max-w-6xl mx-auto">
-        <Skeleton className="h-32 w-full rounded-2xl" />
-        <Skeleton className="h-24 w-full rounded-2xl" />
-        <Skeleton className="h-24 w-full rounded-2xl" />
+      <div className="mx-auto w-full max-w-2xl">
+        {header}
+        <NoTeamOnboarding />
       </div>
     );
   }
+
+  if (loading) return skeleton;
 
   const initials = profile?.full_name
     ?.split(" ")
@@ -213,242 +275,274 @@ export default function Home() {
       ? { id: (l.cultos as any).id, name: (l.cultos as any).name, date: (l.cultos as any).date }
       : null,
   }));
+  const { hasAlerts } = getHomeAlerts(alertLineups, myAvailabilityByDate, availabilityMode);
 
   const myInstruments: string[] = member?.instruments ?? [];
+  const displayName = profile?.full_name ?? "Usuário";
+  const blockedMode = availabilityMode === "unavailable_only";
+  const canSeeSongs = can("repertorios", "ver");
+  const canSeeCultos = can("cultos", "ver");
 
   return (
-    <div className="max-w-6xl mx-auto animate-in-up">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Left column */}
-        <div className="lg:col-span-2 space-y-4">
-      {/* Profile Card */}
-      <GlassCard className="p-5">
-        <div className="flex items-center gap-4">
-          <Avatar className="h-16 w-16 border-2 border-border">
-            {avatarUrl ? (
-              <AvatarImage src={avatarUrl} alt={profile?.full_name} />
-            ) : null}
-            <AvatarFallback className="text-lg font-semibold bg-accent text-accent-foreground">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-semibold truncate">{profile?.full_name ?? "Usuário"}</h1>
-            <p className="text-sm text-muted-foreground">
-              {roleLabels[userRole ?? "viewer"]} · {currentTeam?.name}
-            </p>
-            {member?.instruments && member.instruments.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {member.instruments.map((inst: string) => {
+    <div className="mx-auto w-full max-w-2xl xl:max-w-none">
+      {header}
+
+      <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(320px,400px)] xl:gap-x-8 xl:items-start">
+        {/* Coluna principal */}
+        <div className="space-y-[26px]">
+          {/* Perfil */}
+          <section className="rounded-card bg-card p-4" aria-label={`Perfil de ${displayName}`}>
+            <div className="flex items-center gap-3.5">
+              <Avatar className="h-[60px] w-[60px]">
+                {avatarUrl ? <AvatarImage src={avatarUrl} alt={profile?.full_name} /> : null}
+                <AvatarFallback className="bg-fill-tertiary text-title3 text-muted-foreground">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-title3 text-foreground truncate">{displayName}</h2>
+                <p className="text-subhead text-muted-foreground truncate">
+                  {roleLabels[userRole ?? "viewer"]} · {currentTeam?.name}
+                </p>
+              </div>
+            </div>
+            {myInstruments.length > 0 && (
+              <ul className="flex flex-wrap gap-1.5 mt-3.5" aria-label="Instrumentos">
+                {myInstruments.map((inst: string) => {
                   const Icon = instrumentIcon(inst);
                   return (
-                    <Badge key={inst} variant="secondary" className="text-xs gap-1">
-                      <Icon className="h-3 w-3" />
+                    <li
+                      key={inst}
+                      className="inline-flex items-center gap-[5px] rounded-full bg-fill-tertiary py-1 pl-2 pr-2.5 text-footnote font-medium text-foreground"
+                    >
+                      <Icon className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={2.25} aria-hidden="true" />
                       {inst}
-                    </Badge>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {!hasAlerts && (
+              <p className="flex items-center gap-2 mt-3.5 pt-3 border-t border-separator text-footnote text-muted-foreground">
+                <ShieldCheck className="h-4 w-4 shrink-0 text-ios-green" strokeWidth={2.25} aria-hidden="true" />
+                <span>
+                  <strong className="font-semibold text-foreground">Tudo certo</strong> — sem pendências ou conflitos.
+                </span>
+              </p>
+            )}
+          </section>
+
+          {/* Alertas inteligentes: confirmar em breve + conflitos de disponibilidade (some sem alertas) */}
+          <HomeAlerts
+            lineups={alertLineups}
+            availabilityByDate={myAvailabilityByDate}
+            availabilityMode={availabilityMode}
+            onConfirm={confirmLineup}
+          />
+
+          {/* Disponibilidade rápida dos próximos 7 dias */}
+          <HomeWeekAvailability
+            teamMemberId={memberId}
+            myInstruments={myInstruments}
+            availabilityMode={availabilityMode}
+            onChanged={() => fetchAll({ silent: true })}
+          />
+
+          {/* Escalas pendentes (aceitar/recusar) */}
+          {pendingLineups.length > 0 && (
+            <section aria-labelledby="home-pending-title">
+              <h2 id="home-pending-title" className="text-title3 text-foreground mx-1 mb-2">
+                Escalas pendentes
+              </h2>
+              <div className="rounded-card bg-card overflow-hidden">
+                {pendingLineups.map((lineup: any, i: number) => {
+                  const culto = lineup.cultos as any;
+                  return (
+                    <div key={lineup.id} className="relative px-4 py-3">
+                      {i > 0 && <Separator />}
+                      <div className="flex items-center gap-3">
+                        <RowIcon className="bg-ios-orange/15 text-ios-orange">
+                          <Church strokeWidth={2.25} />
+                        </RowIcon>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-body text-foreground truncate">{culto.name}</p>
+                          <p className="text-footnote text-muted-foreground">
+                            {fmtLong(culto.date)} · {lineup.instrument}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-2.5 ml-[42px]">
+                        <Button
+                          size="sm" className="flex-1"
+                          onClick={() => updateLineupStatus(lineup.id, "accepted")}
+                        >
+                          <CheckCircle2 strokeWidth={2.25} aria-hidden="true" /> Aceitar
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm" className="flex-1"
+                          onClick={() => updateLineupStatus(lineup.id, "declined")}
+                        >
+                          <XCircle strokeWidth={2.25} aria-hidden="true" /> Recusar
+                        </Button>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
+            </section>
+          )}
+
+          {/* Minhas escalas */}
+          <section aria-labelledby="home-lineups-title">
+            <h2 id="home-lineups-title" className="text-title3 text-foreground mx-1 mb-2">
+              Minhas escalas
+            </h2>
+            {upcomingLineups.length === 0 ? (
+              <div className="rounded-card bg-card flex items-center gap-3 px-4 py-3.5">
+                <CalendarDays className="h-7 w-7 shrink-0 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+                <p className="text-body text-muted-foreground">Nenhuma escala próxima</p>
+              </div>
+            ) : (
+              <ul className="rounded-card bg-card overflow-hidden">
+                {upcomingLineups.map((lineup: any, i: number) => {
+                  const culto = lineup.cultos as any;
+                  const sc = statusConfig[lineup.status] || statusConfig.pending;
+                  return (
+                    <li key={lineup.id}>
+                      <button
+                        type="button"
+                        className={cn(rowClass, pressableRow)}
+                        onClick={() => navigate(`/app/cultos/${culto.id}`)}
+                      >
+                        {i > 0 && <Separator />}
+                        <RowIcon>
+                          <Church strokeWidth={2.25} />
+                        </RowIcon>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-body text-foreground truncate">{culto.name}</span>
+                          <span className="block text-footnote text-muted-foreground">
+                            {fmtLong(culto.date)} · {lineup.instrument}
+                          </span>
+                        </span>
+                        <span
+                          className={cn(
+                            "shrink-0 rounded-full px-2 py-0.5 text-caption1 font-semibold",
+                            sc.className,
+                          )}
+                        >
+                          {sc.label}
+                        </span>
+                        <Chevron />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
-          </div>
+          </section>
         </div>
-      </GlassCard>
 
-      {/* Smart alerts: confirm-soon + availability conflicts */}
-      <HomeAlerts
-        lineups={alertLineups}
-        availabilityByDate={myAvailabilityByDate}
-        availabilityMode={availabilityMode}
-        onConfirm={confirmLineup}
-      />
-
-      {/* Quick availability for the next 7 days */}
-      <HomeWeekAvailability
-        teamMemberId={memberId}
-        myInstruments={myInstruments}
-        availabilityMode={availabilityMode}
-        onChanged={fetchAll}
-      />
-
-      {/* Pending Lineups (accept/decline) */}
-      {pendingLineups.length > 0 && (
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5" /> Escalas Pendentes
-          </h2>
-          <div className="space-y-2">
-            {pendingLineups.map((lineup: any) => {
-              const culto = lineup.cultos as any;
-              return (
-                <GlassCard key={lineup.id} className="p-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="h-10 w-10 rounded-xl bg-yellow-500/10 flex items-center justify-center shrink-0">
-                      <Church className="h-5 w-5 text-yellow-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{culto.name}</p>
-                      <p className="text-xs text-muted-foreground capitalize">
-                        {format(new Date(culto.date + "T12:00:00"), "EEEE, dd 'de' MMMM", { locale: ptBR })} · {lineup.instrument}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      className="flex-1 rounded-xl gap-1.5"
-                      onClick={() => updateLineupStatus(lineup.id, "accepted")}
-                    >
-                      <CheckCircle2 className="h-3.5 w-3.5" /> Aceitar
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1 rounded-xl gap-1.5"
-                      onClick={() => updateLineupStatus(lineup.id, "declined")}
-                    >
-                      <XCircle className="h-3.5 w-3.5" /> Recusar
-                    </Button>
-                  </div>
-                </GlassCard>
-              );
-            })}
+        {/* Coluna de resumo (ao lado no desktop largo) */}
+        <div className="mt-[26px] xl:mt-0">
+          {/* Resumo no estilo das listas inteligentes do Lembretes */}
+          <div className="grid grid-cols-2 gap-2.5" aria-label="Resumo da equipe" role="group">
+            <StatTile
+              icon={blockedMode ? <CalendarMinus strokeWidth={2} /> : <CalendarCheck strokeWidth={2} />}
+              value={availabilityCount}
+              label={blockedMode ? "Indisponibilidade" : "Disponibilidade"}
+              caption={
+                blockedMode
+                  ? availabilityCount === 1
+                    ? "dia bloqueado no mês"
+                    : "dias bloqueados no mês"
+                  : availabilityCount === 1
+                    ? "dia este mês"
+                    : "dias este mês"
+              }
+              onClick={() => navigate("/app/disponibilidades")}
+            />
+            <StatTile
+              icon={<Music strokeWidth={2} />}
+              value={songCount}
+              label="Músicas"
+              caption="no repertório"
+              onClick={canSeeSongs ? () => navigate("/app/repertorios") : undefined}
+            />
+            <StatTile
+              wide
+              icon={<CalendarDays strokeWidth={2} />}
+              value={cultoCount}
+              label="Cultos"
+              caption="do time"
+              onClick={canSeeCultos ? () => navigate("/app/cultos") : undefined}
+            />
           </div>
-        </div>
-      )}
 
-      {/* Upcoming Lineups */}
-      <div>
-        <h2 className="text-sm font-medium text-muted-foreground mb-2 px-1">Minhas Escalas</h2>
-        {upcomingLineups.length === 0 ? (
-          <GlassCard variant="subtle" className="p-4 text-center text-sm text-muted-foreground">
-            Nenhuma escala próxima
-          </GlassCard>
-        ) : (
-          <div className="space-y-2">
-            {upcomingLineups.map((lineup: any) => {
-              const culto = lineup.cultos as any;
-              const sc = statusConfig[lineup.status] || statusConfig.pending;
-              const StatusIcon = sc.icon;
-              return (
-                <GlassCard
-                  key={lineup.id}
-                  className="p-4 flex items-center gap-3 cursor-pointer hover-lift"
-                  onClick={() => navigate(`/app/cultos/${culto.id}`)}
-                >
-                  <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center shrink-0">
-                    <Church className="h-5 w-5 text-accent-foreground" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{culto.name}</p>
-                    <p className="text-xs text-muted-foreground capitalize">
-                      {format(new Date(culto.date + "T12:00:00"), "EEEE, dd 'de' MMMM", { locale: ptBR })}
-                    </p>
-                  </div>
-                  <Badge variant="outline" className="text-xs shrink-0">
-                    {lineup.instrument}
-                  </Badge>
-                  <Badge variant="outline" className={`text-[10px] shrink-0 gap-1 border ${sc.className}`}>
-                    <StatusIcon className="h-3 w-3" />
-                    {sc.label}
-                  </Badge>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                </GlassCard>
-              );
-            })}
-          </div>
-        )}
-      </div>
-      </div>{/* end left column */}
-
-      {/* Right column - Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3">
-        <GlassCard
-          variant="subtle"
-          className="p-4 cursor-pointer hover-lift"
-          onClick={() => navigate("/app/disponibilidades")}
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <CalendarCheck className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">
-              {availabilityMode === "unavailable_only" ? "Indisponibilidade" : "Disponibilidade"}
-            </span>
-          </div>
-          <p className="text-2xl font-semibold">{availabilityCount}</p>
-          <p className="text-xs text-muted-foreground">
-            {availabilityMode === "unavailable_only" ? "dias bloqueados no mês" : "dias este mês"}
-          </p>
-        </GlassCard>
-
-        <GlassCard variant="subtle" className="p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <Music className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Músicas</span>
-          </div>
-          <p className="text-2xl font-semibold">{songCount}</p>
-          <p className="text-xs text-muted-foreground">no repertório</p>
-        </GlassCard>
-
-        <GlassCard variant="subtle" className="p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Cultos</span>
-          </div>
-          <p className="text-2xl font-semibold">{cultoCount}</p>
-          <p className="text-xs text-muted-foreground">do time</p>
-        </GlassCard>
-
-        <GlassCard variant="subtle" className="p-4 col-span-2 lg:col-span-1">
-          <div className="flex items-center gap-2 mb-1">
-            <Church className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Próximo Culto</span>
-          </div>
-          {nextTeamCulto ? (
-            <>
-              <p className="text-sm font-medium truncate">{nextTeamCulto.name}</p>
-              <p className="text-xs text-muted-foreground capitalize">
-                {format(new Date(nextTeamCulto.date + "T12:00:00"), "EEEE, dd/MM", { locale: ptBR })}
-              </p>
-              <div className="flex flex-wrap gap-2 mt-3">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="rounded-xl gap-1.5 h-8"
+          {/* Próximo culto */}
+          <section className="rounded-card bg-card overflow-hidden mt-2.5" aria-labelledby="home-next-title">
+            {nextTeamCulto ? (
+              <>
+                <button
+                  type="button"
+                  className={cn(rowClass, pressableRow)}
                   onClick={() => navigate(`/app/cultos/${nextTeamCulto.id}`)}
                 >
-                  <Eye className="h-3.5 w-3.5" /> Ver culto
-                </Button>
-                {nextCultoHasSongs && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="rounded-xl gap-1.5 h-8"
-                    onClick={() => navigate(`/app/cultos/${nextTeamCulto.id}/present`)}
-                  >
-                    <Play className="h-3.5 w-3.5" /> Ensaiar
-                  </Button>
+                  <RowIcon>
+                    <Church strokeWidth={2.25} />
+                  </RowIcon>
+                  <span className="flex-1 min-w-0">
+                    <span id="home-next-title" className="block text-footnote text-muted-foreground">
+                      Próximo culto
+                    </span>
+                    <span className="block text-body text-foreground truncate">{nextTeamCulto.name}</span>
+                    <span className="block text-subhead text-muted-foreground">
+                      {cap(format(new Date(nextTeamCulto.date + "T12:00:00"), "EEEE, dd/MM", { locale: ptBR }))}
+                    </span>
+                  </span>
+                  <span className="sr-only">Ver culto</span>
+                  <Chevron />
+                </button>
+                {(nextCultoHasSongs || nextCultoLineup?.status === "pending") && (
+                  <div className="flex flex-wrap gap-2 px-4 pb-3 pl-[58px]">
+                    {nextCultoHasSongs && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => navigate(`/app/cultos/${nextTeamCulto.id}/present`)}
+                      >
+                        <Play strokeWidth={2.25} aria-hidden="true" /> Ensaiar
+                      </Button>
+                    )}
+                    {nextCultoLineup?.status === "pending" && (
+                      <Button size="sm" onClick={() => confirmLineup(nextCultoLineup.id)}>
+                        <CheckCircle2 strokeWidth={2.25} aria-hidden="true" /> Confirmar
+                      </Button>
+                    )}
+                  </div>
                 )}
-                {nextCultoLineup?.status === "pending" && (
-                  <Button
-                    size="sm"
-                    className="rounded-xl gap-1.5 h-8"
-                    onClick={() => confirmLineup(nextCultoLineup.id)}
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Confirmar
-                  </Button>
-                )}
+              </>
+            ) : (
+              <div className={rowClass}>
+                <RowIcon>
+                  <Church strokeWidth={2.25} />
+                </RowIcon>
+                <div className="flex-1 min-w-0">
+                  <h2 id="home-next-title" className="text-footnote text-muted-foreground">
+                    Próximo culto
+                  </h2>
+                  <p className="text-body text-foreground">Nenhum</p>
+                </div>
               </div>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">Nenhum</p>
-          )}
-        </GlassCard>
+            )}
+          </section>
 
-        {/* Team activity feed */}
-        <div className="col-span-2 lg:col-span-1">
-          <HomeTeamFeed teamId={currentTeam.id} />
+          {/* Atividade da equipe */}
+          <div className="mt-[26px]">
+            <HomeTeamFeed teamId={currentTeam.id} />
+          </div>
         </div>
-      </div>{/* end right column */}
-      </div>{/* end grid */}
+      </div>
     </div>
   );
 }

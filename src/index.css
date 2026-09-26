@@ -1,101 +1,150 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=SF+Pro+Display:wght@300;400;500;600;700&display=swap');
+/* Tipografia: fonte do sistema (SF Pro no iOS/macOS, Roboto no Android). Sem fontes externas. */
+@import "./styles/ios.css";
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Tokens iOS 26/27 (HIG > Color). Ver docs/ux/ios27-design-spec.md. */
 @layer base {
-  :root {
-    --background: 0 0% 96%;
-    --foreground: 0 0% 7%;
+  /* .light: força os tokens claros num subárvore (ex.: palco do Modo ensaio com tema claro
+     enquanto o sistema está escuro). */
+  :root,
+  .light {
+    color-scheme: light;
+    --background: 240 24% 96%;          /* systemGroupedBackground #F2F2F7 */
+    --foreground: 0 0% 0%;              /* label */
 
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 7%;
+    --card: 0 0% 100%;                  /* secondarySystemGroupedBackground */
+    --card-foreground: 0 0% 0%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 7%;
+    --popover-foreground: 0 0% 0%;
 
-    --primary: 48 10% 10%;
+    --primary: 48 10% 10%;              /* destaque da marca: grafite quente #1C1B17 */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 0 0% 92%;
-    --secondary-foreground: 0 0% 20%;
+    --prominent: 48 10% 10%;            /* fundo de botão proeminente */
+    --prominent-foreground: 0 0% 100%;
 
-    --muted: 0 0% 94%;
-    --muted-foreground: 0 0% 45%;
+    --secondary: 240 4% 92%;            /* botão cinza (fill secundário opaco) */
+    --secondary-foreground: 0 0% 0%;
 
-    --accent: 0 0% 94%;
-    --accent-foreground: 0 0% 7%;
+    --muted: 240 5% 93%;
+    --muted-foreground: 240 2% 55%;     /* secondaryLabel opaco #8A8A8E */
 
-    --destructive: 0 72% 51%;
+    --accent: 240 5% 93%;
+    --accent-foreground: 0 0% 0%;
+
+    --destructive: 359 100% 61%;        /* systemRed */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 90%;
-    --input: 0 0% 90%;
-    --ring: 0 0% 7%;
+    --border: 240 4% 88%;               /* separador */
+    --input: 240 4% 88%;
+    --ring: 208 100% 50%;
 
     --radius: 1rem;
 
-    /* Glass tokens */
-    --glass-bg: 0 0% 100% / 0.6;
-    --glass-border: 0 0% 100% / 0.3;
-    --glass-shadow: 0 0% 0% / 0.04;
-    --glass-blur: 24px;
-    --glass-highlight: 0 0% 100% / 0.8;
+    --grouped-tertiary: 240 24% 96%;    /* célula dentro de card/folha */
+    --label-tertiary: 240 3% 77%;
+    --fill-primary: rgba(120, 120, 128, 0.2);
+    --fill-secondary: rgba(120, 120, 128, 0.16);
+    --fill-tertiary: rgba(118, 118, 128, 0.12);
+    --fill-quaternary: rgba(116, 116, 128, 0.08);
 
-    /* Sidebar */
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 0 0% 20%;
-    --sidebar-primary: 0 0% 7%;
+    --ios-red: 359 100% 61%;            /* 255,56,60 */
+    --ios-green: 135 59% 49%;           /* 52,199,89 */
+    --ios-orange: 28 100% 58%;          /* 255,141,40 */
+    --ios-yellow: 48 100% 50%;          /* 255,204,0 */
+    --ios-blue: 208 100% 50%;           /* 0,136,255 */
+    --ios-gray: 240 2% 57%;             /* 142,142,147 */
+    --ios-blue-rgb: 0 136 255;
+
+    /* Legado (componentes antigos). Não usar em código novo. */
+    --glass-bg: 0 0% 100% / 1;
+    --glass-border: 0 0% 0% / 0;
+    --glass-shadow: 0 0% 0% / 0.08;
+    --glass-blur: 0px;
+    --glass-highlight: 0 0% 100% / 0;
+
+    --sidebar-background: 240 24% 96%;
+    --sidebar-foreground: 0 0% 0%;
+    --sidebar-primary: 48 10% 10%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 94%;
-    --sidebar-accent-foreground: 0 0% 7%;
-    --sidebar-border: 0 0% 92%;
-    --sidebar-ring: 0 0% 7%;
+    --sidebar-accent: 240 5% 90%;
+    --sidebar-accent-foreground: 0 0% 0%;
+    --sidebar-border: 240 4% 88%;
+    --sidebar-ring: 208 100% 50%;
   }
 
   .dark {
-    --background: 0 0% 5%;
-    --foreground: 0 0% 96%;
+    color-scheme: dark;
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
 
-    --card: 0 0% 8%;
-    --card-foreground: 0 0% 96%;
+    --card: 240 3% 11%;                 /* #1C1C1E */
+    --card-foreground: 0 0% 100%;
 
-    --popover: 0 0% 8%;
-    --popover-foreground: 0 0% 96%;
+    --popover: 240 3% 11%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 0 0% 96%;
+    --primary: 240 24% 96%;
     --primary-foreground: 48 10% 10%;
 
-    --secondary: 0 0% 14%;
-    --secondary-foreground: 0 0% 80%;
+    /* HIG > Buttons: evitar fundo branco com texto preto (reservado ao estado ligado). */
+    --prominent: 240 2% 39%;            /* #636366 */
+    --prominent-foreground: 0 0% 100%;
 
-    --muted: 0 0% 14%;
-    --muted-foreground: 0 0% 55%;
+    --secondary: 240 3% 23%;
+    --secondary-foreground: 0 0% 100%;
 
-    --accent: 0 0% 14%;
-    --accent-foreground: 0 0% 96%;
+    --muted: 240 3% 15%;
+    --muted-foreground: 240 3% 56%;     /* #8D8D93 */
 
-    --destructive: 0 62% 30%;
+    --accent: 240 3% 18%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 359 100% 63%;        /* 255,66,69 */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 16%;
-    --input: 0 0% 16%;
-    --ring: 0 0% 96%;
+    --border: 240 2% 22%;               /* #38383A */
+    --input: 240 2% 22%;
+    --ring: 206 100% 50%;
 
-    --glass-bg: 0 0% 10% / 0.6;
-    --glass-border: 0 0% 20% / 0.3;
-    --glass-shadow: 0 0% 0% / 0.2;
-    --glass-highlight: 0 0% 20% / 0.3;
+    --grouped-tertiary: 240 3% 17%;     /* #2C2C2E */
+    --label-tertiary: 240 2% 40%;       /* tertiaryLabel sobre células elevadas (#2C2C2E) ≈ #656569 */
+    --fill-primary: rgba(120, 120, 128, 0.36);
+    --fill-secondary: rgba(120, 120, 128, 0.32);
+    --fill-tertiary: rgba(118, 118, 128, 0.24);
+    --fill-quaternary: rgba(118, 118, 128, 0.18);
 
-    --sidebar-background: 0 0% 8%;
-    --sidebar-foreground: 0 0% 80%;
-    --sidebar-primary: 0 0% 96%;
-    --sidebar-primary-foreground: 0 0% 7%;
-    --sidebar-accent: 0 0% 14%;
-    --sidebar-accent-foreground: 0 0% 96%;
-    --sidebar-border: 0 0% 16%;
-    --sidebar-ring: 0 0% 96%;
+    --ios-red: 359 100% 63%;
+    --ios-green: 135 64% 50%;           /* 48,209,88 */
+    --ios-orange: 29 100% 59%;          /* 255,146,48 */
+    --ios-yellow: 50 100% 52%;          /* 255,214,10 */
+    --ios-blue: 206 100% 50%;           /* 0,145,255 */
+    --ios-gray: 240 2% 57%;
+    --ios-blue-rgb: 0 145 255;
+
+    --glass-bg: 240 3% 11% / 1;
+    --glass-border: 0 0% 0% / 0;
+    --glass-shadow: 0 0% 0% / 0.4;
+    --glass-highlight: 0 0% 100% / 0;
+
+    --sidebar-background: 0 0% 0%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 240 24% 96%;
+    --sidebar-primary-foreground: 48 10% 10%;
+    --sidebar-accent: 240 3% 18%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 240 2% 22%;
+    --sidebar-ring: 206 100% 50%;
+  }
+
+  /* Aumentar contraste: variantes acessíveis publicadas em HIG > Color. */
+  @media (prefers-contrast: more) {
+    :root, .light { --muted-foreground: 240 3% 38%; --border: 240 3% 72%; --ios-red: 353 83% 50%; --ios-green: 142 100% 27%; --ios-blue: 217 91% 54%; --ios-orange: 25 100% 39%; }
+    .dark { --muted-foreground: 240 5% 72%; --border: 240 2% 40%; --ios-red: 359 100% 69%; --ios-green: 133 66% 57%; --ios-blue: 206 100% 68%; --ios-orange: 26 100% 67%; }
   }
 }
 
@@ -104,67 +153,63 @@
     @apply border-border;
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 17px;
+    line-height: 22px;
+    letter-spacing: -0.43px;
   }
 }
 
 @layer components {
-  .glass {
-    background: hsla(var(--glass-bg));
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    border: 1px solid hsla(var(--glass-border));
-    box-shadow: 
-      0 8px 32px hsla(var(--glass-shadow)),
-      inset 0 1px 0 hsla(var(--glass-highlight));
-  }
-
+  /* Legado: .glass / .glass-subtle agora são CARDS DE CONTEÚDO opacos (sem vidro na camada de conteúdo). */
+  .glass,
   .glass-subtle {
-    background: hsla(var(--glass-bg));
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid hsla(var(--glass-border));
+    background: hsl(var(--card));
+    border: 0;
+    box-shadow: none;
   }
 
+  /* Campo de texto iOS: preenchimento terciário, sem borda. */
   .glass-input {
-    background: hsla(0 0% 100% / 0.5);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid hsla(var(--glass-border));
-    transition: all 0.2s ease;
+    background: var(--fill-tertiary);
+    border: 1px solid transparent;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
   }
 
   .glass-input:focus-within {
-    background: hsla(0 0% 100% / 0.7);
-    border-color: hsla(0 0% 0% / 0.15);
-    box-shadow: 0 0 0 3px hsla(0 0% 0% / 0.05);
+    background: var(--fill-secondary);
+    box-shadow: 0 0 0 3px rgb(var(--ios-blue-rgb) / 0.25);
   }
 
+  /* Legado: superfícies funcionais usam o Liquid Glass espesso. */
   .glass-sidebar {
-    background: hsla(var(--glass-bg));
-    backdrop-filter: blur(40px) saturate(1.8);
-    -webkit-backdrop-filter: blur(40px) saturate(1.8);
-    border: 1px solid hsla(var(--glass-border));
-    box-shadow:
-      0 8px 32px hsla(var(--glass-shadow)),
-      inset 0 1px 0 hsla(var(--glass-highlight)),
-      inset 0 -1px 0 hsla(0 0% 0% / 0.05);
+    background: var(--lg-thick-fill);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    box-shadow: inset 0 0 0 0.5px var(--lg-stroke), 0 14px 34px -10px var(--lg-shadow);
   }
 }
 
 @layer utilities {
+  /* iOS não "levanta" cards: resposta ao toque é um leve encolhimento. */
   .hover-lift {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: transform 0.2s ease, background-color 0.2s ease;
   }
-  .hover-lift:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 40px hsla(var(--glass-shadow));
+  .hover-lift:active {
+    transform: scale(0.98);
   }
 
+  /* Troca de tela no iOS é imediata (abas não animam o conteúdo). A animação de entrada
+     começava com opacidade 0 e dava a sensação de "piscar/travar" ao trocar de aba. */
   .animate-in-up {
-    animation: slideInUp 0.5s ease-out;
+    animation: none;
   }
 
   .animate-in-fade {

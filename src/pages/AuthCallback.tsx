@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { BrandMark } from "@/components/BrandMark";
+import { AuthAppIcon, AuthScreen } from "./Login";
 
 /**
  * Destino do redirect do OAuth (Google). No web, o supabase-js processa o token
  * que volta no fragmento da URL automaticamente (detectSessionInUrl); aqui só
  * esperamos a sessão aparecer e seguimos pro app — evitando a corrida com o AuthGuard.
+ * Visual de tela de abertura: ícone do app + indicador de atividade.
  */
 export default function AuthCallback() {
   const navigate = useNavigate();
@@ -39,14 +41,12 @@ export default function AuthCallback() {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
-      <div className="h-14 w-14 rounded-2xl bg-foreground flex items-center justify-center">
-        <BrandMark className="h-8 w-8 text-background" />
-      </div>
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <div className="h-4 w-4 rounded-full border-2 border-foreground/30 border-t-transparent animate-spin" />
+    <AuthScreen className="items-center">
+      <AuthAppIcon />
+      <div className="mt-6 flex items-center gap-2 text-subhead text-muted-foreground" role="status">
+        <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden="true" />
         {erro ? "Não foi possível entrar. Redirecionando..." : "Entrando..."}
       </div>
-    </div>
+    </AuthScreen>
   );
 }

@@ -1,12 +1,16 @@
 import { useState, useRef, useEffect } from "react";
 import { Mic, Square, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 interface Props {
   disabled?: boolean;
   /** Called with the recorded audio blob when the user stops the recording. */
   onRecorded: (blob: Blob) => void;
+  /** Avisa o compositor quando a gravação começa/termina (ele cede o espaço ao gravador). */
+  onRecordingChange?: (recording: boolean) => void;
+  /** Classe extra do botão de microfone (estado parado). */
+  className?: string;
 }
 
 function formatTime(sec: number) {
@@ -15,7 +19,10 @@ function formatTime(sec: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export function ChatAudioRecorder({ disabled, onRecorded }: Props) {
+// Mantém o foco no campo de texto ao tocar nos botões do compositor (teclado não fecha).
+const keepFocus = (e: React.MouseEvent) => e.preventDefault();
+
+export function ChatAudioRecorder({ disabled, onRecorded, onRecordingChange, className }: Props) {
   const { toast } = useToast();
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
@@ -25,6 +32,12 @@ export function ChatAudioRecorder({ disabled, onRecorded }: Props) {
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cancelledRef = useRef(false);
+
+  // Só apresentação: o compositor troca o campo de texto pelo gravador enquanto grava.
+  useEffect(() => {
+    onRecordingChange?.(recording);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recording]);
 
   const cleanup = () => {
     if (timerRef.current) {
@@ -111,46 +124,53 @@ export function ChatAudioRecorder({ disabled, onRecorded }: Props) {
   };
 
   if (recording) {
+    // Mensagens do iOS: o campo vira a gravação (ponto vermelho + tempo), Cancelar e Parar.
     return (
-      <div className="flex items-center gap-2 shrink-0">
-        <span className="flex items-center gap-1.5 text-xs font-medium text-destructive whitespace-nowrap">
-          <span className="h-2 w-2 rounded-full bg-destructive animate-pulse" />
-          {formatTime(seconds)}
+      <div className="flex flex-1 min-w-0 items-center gap-1">
+        <span className="flex flex-1 min-w-0 items-center gap-2 text-subhead font-medium text-ios-red tabular-nums">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-ios-red" aria-hidden="true" />
+          {/* Anunciado uma vez; o tempo fica num role="timer" (aria-live off) para não ser lido a cada segundo. */}
+          <span role="status" className="sr-only">Gravando áudio</span>
+          <span role="timer" aria-label="Tempo de gravação">{formatTime(seconds)}</span>
         </span>
-        <Button
+        <button
           type="button"
-          size="icon"
-          variant="ghost"
-          className="rounded-xl h-9 w-9 text-muted-foreground hover:text-foreground"
+          onMouseDown={keepFocus}
           onClick={cancelRecording}
           title="Cancelar"
+          aria-label="Cancelar"
+          className="relative z-[4] before:absolute before:-inset-1 before:rounded-full before:content-[''] grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:text-foreground active:bg-fill-tertiary"
         >
-          <X className="h-5 w-5" />
-        </Button>
-        <Button
+          <X className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
+        </button>
+        <button
           type="button"
-          size="icon"
-          className="rounded-xl h-9 w-9 bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+          onMouseDown={keepFocus}
           onClick={stopRecording}
           title="Parar e enviar"
+          aria-label="Parar e enviar"
+          className="relative z-[4] before:absolute before:-inset-1 before:rounded-full before:content-[''] grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ios-red text-white transition-transform active:scale-95"
         >
-          <Square className="h-4 w-4" />
-        </Button>
+          <Square className="h-3.5 w-3.5 fill-current" strokeWidth={2.25} aria-hidden="true" />
+        </button>
       </div>
     );
   }
 
   return (
-    <Button
+    <button
       type="button"
-      size="icon"
-      variant="ghost"
       disabled={disabled}
-      className="rounded-xl h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+      onMouseDown={keepFocus}
       onClick={startRecording}
       title="Gravar áudio"
+      aria-label="Gravar áudio"
+      className={cn(
+        "relative z-[4] before:absolute before:-inset-1 before:rounded-full before:content-[''] grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:text-foreground active:bg-fill-tertiary disabled:pointer-events-none disabled:opacity-40",
+        className,
+      )}
     >
-      <Mic className="h-5 w-5" />
-    </Button>
+      <Mic className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+    </button>
   );
 }

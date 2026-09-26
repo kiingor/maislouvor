@@ -3,8 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
 import { useToast } from "@/hooks/use-toast";
-import { GlassCard } from "@/components/GlassCard";
-import { GlassInput } from "@/components/GlassInput";
+import { PageHeader } from "@/components/shell/PageHeader";
+import { ToolbarButton } from "@/components/shell/ToolbarButton";
 import { CoverUpload } from "@/components/CoverUpload";
 import { AudioUpload } from "@/components/AudioUpload";
 import { SongAudioAttachments } from "@/components/SongAudioAttachments";
@@ -14,17 +14,14 @@ import { SongRepertoriosCard } from "@/components/SongRepertoriosCard";
 import { AutoGrowTextarea } from "@/components/AutoGrowTextarea";
 import { CifraHighlightTextarea } from "@/components/CifraHighlightTextarea";
 import { transposeCifra, detectKeyFromCifra } from "@/lib/chordpro";
-import { Button } from "@/components/ui/button";
-import { RotateCcw } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Save, Loader2, X, Plus, CalendarDays, Download, Sparkles, Gauge, Clock, Youtube, Music2, FileText, Trash2, type LucideIcon } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertTriangle, CalendarDays, ChevronRight, Clock, Gauge, Loader2, MoreHorizontal, Music2, Plus, RotateCcw, Sparkles, Trash2, X, Youtube } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { splitSegments } from "@/data/chordDictionary";
 import { detectBpmFromUrl } from "@/lib/detectBpm";
-import { useState, useEffect, useRef } from "react";
-import { Badge } from "@/components/ui/badge";
+import { useState, useEffect, useId, useRef, type ReactNode } from "react";
+import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -50,20 +47,46 @@ function parseDurationToSeconds(val: string): number | null {
   return isFinite(num) && num > 0 ? Math.round(num) : null;
 }
 
-/** Cabeçalho de zona do cadastro: pílula numerada + ícone + título + dica. */
-function ZoneHeader({ n, icon: Icon, title, hint }: { n?: number; icon: LucideIcon; title: string; hint?: string }) {
+/* Lista agrupada iOS (HIG > Lists and tables; spec §5): card opaco, linhas de 52pt,
+   separador hairline recuado até o texto (16pt, ou 58pt depois de um ícone de 30pt). */
+const groupCard = "overflow-hidden rounded-card bg-card";
+const rowBase =
+  "relative flex min-h-[52px] items-center gap-3 px-4 py-1.5 before:pointer-events-none before:absolute before:right-0 before:top-0 before:border-t before:border-separator first:before:hidden";
+const rowSep16 = "before:left-4";
+const rowSep58 = "before:left-[58px]";
+const rowIcon = "grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[8px] bg-fill-tertiary text-muted-foreground";
+const rowSymbol = "h-[17px] w-[17px]";
+/** Linha de ação tintada (toque = leve realce, como numa célula iOS). */
+const actionRow = "w-full text-left transition-colors hover:bg-fill-quaternary active:bg-fill-tertiary disabled:pointer-events-none";
+const actionRowDimmed = "[&:disabled>*]:opacity-40";
+/** Campo sem moldura dentro de uma linha: o card já é a superfície (placeholder = label terciário). */
+const bareInput =
+  "h-11 w-full min-w-0 bg-transparent text-body text-foreground placeholder:text-label-tertiary focus:outline-none focus-visible:outline-none";
+const groupLabel = "mx-4 mb-1.5 block text-footnote text-muted-foreground";
+const helperText = "mx-1 mt-2 text-footnote text-muted-foreground";
+
+/** Cabeçalho de seção: Title3 + qualificador opcional em Subhead secundário + ação à direita. */
+function SectionHeader({ id, title, qualifier, action }: { id: string; title: string; qualifier?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="flex items-center gap-2.5">
-      {n != null && (
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
-          {n}
-        </span>
-      )}
-      <Icon className="h-4 w-4 text-primary shrink-0" />
-      <div className="min-w-0">
-        <h3 className="text-sm font-semibold leading-tight">{title}</h3>
-        {hint && <p className="text-[11px] text-muted-foreground leading-tight">{hint}</p>}
-      </div>
+    <div className="mx-1 mb-2 flex flex-wrap items-end justify-between gap-x-3">
+      <h2 id={id} className="min-w-0 break-words text-title3 text-foreground">
+        {title}
+        {qualifier && <span className="block text-subhead font-normal text-muted-foreground">{qualifier}</span>}
+      </h2>
+      {action}
+    </div>
+  );
+}
+
+/** Linha de formulário: rótulo à esquerda (Body) e campo ocupando o resto. */
+function FieldRow({ label, htmlFor, alignTop, children }: { label: string; htmlFor?: string; alignTop?: boolean; children: ReactNode }) {
+  const Label = htmlFor ? "label" : "span";
+  return (
+    <div className={cn(rowBase, rowSep16, "py-0", alignTop && "items-start")}>
+      <Label htmlFor={htmlFor} className={cn("w-[72px] shrink-0 text-body text-foreground", alignTop ? "pt-[15px]" : "")}>
+        {label}
+      </Label>
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }
@@ -75,6 +98,13 @@ export default function SongEditor() {
   const canEdit = can("musicas", "editar");
   const { toast } = useToast();
   const qc = useQueryClient();
+  const uid = useId();
+  const ids = {
+    identity: `${uid}-identity`, media: `${uid}-media`, processing: `${uid}-processing`, data: `${uid}-data`,
+    content: `${uid}-content`, history: `${uid}-history`,
+    title: `${uid}-title`, artist: `${uid}-artist`, theme: `${uid}-theme`, tag: `${uid}-tag`,
+    mediaUrl: `${uid}-media-url`, bpm: `${uid}-bpm`, duration: `${uid}-duration`,
+  };
 
   const { data: song, isLoading } = useQuery({
     queryKey: ["song", id],
@@ -466,13 +496,21 @@ export default function SongEditor() {
   // YouTube embed helper
   const youtubeId = mediaUrl.match(/(?:youtu\.be\/|v=)([\w-]{11})/)?.[1];
 
+  const addTag = () => {
+    const val = tagInput.trim();
+    if (val && !tags.includes(val)) {
+      setTags([...tags, val]);
+      setTagInput("");
+    }
+  };
+
   if (isLoading) {
     return (
-      <div className="animate-in-up space-y-4">
-        <div className="h-8 w-48 bg-accent rounded-lg animate-pulse" />
-        <div className="grid gap-6 lg:grid-cols-[1fr_1.5fr]">
-          <GlassCard className="h-96 animate-pulse" />
-          <GlassCard className="h-96 animate-pulse" />
+      <div className="animate-in-up">
+        <PageHeader title="Música" back />
+        <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]" aria-busy="true">
+          <div className="h-96 rounded-card bg-card animate-pulse motion-reduce:animate-none" />
+          <div className="h-96 rounded-card bg-card animate-pulse motion-reduce:animate-none" />
         </div>
       </div>
     );
@@ -480,156 +518,175 @@ export default function SongEditor() {
 
   if (!song) {
     return (
-      <div className="animate-in-up text-center py-16">
-        <p className="text-muted-foreground">Música não encontrada.</p>
-        <Button variant="outline" className="mt-4 rounded-xl" onClick={() => navigate(-1)}>
-          Voltar
-        </Button>
+      <div className="animate-in-up">
+        <PageHeader title="Música" back />
+        <div className="flex flex-col items-center gap-3 rounded-card bg-card px-4 py-10 text-center">
+          <Music2 className="h-7 w-7 text-label-tertiary" aria-hidden="true" />
+          <p className="text-body text-muted-foreground">Música não encontrada.</p>
+          <Button variant="secondary" onClick={() => navigate(-1)}>
+            Voltar
+          </Button>
+        </div>
       </div>
     );
   }
 
+  const headerActions = readOnly ? undefined : (
+    <>
+      {/* HIG > Toolbars: ação destrutiva fora de destaque, num menu; Salvar é a ação principal. */}
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger asChild>
+          <ToolbarButton icon={<MoreHorizontal strokeWidth={2.2} />} aria-label="Mais opções" title="Mais opções" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" sideOffset={8}>
+          <DropdownMenuItem onSelect={() => setDeleteOpen(true)} className="text-ios-red focus:text-ios-red">
+            <Trash2 />
+            Excluir música
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ToolbarButton
+        prominent
+        label={saving ? "Salvando..." : "Salvar"}
+        onClick={handleSave}
+        disabled={saving || !title.trim()}
+      />
+    </>
+  );
+
+  const importBusy = importingYt;
+  const separatingBusy = separating || stemsProcessing;
+
   return (
     <div className="animate-in-up">
-      <div className="mb-6 flex items-center justify-between">
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" /> Voltar
-        </button>
-        <div className="flex items-center gap-2">
-          {!readOnly && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rounded-xl text-muted-foreground hover:text-destructive"
-              onClick={() => setDeleteOpen(true)}
-              title="Excluir música"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
-          {!readOnly && (
-            <Button onClick={handleSave} disabled={saving || !title.trim()} className="rounded-xl gap-2">
-              <Save className="h-4 w-4" />
-              {saving ? "Salvando..." : "Salvar"}
-            </Button>
-          )}
-        </div>
-      </div>
+      <PageHeader title={song.title?.trim() || "Música"} subtitle={song.artist || undefined} back actions={headerActions} />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_1.5fr] lg:items-start">
-        {/* === Coluna esquerda: pipeline de cadastro (zonas 1-4) === */}
-        <div className="min-w-0 space-y-6">
-          {/* Zona 1 — Identidade */}
-          <GlassCard className="p-6 space-y-4">
-            <ZoneHeader n={1} icon={Music2} title="Identidade" hint="Capa, nome e como a equipe encontra a música" />
-            <div className="w-40 mx-auto">
-              <CoverUpload
-                songId={id!}
-                teamId={currentTeam?.id || ""}
-                coverPath={coverPath}
-                onUpload={(path) => { setCoverPath(path); persistField({ cover_path: path }); }}
-                readOnly={readOnly}
-              />
+      <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] lg:items-start lg:gap-x-6">
+        {/* === Coluna esquerda: cadastro === */}
+        <div className="min-w-0 space-y-7">
+          {/* Identidade */}
+          <section aria-labelledby={ids.identity}>
+            <SectionHeader id={ids.identity} title="Identidade" qualifier="Capa, nome e como a equipe encontra a música" />
+            <div className="mb-4 flex justify-center">
+              <div className="w-40">
+                <CoverUpload
+                  songId={id!}
+                  teamId={currentTeam?.id || ""}
+                  coverPath={coverPath}
+                  onUpload={(path) => { setCoverPath(path); persistField({ cover_path: path }); }}
+                  readOnly={readOnly}
+                />
+              </div>
             </div>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Título</label>
-                <GlassInput value={title} onChange={(e) => setTitle(e.target.value)} readOnly={readOnly} />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Artista</label>
-                <GlassInput value={artist} onChange={(e) => setArtist(e.target.value)} readOnly={readOnly} />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Tema</label>
-                <GlassInput value={theme} onChange={(e) => setTheme(e.target.value)} readOnly={readOnly} placeholder="Ex: Adoração, Celebração..." />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Tags</label>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {tags.map((tag, i) => (
-                    <span key={i} className="inline-flex items-center gap-1 text-[11px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                      {tag}
-                      {!readOnly && (
-                        <button
-                          type="button"
-                          onClick={() => setTags(tags.filter((_, j) => j !== i))}
-                          className="hover:text-destructive transition-colors"
+            <div className={groupCard}>
+              <FieldRow label="Título" htmlFor={ids.title}>
+                <input id={ids.title} className={bareInput} value={title} onChange={(e) => setTitle(e.target.value)} readOnly={readOnly} />
+              </FieldRow>
+              <FieldRow label="Artista" htmlFor={ids.artist}>
+                <input id={ids.artist} className={bareInput} value={artist} onChange={(e) => setArtist(e.target.value)} readOnly={readOnly} />
+              </FieldRow>
+              <FieldRow label="Tema" htmlFor={ids.theme}>
+                <input id={ids.theme} className={bareInput} value={theme} onChange={(e) => setTheme(e.target.value)} readOnly={readOnly} placeholder="Ex: Adoração, Celebração..." />
+              </FieldRow>
+              {(!readOnly || tags.length > 0) && (
+                <FieldRow label="Tags" htmlFor={readOnly ? undefined : ids.tag} alignTop>
+                  {tags.length > 0 && (
+                    <ul className="flex flex-wrap gap-1.5 py-3" aria-label="Tags">
+                      {tags.map((tag, i) => (
+                        <li
+                          key={i}
+                          className={cn(
+                            "inline-flex min-h-7 items-center gap-0.5 rounded-full bg-fill-tertiary py-1 text-footnote font-medium text-foreground",
+                            readOnly ? "px-2.5" : "pl-2.5 pr-1",
+                          )}
                         >
-                          <X className="h-3 w-3" />
-                        </button>
-                      )}
-                    </span>
-                  ))}
-                </div>
-                {!readOnly && (
-                  <div className="flex gap-1.5">
-                    <GlassInput
-                      value={tagInput}
-                      onChange={(e) => setTagInput(e.target.value)}
-                      placeholder="Nova tag..."
-                      className="flex-1"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          const val = tagInput.trim();
-                          if (val && !tags.includes(val)) {
-                            setTags([...tags, val]);
-                            setTagInput("");
+                          {tag}
+                          {!readOnly && (
+                            <button
+                              type="button"
+                              onClick={() => setTags(tags.filter((_, j) => j !== i))}
+                              aria-label={`Remover tag ${tag}`}
+                              className="relative grid h-5 w-5 place-items-center rounded-full text-muted-foreground transition-colors hover:text-foreground after:absolute after:-inset-3"
+                            >
+                              <X className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {!readOnly && (
+                    <div className={cn("flex items-center gap-1", tags.length > 0 && "-mt-1")}>
+                      <input
+                        id={ids.tag}
+                        className={bareInput}
+                        value={tagInput}
+                        onChange={(e) => setTagInput(e.target.value)}
+                        placeholder="Nova tag..."
+                        enterKeyHint="done"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addTag();
                           }
-                        }
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="rounded-xl h-9 px-2"
-                      onClick={() => {
-                        const val = tagInput.trim();
-                        if (val && !tags.includes(val)) {
-                          setTags([...tags, val]);
-                          setTagInput("");
-                        }
-                      }}
-                      disabled={!tagInput.trim()}
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                )}
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={addTag}
+                        disabled={!tagInput.trim()}
+                        aria-label="Adicionar tag"
+                        className="-mr-2 grid h-11 w-11 shrink-0 place-items-center transition-opacity disabled:opacity-40"
+                      >
+                        <span className="grid h-7 w-7 place-items-center rounded-full bg-prominent text-prominent-foreground">
+                          <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                </FieldRow>
+              )}
+            </div>
+          </section>
+
+          {/* Mídia & áudio */}
+          <section aria-labelledby={ids.media}>
+            <SectionHeader id={ids.media} title="Mídia & áudio" qualifier="Referência e arquivo da música" />
+            <label htmlFor={ids.mediaUrl} className={groupLabel}>Link de mídia</label>
+            <div className={groupCard}>
+              <div className={cn(rowBase, rowSep16, "py-0")}>
+                <input
+                  id={ids.mediaUrl}
+                  className={bareInput}
+                  value={mediaUrl}
+                  onChange={(e) => setMediaUrl(e.target.value)}
+                  readOnly={readOnly}
+                  placeholder="Link do YouTube, Spotify..."
+                  inputMode="url"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
               </div>
             </div>
-          </GlassCard>
-
-          {/* Zona 2 — Mídia & áudio */}
-          <GlassCard className="p-6 space-y-4">
-            <ZoneHeader n={2} icon={Youtube} title="Mídia & áudio" hint="Referência e arquivo da música" />
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Link de mídia</label>
-                <GlassInput value={mediaUrl} onChange={(e) => setMediaUrl(e.target.value)} readOnly={readOnly} placeholder="Link do YouTube, Spotify..." />
+            {youtubeId && (
+              <div className="mt-3 aspect-video overflow-hidden rounded-card bg-fill-tertiary">
+                <iframe
+                  src={`https://www.youtube.com/embed/${youtubeId}`}
+                  className="h-full w-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  title="YouTube preview"
+                />
               </div>
-              {youtubeId && (
-                <div className="aspect-video rounded-xl overflow-hidden">
-                  <iframe
-                    src={`https://www.youtube.com/embed/${youtubeId}`}
-                    className="w-full h-full"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    title="YouTube preview"
-                  />
-                </div>
-              )}
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Áudio da música</label>
-                {!readOnly && !audioPath ? (
-                  <>
-                    {/* Duas formas de obter o áudio: arquivo OU o link do YouTube acima */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            )}
+            {(!readOnly || audioPath) && (
+              <div className="mt-6">
+                <p className={groupLabel}>Áudio da música</p>
+                <div className={groupCard}>
+                  {!readOnly && !audioPath ? (
+                    <>
+                      {/* Duas formas de obter o áudio: arquivo OU o link do YouTube acima */}
                       <AudioUpload
                         songId={id!}
                         teamId={currentTeam?.id || ""}
@@ -638,119 +695,124 @@ export default function SongEditor() {
                         readOnly={readOnly}
                         compact
                       />
-                      <Button
+                      <button
                         type="button"
-                        variant="outline"
-                        className="w-full rounded-xl gap-2"
+                        className={cn(rowBase, rowSep58, actionRow, !importBusy && actionRowDimmed)}
                         onClick={handleImportYoutube}
                         disabled={importingYt || !youtubeId}
+                        aria-busy={importBusy || undefined}
                         title={youtubeId ? "Importar áudio do link do YouTube" : "Cole um link do YouTube no campo Link de mídia acima"}
                       >
-                        {importingYt ? <Loader2 className="h-4 w-4 animate-spin" /> : <Youtube className="h-4 w-4" />}
-                        {importingYt ? "Baixando..." : "Do YouTube"}
-                      </Button>
-                    </div>
+                        <span className={cn(rowIcon, "text-primary")} aria-hidden="true">
+                          {importingYt ? <Loader2 className={cn(rowSymbol, "animate-spin")} /> : <Youtube className={rowSymbol} />}
+                        </span>
+                        <span className="min-w-0 flex-1 text-body text-primary">{importingYt ? "Baixando..." : "Do YouTube"}</span>
+                      </button>
+                    </>
+                  ) : (
+                    <AudioUpload
+                      songId={id!}
+                      teamId={currentTeam?.id || ""}
+                      audioPath={audioPath}
+                      onUpload={(path) => { setAudioPath(path); persistField({ audio_path: path }); }}
+                      readOnly={readOnly}
+                      compact
+                    />
+                  )}
+                </div>
+                {!readOnly && !audioPath && (
+                  <>
                     {!youtubeId && !importingYt && (
-                      <p className="text-[11px] text-muted-foreground mt-1.5">
-                        Para importar do YouTube, cole o link no campo <strong>Link de mídia</strong> acima.
+                      <p className={helperText}>
+                        Para importar do YouTube, cole o link no campo <strong className="font-semibold text-foreground">Link de mídia</strong> acima.
                       </p>
                     )}
-                    {importingYt && (
-                      <p className="text-[11px] text-muted-foreground mt-1.5">Baixando do YouTube… pode levar ~1 min.</p>
-                    )}
+                    {importingYt && <p className={helperText}>Baixando do YouTube… pode levar ~1 min.</p>}
                     {ytCookieExpired && !importingYt && (
-                      <div className="mt-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
-                        ⚠️ O acesso ao YouTube expirou. <strong>Avise o administrador do app</strong> para renovar o login — depois é só tentar importar de novo.
+                      <div className={cn(groupCard, "mt-3 flex items-start gap-3 px-4 py-3")}>
+                        <AlertTriangle className="mt-px h-[22px] w-[22px] shrink-0 text-ios-red" aria-hidden="true" />
+                        <p className="min-w-0 text-footnote text-foreground">
+                          O acesso ao YouTube expirou. <strong className="font-semibold">Avise o administrador do app</strong> para renovar o login — depois é só tentar importar de novo.
+                        </p>
                       </div>
                     )}
                   </>
-                ) : (
-                  <AudioUpload
-                    songId={id!}
-                    teamId={currentTeam?.id || ""}
-                    audioPath={audioPath}
-                    onUpload={(path) => { setAudioPath(path); persistField({ audio_path: path }); }}
-                    readOnly={readOnly}
-                    compact
-                  />
                 )}
               </div>
-            </div>
-          </GlassCard>
+            )}
+          </section>
 
-          <GlassCard className="min-w-0 p-6">
-            <SongAudioAttachments
-              key={song.id}
-              songId={song.id}
-              teamId={song.team_id}
-              readOnly={!canEditAdditionalAudio}
-            />
-          </GlassCard>
+          <SongAudioAttachments
+            key={song.id}
+            songId={song.id}
+            teamId={song.team_id}
+            readOnly={!canEditAdditionalAudio}
+          />
 
-          {/* Zona 3 — Processamento (aparece quando há áudio) */}
+          {/* Processamento (aparece quando há áudio) */}
           {audioPath && (!readOnly || tracks.length > 0) && (
-            <GlassCard className="p-6 space-y-4">
-              <ZoneHeader n={3} icon={Sparkles} title="Processamento" hint="Corte e separação por IA" />
-              <div className="space-y-3">
-                {!readOnly && (
-                  <AudioTrimmer
-                    key={audioPath}
-                    audioPath={audioPath}
-                    teamId={currentTeam?.id || ""}
-                    songId={id!}
-                    onTrimmed={() => {
-                      qc.invalidateQueries({ queryKey: ["song", id] });
-                    }}
-                  />
-                )}
-                {!readOnly && (
-                  <div className="space-y-1.5">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="rounded-xl gap-1.5 w-full"
+            <section aria-labelledby={ids.processing}>
+              <SectionHeader id={ids.processing} title="Processamento" qualifier="Corte e separação por IA" />
+              {!readOnly && (
+                <>
+                  <div className={groupCard}>
+                    <div className="px-4 pb-3 pt-3.5">
+                      <AudioTrimmer
+                        key={audioPath}
+                        audioPath={audioPath}
+                        teamId={currentTeam?.id || ""}
+                        songId={id!}
+                        onTrimmed={() => {
+                          qc.invalidateQueries({ queryKey: ["song", id] });
+                        }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className={cn(rowBase, rowSep16, actionRow, !separatingBusy && actionRowDimmed)}
                       onClick={handleSeparateStems}
                       disabled={separating || stemsProcessing}
+                      aria-busy={separatingBusy || undefined}
                     >
-                      {separating || stemsProcessing ? (
-                        <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Separando faixas... (alguns min)</>
-                      ) : (
-                        <><Sparkles className="h-3.5 w-3.5" /> Separar em faixas (IA)</>
-                      )}
-                    </Button>
-                    <p className="text-[11px] text-muted-foreground">
-                      Gera Vocais, Bateria, Baixo, Guitarra, Teclado e Outros a partir do áudio.
-                    </p>
+                      <span className={cn(rowIcon, "text-primary")} aria-hidden="true">
+                        {separatingBusy ? <Loader2 className={cn(rowSymbol, "animate-spin")} /> : <Sparkles className={rowSymbol} />}
+                      </span>
+                      <span className="min-w-0 flex-1 text-body text-primary">
+                        {separatingBusy ? "Separando faixas... (alguns min)" : "Separar em faixas (IA)"}
+                      </span>
+                    </button>
                   </div>
-                )}
-                {tracks.length > 0 && (
+                  <p className={helperText}>Gera Vocais, Bateria, Baixo, Guitarra, Teclado e Outros a partir do áudio.</p>
+                </>
+              )}
+              {tracks.length > 0 && (
+                <div className={readOnly ? undefined : "mt-6"}>
                   <StemPreviewPlayer
                     tracks={tracks}
                     originalAudioPath={audioPath}
                     songId={id}
                     songKey={(song as any)?.key_original}
                   />
-                )}
-              </div>
-            </GlassCard>
+                </div>
+              )}
+            </section>
           )}
 
-          {/* Zona 4 — Dados musicais (BPM/Duração: travados até ter áudio) */}
-          <GlassCard className="p-6 space-y-4">
-            <ZoneHeader
-              n={4}
-              icon={Gauge}
+          {/* Dados musicais (BPM/Duração: travados até ter áudio) */}
+          <section aria-labelledby={ids.data}>
+            <SectionHeader
+              id={ids.data}
               title="Dados musicais"
-              hint={audioPath ? "Detectados do áudio — ajuste se precisar" : "Disponível após adicionar o áudio"}
+              qualifier={audioPath ? "Detectados do áudio — ajuste se precisar" : "Disponível após adicionar o áudio"}
             />
-            {audioPath ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
-                    <Gauge className="h-3 w-3" /> BPM
-                  </label>
-                  <div className="flex gap-1.5">
-                    <GlassInput
+            <div className={groupCard}>
+              {audioPath ? (
+                <>
+                  <div className={cn(rowBase, rowSep58, "py-0")}>
+                    <span className={rowIcon} aria-hidden="true"><Gauge className={rowSymbol} /></span>
+                    <label htmlFor={ids.bpm} className="min-w-0 flex-1 text-body text-foreground">BPM</label>
+                    <input
+                      id={ids.bpm}
                       type="number"
                       inputMode="numeric"
                       min={40}
@@ -759,41 +821,50 @@ export default function SongEditor() {
                       onChange={(e) => setBpm(e.target.value)}
                       readOnly={readOnly}
                       placeholder="100"
-                      className="flex-1"
+                      className={cn(
+                        bareInput,
+                        "w-16 flex-none text-right tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+                      )}
                     />
                     {!readOnly && (
-                      <Button
+                      <button
                         type="button"
-                        size="sm"
-                        variant="outline"
-                        className="rounded-xl h-9 px-2 shrink-0"
                         onClick={handleDetectBpm}
                         disabled={detectingBpm}
                         title="Detectar BPM do áudio"
+                        aria-label="Detectar BPM do áudio"
+                        className="-mr-2 grid h-11 w-11 shrink-0 place-items-center text-primary"
                       >
-                        {detectingBpm ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                      </Button>
+                        <span className="grid h-8 w-8 place-items-center rounded-full bg-fill-tertiary transition-colors active:bg-fill-secondary">
+                          {detectingBpm ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} aria-hidden="true" /> : <Sparkles className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />}
+                        </span>
+                      </button>
                     )}
                   </div>
+                  <div className={cn(rowBase, rowSep58, "py-0")}>
+                    <span className={rowIcon} aria-hidden="true"><Clock className={rowSymbol} /></span>
+                    <label htmlFor={ids.duration} className="min-w-0 flex-1 text-body text-foreground">Duração</label>
+                    <input
+                      id={ids.duration}
+                      value={durationInput}
+                      onChange={(e) => setDurationInput(e.target.value)}
+                      readOnly={readOnly}
+                      placeholder="mm:ss"
+                      inputMode="numeric"
+                      className={cn(bareInput, "w-20 flex-none text-right tabular-nums", !readOnly && "mr-12")}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center gap-3 px-4 py-4">
+                  <Gauge className="h-7 w-7 shrink-0 text-label-tertiary" aria-hidden="true" />
+                  <p className="min-w-0 text-body text-muted-foreground">
+                    Adicione o áudio acima para detectar BPM e duração automaticamente.
+                  </p>
                 </div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
-                    <Clock className="h-3 w-3" /> Duração
-                  </label>
-                  <GlassInput
-                    value={durationInput}
-                    onChange={(e) => setDurationInput(e.target.value)}
-                    readOnly={readOnly}
-                    placeholder="mm:ss"
-                  />
-                </div>
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Adicione o áudio acima para detectar BPM e duração automaticamente.
-              </p>
-            )}
-          </GlassCard>
+              )}
+            </div>
+          </section>
 
           {/* Repertórios — aloca a música em vários repertórios (muitos-para-muitos) */}
           {id && currentTeam?.id && (
@@ -801,35 +872,48 @@ export default function SongEditor() {
           )}
         </div>
 
-        {/* === Coluna direita: Zona 5 — Conteúdo === */}
-        <GlassCard className="p-6 space-y-4 lg:sticky lg:top-6">
-          <ZoneHeader n={5} icon={FileText} title="Conteúdo" hint="Cifra e letra para o time" />
+        {/* === Coluna direita: Conteúdo === */}
+        <section aria-labelledby={ids.content} className="min-w-0 lg:sticky lg:top-8">
+          <SectionHeader id={ids.content} title="Conteúdo" qualifier="Cifra e letra para o time" />
           <Tabs defaultValue="cifra" className="w-full">
-            <TabsList className="mb-4 w-full">
+            <TabsList className="w-full">
               <TabsTrigger value="cifra" className="flex-1">Cifra</TabsTrigger>
               <TabsTrigger value="lyrics" className="flex-1">Letra</TabsTrigger>
             </TabsList>
             <TabsContent value="cifra">
               {/* Controle de tom — transpõe a cifra offline; salva como padrão da música */}
               {!readOnly && cifraText.trim() && (
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-xs text-muted-foreground">
-                    Transpor cifra {tomDelta !== 0 && <span className="text-primary font-medium">({tomDelta > 0 ? "+" : ""}{tomDelta})</span>}
-                  </span>
-                  <div className="flex items-center rounded-lg glass-input overflow-hidden text-sm">
-                    <button type="button" onClick={tomDown} className="px-3 py-1.5 font-semibold hover:bg-accent/60 transition-colors" title="Descer ½ tom">−1</button>
-                    <button
-                      type="button"
-                      onClick={tomReset}
-                      className="px-3 py-1.5 min-w-[3rem] text-center border-x border-border font-bold text-primary hover:bg-accent/60 transition-colors"
-                      title="Tom atual — toque para voltar ao original"
-                    >
-                      {detectKeyFromCifra(cifraText) ?? "Tom"}
-                    </button>
-                    <button type="button" onClick={tomUp} className="px-3 py-1.5 font-semibold hover:bg-accent/60 transition-colors" title="Subir ½ tom">+1</button>
+                <div className="mb-3 flex items-center justify-between gap-3 pl-1">
+                  <span className="min-w-0 text-subhead text-muted-foreground">
+                    Transpor cifra{" "}
                     {tomDelta !== 0 && (
-                      <button type="button" onClick={tomReset} className="px-2 py-1.5 border-l border-border text-muted-foreground hover:bg-accent/60 transition-colors" title="Voltar ao tom original">
-                        <RotateCcw className="h-3.5 w-3.5" />
+                      <span className="font-semibold tabular-nums text-foreground">({tomDelta > 0 ? "+" : ""}{tomDelta})</span>
+                    )}
+                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex h-11 items-center overflow-hidden rounded-full bg-fill-tertiary text-subhead text-foreground">
+                      <button type="button" onClick={tomDown} className="h-full min-w-[44px] px-3 font-semibold transition-colors active:bg-fill-secondary" title="Descer ½ tom">−1</button>
+                      <span className="h-5 w-px bg-separator" aria-hidden="true" />
+                      <button
+                        type="button"
+                        onClick={tomReset}
+                        className="h-full min-w-[3.25rem] px-2 text-center font-bold text-primary transition-colors active:bg-fill-secondary"
+                        title="Tom atual — toque para voltar ao original"
+                      >
+                        {detectKeyFromCifra(cifraText) ?? "Tom"}
+                      </button>
+                      <span className="h-5 w-px bg-separator" aria-hidden="true" />
+                      <button type="button" onClick={tomUp} className="h-full min-w-[44px] px-3 font-semibold transition-colors active:bg-fill-secondary" title="Subir ½ tom">+1</button>
+                    </div>
+                    {tomDelta !== 0 && (
+                      <button
+                        type="button"
+                        onClick={tomReset}
+                        className="grid h-11 w-11 place-items-center rounded-full bg-fill-tertiary text-muted-foreground transition-colors active:bg-fill-secondary"
+                        title="Voltar ao tom original"
+                        aria-label="Voltar ao tom original"
+                      >
+                        <RotateCcw className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
                       </button>
                     )}
                   </div>
@@ -848,48 +932,53 @@ export default function SongEditor() {
                 value={lyricsText}
                 onChange={(e) => setLyricsText(e.target.value)}
                 readOnly={readOnly}
-                className="w-full min-h-[260px] max-h-[70vh] rounded-xl glass-input p-4 font-mono text-sm leading-relaxed resize-none placeholder:text-muted-foreground/60 focus-visible:outline-none"
+                className="block w-full min-h-[260px] max-h-[70vh] rounded-card bg-card px-4 py-3.5 text-body leading-7 text-foreground resize-none placeholder:text-label-tertiary focus:outline-none focus-visible:outline-none"
                 placeholder="Cole ou digite a letra aqui. Use [tags] para separar as partes (ex: [Refrão], [Verso 1])..."
               />
             </TabsContent>
           </Tabs>
-        </GlassCard>
+        </section>
 
         {/* === Histórico — referência, largura total === */}
-        <GlassCard className="p-5 lg:col-span-2">
-          <div className="flex items-center gap-2 mb-3">
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold">Histórico</h3>
-            {songHistory.length > 0 && (
-              <Badge variant="secondary" className="text-[10px] h-5">
-                Tocada {songHistory.length}x
-              </Badge>
-            )}
-          </div>
+        <section aria-labelledby={ids.history} className="min-w-0 lg:col-span-2">
+          <SectionHeader
+            id={ids.history}
+            title="Histórico"
+            qualifier={songHistory.length > 0 ? `Tocada ${songHistory.length}x` : undefined}
+          />
           {songHistory.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Ainda não foi tocada em nenhum culto.</p>
-          ) : (
-            <div className="space-y-1.5">
-              {songHistory.slice(0, 8).map((culto: any, idx: number) => (
-                <button
-                  key={culto.id + "-" + idx}
-                  onClick={() => navigate(`/app/cultos/${culto.id}`)}
-                  className="w-full flex items-center justify-between text-left px-2.5 py-1.5 rounded-lg hover:bg-accent/40 transition-colors"
-                >
-                  <span className="text-xs font-medium truncate">{culto.name}</span>
-                  <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
-                    {new Date(culto.date).toLocaleDateString("pt-BR")}
-                  </span>
-                </button>
-              ))}
-              {songHistory.length > 0 && (
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  Última vez: {formatDistanceToNow(new Date(songHistory[0].date), { addSuffix: true, locale: ptBR })}
-                </p>
-              )}
+            <div className={cn(groupCard, "flex items-center gap-3 px-4 py-4")}>
+              <CalendarDays className="h-7 w-7 shrink-0 text-label-tertiary" aria-hidden="true" />
+              <p className="min-w-0 text-body text-muted-foreground">Ainda não foi tocada em nenhum culto.</p>
             </div>
+          ) : (
+            <>
+              <ul className={groupCard}>
+                {songHistory.slice(0, 8).map((culto: any, idx: number) => (
+                  <li
+                    key={culto.id + "-" + idx}
+                    className="relative before:pointer-events-none before:absolute before:left-4 before:right-0 before:top-0 before:z-[1] before:border-t before:border-separator first:before:hidden"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/app/cultos/${culto.id}`)}
+                      className="flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-fill-quaternary active:bg-fill-tertiary"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-body text-foreground">{culto.name}</span>
+                      <span className="shrink-0 text-subhead tabular-nums text-muted-foreground">
+                        {new Date(culto.date).toLocaleDateString("pt-BR")}
+                      </span>
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-label-tertiary" strokeWidth={2.5} aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <p className={helperText}>
+                Última vez: {formatDistanceToNow(new Date(songHistory[0].date), { addSuffix: true, locale: ptBR })}
+              </p>
+            </>
           )}
-        </GlassCard>
+        </section>
       </div>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
@@ -902,13 +991,12 @@ export default function SongEditor() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteSong} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction onClick={handleDeleteSong} className={buttonVariants({ variant: "destructive" })}>
               Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
     </div>
   );
 }

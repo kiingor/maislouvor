@@ -1,9 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { GlassInput } from "@/components/GlassInput";
-import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogToolbar } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -13,6 +11,21 @@ interface Props {
   onOpenChange: (o: boolean) => void;
   editCulto?: any | null;
 }
+
+// Formulário agrupado dentro da folha (protótipo `.group` / `.group-label`).
+// Na folha, --card já vira branco (claro) / #2C2C2E (escuro) — ver ui/dialog.tsx.
+const group = "overflow-hidden rounded-card bg-card";
+const groupLabel = "mx-4 mb-1.5 block text-footnote text-muted-foreground";
+const row = "relative flex min-h-[48px] items-center gap-3 px-4";
+const rowSeparator = "before:absolute before:top-0 before:right-0 before:left-4 before:border-t before:border-border";
+const fieldInput = "min-w-0 flex-1 bg-transparent py-3 text-body text-foreground placeholder:text-label-tertiary focus-visible:outline-none";
+// Foco de teclado nas linhas com campo de texto: anel interno na linha inteira (o contorno global
+// de :focus-visible seria cortado pelo overflow do grupo). Some no toque, como a regra global (.pointer-mode).
+const keyboardFocusRow =
+  "[html:not(.pointer-mode)_&:focus-within]:ring-[3px] [html:not(.pointer-mode)_&:focus-within]:ring-inset [html:not(.pointer-mode)_&:focus-within]:ring-ios-blue";
+
+const datePill =
+  "h-9 rounded-[8px] border-0 bg-fill-tertiary px-2.5 text-body text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ios-blue/40";
 
 export function CultoModal({ open, onOpenChange, editCulto }: Props) {
   const [name, setName] = useState("");
@@ -62,31 +75,54 @@ export function CultoModal({ open, onOpenChange, editCulto }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass rounded-2xl border-0 max-w-sm sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-lg font-semibold">{editCulto ? "Editar culto" : "Novo culto"}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Nome</label>
-            <GlassInput placeholder="Ex: Culto de Domingo" value={name} onChange={(e) => setName(e.target.value)} required />
+      <DialogContent className="sm:max-w-md">
+        <DialogToolbar
+          title={editCulto ? "Editar culto" : "Novo culto"}
+          confirm={{
+            label: editCulto ? "Salvar" : "Criar",
+            type: "submit",
+            form: "culto-form",
+            disabled: loading || !name.trim() || !date,
+            loading,
+          }}
+        />
+        <form id="culto-form" onSubmit={handleSubmit} className="space-y-6">
+          <div className={group}>
+            <div className={`${row} ${keyboardFocusRow}`}>
+              <label htmlFor="culto-name" className="w-20 shrink-0 text-body text-foreground">Nome</label>
+              <input
+                id="culto-name"
+                placeholder="Ex: Culto de Domingo"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                className={fieldInput}
+              />
+            </div>
+            <div className={`${row} ${rowSeparator} justify-between`}>
+              <label htmlFor="culto-date" className="text-body text-foreground">Data</label>
+              <input
+                id="culto-date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                required
+                className={datePill}
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Data</label>
-            <GlassInput type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+          <div>
+            <label htmlFor="culto-description" className={groupLabel}>Observações</label>
+            <div className={group}>
+              <Textarea
+                id="culto-description"
+                placeholder="Observações do culto (opcional)"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="min-h-[88px] resize-none rounded-none bg-transparent focus-visible:outline-none focus-visible:ring-0 [html:not(.pointer-mode)_&:focus-visible]:ring-[3px] [html:not(.pointer-mode)_&:focus-visible]:ring-inset [html:not(.pointer-mode)_&:focus-visible]:ring-ios-blue"
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Observações</label>
-            <Textarea
-              placeholder="Observações do culto (opcional)"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="glass-subtle rounded-xl border-0 min-h-[80px] resize-none"
-            />
-          </div>
-          <Button type="submit" disabled={loading || !name.trim() || !date} className="w-full h-11 rounded-xl text-sm font-semibold">
-            {loading ? <div className="h-4 w-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" /> : editCulto ? "Salvar" : "Criar"}
-          </Button>
         </form>
       </DialogContent>
     </Dialog>

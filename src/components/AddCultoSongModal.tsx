@@ -4,16 +4,29 @@ import { useTeam } from "@/contexts/TeamContext";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { GlassInput } from "@/components/GlassInput";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Music, Search, Check, Loader2, Sparkles, ArrowLeft } from "lucide-react";
+import { Music, Search, Check, Loader2, Sparkles, ChevronLeft } from "lucide-react";
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   cultoId: string;
 }
+
+// Lista agrupada dentro da folha (protótipo `.group`).
+// Na folha, --card já vira branco (claro) / #2C2C2E (escuro) — ver ui/dialog.tsx.
+const group = "overflow-hidden rounded-card bg-card";
+const row = "relative flex min-h-[48px] items-center gap-3 px-4";
+const rowSeparator = "before:absolute before:top-0 before:right-0 before:left-4 before:border-t before:border-border";
+// Separador recuado até o texto (16 + ícone 30 + 12).
+const iconRowSeparator = "before:absolute before:top-0 before:right-0 before:left-[58px] before:border-t before:border-border";
+const fieldInput = "min-w-0 flex-1 bg-transparent py-3 text-body text-foreground placeholder:text-label-tertiary focus-visible:outline-none";
+// Foco de teclado nas linhas com campo de texto: anel interno na linha inteira (o contorno global
+// de :focus-visible seria cortado pelo overflow do grupo). Some no toque, como a regra global (.pointer-mode).
+const keyboardFocusRow =
+  "[html:not(.pointer-mode)_&:focus-within]:ring-[3px] [html:not(.pointer-mode)_&:focus-within]:ring-inset [html:not(.pointer-mode)_&:focus-within]:ring-ios-blue";
+
 
 interface AISuggestion {
   songId: string;
@@ -224,23 +237,13 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
     setSongCount(5);
   };
 
+  const chip = "inline-flex max-w-full items-center truncate rounded-full bg-fill-tertiary px-2 py-0.5 text-caption1 text-muted-foreground";
+
   return (
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetAI(); }}>
-      <DialogContent className="glass sm:rounded-2xl border-0 max-w-sm sm:max-w-md max-h-[calc(100vh-120px)] flex flex-col">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>
-            {showAI ? (
-              <div className="flex items-center gap-2">
-                <button onClick={resetAI} className="p-1 rounded-lg hover:bg-accent transition-colors">
-                  <ArrowLeft className="h-4 w-4" />
-                </button>
-                <Sparkles className="h-4 w-4 text-primary" />
-                Ajuda com IA
-              </div>
-            ) : (
-              "Adicionar música ao culto"
-            )}
-          </DialogTitle>
+          <DialogTitle>{showAI ? "Ajuda com IA" : "Adicionar música ao culto"}</DialogTitle>
         </DialogHeader>
 
         {!showAI ? (
@@ -248,138 +251,153 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
             {/* Search + AI button */}
             <div className="flex gap-2">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <GlassInput
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-muted-foreground"
+                  strokeWidth={2.25}
+                  aria-hidden="true"
+                />
+                <input
+                  type="search"
                   placeholder="Buscar música..."
+                  aria-label="Buscar música"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9"
+                  className="h-10 w-full rounded-full bg-fill-tertiary pl-9 pr-4 text-body text-foreground placeholder:text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ios-blue/40"
                 />
               </div>
               <Button
                 variant="outline"
-                className="rounded-xl gap-1.5 shrink-0"
+                // 40px visíveis (alinhado à busca), alvo de toque de 44pt (::before).
+                className="h-10 shrink-0 gap-1.5 px-4 text-subhead before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2"
                 onClick={() => setShowAI(true)}
               >
-                <Sparkles className="h-3.5 w-3.5" />
+                <Sparkles aria-hidden="true" />
                 IA
               </Button>
             </div>
 
             {/* Song list */}
-            <div className="flex-1 overflow-y-auto space-y-1 mt-2 min-h-0 max-h-[50vh]">
+            <div className="min-h-0 flex-1 overflow-y-auto max-h-[55vh] rounded-card">
               {isLoading ? (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Carregando" />
                 </div>
               ) : filtered.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-sm text-muted-foreground">
+                <div className={`${group} flex flex-col items-center gap-2 px-6 py-8 text-center`}>
+                  <Music className="h-7 w-7 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+                  <p className="text-body text-muted-foreground">
                     {search ? "Nenhuma música encontrada." : "Nenhuma música no repertório geral."}
                   </p>
                 </div>
               ) : (
-                filtered.map((song: any) => {
-                  const isAdded = existingSongs.includes(song.id);
-                  return (
-                    <div
-                      key={song.id}
-                      className="flex items-center gap-3 p-3 rounded-xl glass-subtle hover-lift transition-all"
-                    >
-                      <div className="h-9 w-9 rounded-lg bg-accent flex items-center justify-center shrink-0">
-                        <Music className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{song.title}</p>
-                        {song.artist && <p className="text-xs text-muted-foreground truncate">{song.artist}</p>}
-                        {((song.tags && song.tags.length > 0) || song.theme) && (
-                          <div className="flex flex-wrap gap-1 mt-0.5">
-                            {song.theme && (
-                              <span className="text-[9px] font-medium bg-primary/10 text-primary px-1.5 py-0.5 rounded-full truncate max-w-full">{song.theme}</span>
-                            )}
-                            {song.tags?.map((tag: string, i: number) => (
-                              <span key={i} className="text-[9px] font-medium bg-accent text-muted-foreground px-1.5 py-0.5 rounded-full truncate max-w-full">{tag}</span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      {song.key_current && (
-                        <span className="text-[10px] font-bold bg-accent px-1.5 py-0.5 rounded">{song.key_current}</span>
-                      )}
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {isAdded && (
-                          <span
-                            className="text-[10px] text-muted-foreground flex items-center gap-0.5"
-                            title="Já está no roteiro — adicione de novo para repetir na sequência"
-                          >
-                            <Check className="h-3 w-3 text-green-500" /> no culto
-                          </span>
-                        )}
+                <ul className={group}>
+                  {filtered.map((song: any, i: number) => {
+                    const isAdded = existingSongs.includes(song.id);
+                    return (
+                      <li key={song.id} className={`relative flex min-h-[60px] items-center gap-3 px-4 py-2.5 ${i > 0 ? iconRowSeparator : ""}`}>
+                        <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] bg-fill-tertiary" aria-hidden="true">
+                          <Music className="h-4 w-4 text-muted-foreground" strokeWidth={2.25} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-body text-foreground">{song.title}</p>
+                          {song.artist && <p className="truncate text-footnote text-muted-foreground">{song.artist}</p>}
+                          {(song.key_current || song.theme || (song.tags && song.tags.length > 0) || isAdded) && (
+                            <div className="mt-1 flex flex-wrap items-center gap-1">
+                              {song.key_current && <span className={`${chip} font-semibold text-foreground`}>{song.key_current}</span>}
+                              {song.theme && <span className={chip}>{song.theme}</span>}
+                              {song.tags?.map((tag: string, i: number) => (
+                                <span key={i} className={chip}>{tag}</span>
+                              ))}
+                              {isAdded && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 text-caption1 text-muted-foreground"
+                                  title="Já está no roteiro — adicione de novo para repetir na sequência"
+                                >
+                                  <Check className="h-3 w-3 text-ios-green" strokeWidth={2.5} aria-hidden="true" /> no culto
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                         <Button
                           size="sm"
-                          variant="outline"
-                          className="rounded-lg text-xs h-7"
+                          variant={isAdded ? "secondary" : "outline"}
+                          className="shrink-0"
                           disabled={adding === song.id}
                           onClick={() => addSong(song.id)}
                         >
                           {adding === song.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <Loader2 className="animate-spin" aria-label="Adicionando" />
                           ) : isAdded ? (
                             "Repetir"
                           ) : (
                             "Adicionar"
                           )}
                         </Button>
-                      </div>
-                    </div>
-                  );
-                })
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </div>
           </>
         ) : (
           /* AI Mode */
-          <div className="flex flex-col gap-4 flex-1 min-h-0">
+          <div className="flex min-h-0 flex-1 flex-col gap-4">
+            <button
+              type="button"
+              onClick={resetAI}
+              className="-my-2 -ml-1.5 inline-flex min-h-[44px] items-center gap-0.5 self-start rounded-[10px] px-1.5 text-subhead font-medium text-primary transition-opacity active:opacity-60"
+            >
+              <ChevronLeft className="h-[18px] w-[18px]" strokeWidth={2.5} aria-hidden="true" /> Voltar
+            </button>
             {suggestions.length === 0 ? (
               /* Input form */
               <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium mb-1.5 block">Liturgia do culto</label>
-                  <GlassInput
-                    placeholder="Ex: Adoração e Gratidão, Natal, Santa Ceia..."
-                    value={liturgy}
-                    onChange={(e) => setLiturgy(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-1.5 block">Quantidade de músicas</label>
-                  <GlassInput
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={songCount}
-                    onChange={(e) => setSongCount(parseInt(e.target.value) || 1)}
-                  />
+                <div className={group}>
+                  <div className={`${row} ${keyboardFocusRow}`}>
+                    <label htmlFor="ai-liturgy" className="w-24 shrink-0 text-body text-foreground">Liturgia</label>
+                    <input
+                      id="ai-liturgy"
+                      placeholder="Ex: Adoração e Gratidão, Natal, Santa Ceia..."
+                      value={liturgy}
+                      onChange={(e) => setLiturgy(e.target.value)}
+                      className={fieldInput}
+                    />
+                  </div>
+                  <div className={`${row} ${rowSeparator} justify-between`}>
+                    <label htmlFor="ai-count" className="text-body text-foreground">Quantidade de músicas</label>
+                    <input
+                      id="ai-count"
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={20}
+                      value={songCount}
+                      onChange={(e) => setSongCount(parseInt(e.target.value) || 1)}
+                      className="h-9 w-[64px] rounded-[8px] border-0 bg-fill-tertiary px-2.5 text-right text-body tabular-nums text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ios-blue/40"
+                    />
+                  </div>
                 </div>
                 <Button
-                  className="w-full rounded-xl gap-2"
+                  className="w-full gap-2"
                   onClick={generateSuggestions}
                   disabled={aiLoading || !liturgy.trim()}
                 >
                   {aiLoading ? (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="animate-spin" aria-hidden="true" />
                       Analisando músicas...
                     </>
                   ) : (
                     <>
-                      <Sparkles className="h-4 w-4" />
+                      <Sparkles aria-hidden="true" />
                       Gerar sugestões
                     </>
                   )}
                 </Button>
                 {aiLoading && (
-                  <p className="text-xs text-muted-foreground text-center">
+                  <p className="text-center text-footnote text-muted-foreground">
                     A IA está analisando {allSongs.length} músicas do seu repertório...
                   </p>
                 )}
@@ -387,14 +405,13 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
             ) : (
               /* Results */
               <>
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">
+                <div className="flex items-center justify-between gap-3 px-1">
+                  <p className="text-footnote text-muted-foreground">
                     {suggestions.length} sugestão(ões) • {selected.size} selecionada(s)
                   </p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs h-7"
+                  <button
+                    type="button"
+                    className="-my-2.5 -mr-1.5 inline-flex min-h-[44px] items-center rounded-[10px] px-1.5 text-subhead font-medium text-primary transition-opacity active:opacity-60"
                     onClick={() => {
                       if (selected.size === suggestions.length) {
                         setSelected(new Set());
@@ -404,66 +421,63 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
                     }}
                   >
                     {selected.size === suggestions.length ? "Desmarcar todas" : "Selecionar todas"}
-                  </Button>
+                  </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto space-y-2 min-h-0 max-h-[40vh]">
+                <ul className={`${group} min-h-0 flex-1 overflow-y-auto max-h-[45vh]`}>
                   {suggestions.map((s, idx) => {
                     const isAdded = existingSongs.includes(s.songId);
+                    const checkboxId = `ai-suggestion-${s.songId}`;
                     return (
-                      <div
-                        key={s.songId}
-                        className="flex items-start gap-3 p-3 rounded-xl glass-subtle transition-all"
-                      >
+                      <li key={s.songId} className={`relative flex items-start gap-3 px-4 py-3 ${idx > 0 ? rowSeparator : ""}`}>
                         <div className="flex items-center gap-2 pt-0.5">
-                          <span className="text-xs font-bold text-muted-foreground w-4 text-right">
+                          <span className="w-4 text-right text-footnote font-semibold tabular-nums text-muted-foreground">
                             {idx + 1}
                           </span>
                           <Checkbox
+                            id={checkboxId}
                             checked={selected.has(s.songId)}
                             onCheckedChange={() => toggleSelect(s.songId)}
                           />
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{s.title}</p>
+                        <label htmlFor={checkboxId} className="min-w-0 flex-1 cursor-pointer">
+                          <span className="block truncate text-body text-foreground">{s.title}</span>
                           {s.artist && (
-                            <p className="text-xs text-muted-foreground truncate">{s.artist}</p>
+                            <span className="block truncate text-footnote text-muted-foreground">{s.artist}</span>
                           )}
-                          <p className="text-xs text-primary/80 mt-1 line-clamp-2">{s.reason}</p>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {s.key && (
-                              <span className="text-[9px] font-bold bg-accent px-1.5 py-0.5 rounded">{s.key}</span>
-                            )}
-                            {s.theme && (
-                              <span className="text-[9px] font-medium bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">{s.theme}</span>
-                            )}
-                          </div>
-                          {isAdded && (
-                            <span className="text-[10px] text-muted-foreground flex items-center gap-1 mt-1">
-                              <Check className="h-3 w-3 text-green-500" /> Já no culto — marque para repetir
+                          <span className="mt-1 block text-footnote text-foreground line-clamp-2">{s.reason}</span>
+                          {(s.key || s.theme) && (
+                            <span className="mt-1 flex flex-wrap gap-1">
+                              {s.key && <span className={`${chip} font-semibold text-foreground`}>{s.key}</span>}
+                              {s.theme && <span className={chip}>{s.theme}</span>}
                             </span>
                           )}
-                        </div>
-                      </div>
+                          {isAdded && (
+                            <span className="mt-1 flex items-center gap-1 text-caption1 text-muted-foreground">
+                              <Check className="h-3 w-3 text-ios-green" strokeWidth={2.5} aria-hidden="true" /> Já no culto — marque para repetir
+                            </span>
+                          )}
+                        </label>
+                      </li>
                     );
                   })}
-                </div>
+                </ul>
 
                 <div className="flex gap-2">
                   <Button
-                    variant="outline"
-                    className="flex-1 rounded-xl"
+                    variant="secondary"
+                    className="flex-1"
                     onClick={() => { setSuggestions([]); setSelected(new Set()); }}
                   >
                     Refazer
                   </Button>
                   <Button
-                    className="flex-1 rounded-xl gap-2"
+                    className="flex-1 gap-2"
                     onClick={addSelectedSongs}
                     disabled={addingBulk || selected.size === 0}
                   >
                     {addingBulk ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="animate-spin" aria-label="Adicionando" />
                     ) : (
                       <>Adicionar {selected.size}</>
                     )}

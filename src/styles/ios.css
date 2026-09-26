@@ -1,0 +1,199 @@
+/* +Louvor — camada funcional iOS 27 (Liquid Glass), borda de rolagem e movimento.
+   Calibrado pelo protótipo aprovado (docs/ux/ios27-design-spec.md) e pelo componente
+   "Liquid Glass – Regular – Small" do kit iOS 27: interior quase igual ao fundo, desfoque
+   curto, aro especular fino e sombra larga e fraca. Só controles flutuantes usam vidro. */
+
+:root,
+.light {
+  --lg-fill: rgba(255, 255, 255, 0.16);
+  --lg-blur: 3px;
+  --lg-sat: 165%;
+  --lg-bright: 1.05;
+  --lg-sheen: rgba(255, 255, 255, 0.24);
+  --lg-stroke: rgba(0, 0, 0, 0.09);
+  --lg-hi: rgba(255, 255, 255, 0.95);
+  --lg-lo: rgba(255, 255, 255, 0.5);
+  --lg-shadow: rgba(0, 0, 0, 0.1);
+  /* Variante espessa (menus, popovers, barra lateral): muito texto → mais opaca (HIG > Materials). */
+  --lg-thick-fill: rgba(255, 255, 255, 0.82);
+  --lg-thick-blur: 30px;
+  --lens-rest: rgba(118, 118, 128, 0.14);
+  --lens-lift: rgba(255, 255, 255, 0.06);
+  --sheet-bg: rgba(242, 242, 247, 0.94);
+  --scrim: rgba(0, 0, 0, 0.22);
+  --edge-bg: 242 242 247;
+}
+.dark {
+  --lg-fill: rgba(22, 22, 24, 0.32);
+  --lg-bright: 0.9;
+  --lg-sheen: rgba(255, 255, 255, 0.07);
+  --lg-stroke: rgba(255, 255, 255, 0.14);
+  --lg-hi: rgba(255, 255, 255, 0.38);
+  --lg-lo: rgba(255, 255, 255, 0.12);
+  --lg-shadow: rgba(0, 0, 0, 0.55);
+  --lg-thick-fill: rgba(44, 44, 46, 0.82);
+  --lens-rest: rgba(255, 255, 255, 0.14);
+  --lens-lift: rgba(255, 255, 255, 0.05);
+  --sheet-bg: rgba(28, 28, 30, 0.94);
+  --scrim: rgba(0, 0, 0, 0.45);
+  --edge-bg: 0 0 0;
+}
+
+/* ---------- Liquid Glass ---------- */
+.liquid-glass,
+.liquid-glass-thick {
+  position: relative;
+  background: linear-gradient(180deg, var(--lg-sheen), transparent 48%), var(--lg-fill);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat)) brightness(var(--lg-bright));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat)) brightness(var(--lg-bright));
+  box-shadow:
+    inset 0 0 0 0.5px var(--lg-stroke),
+    inset 0 -10px 18px -14px var(--lg-stroke),
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 14px 34px -10px var(--lg-shadow);
+}
+.liquid-glass-thick {
+  --lg-fill: var(--lg-thick-fill);
+  --lg-blur: var(--lg-thick-blur);
+  --lg-sat: 180%;
+  --lg-bright: 1;
+}
+/* Aro especular: forte no alto à esquerda, suave embaixo à direita. */
+.liquid-glass::after,
+.liquid-glass-thick::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  padding: 1.25px;
+  pointer-events: none;
+  background: linear-gradient(135deg, var(--lg-hi) 0%, transparent 28%, transparent 62%, var(--lg-lo) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+
+/* Botão de vidro da barra superior (44pt) */
+.glass-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+  color: hsl(var(--foreground));
+  transition: transform 0.25s cubic-bezier(0.3, 1.4, 0.5, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+.glass-button:active { transform: scale(1.06); }
+.glass-button.capsule { padding: 0 14px 0 12px; font-size: 15px; letter-spacing: -0.23px; font-weight: 600; }
+
+/* ---------- Borda de rolagem (HIG > Scroll views) ----------
+   Desfoque progressivo em 4 camadas. O contêiner não tem opacidade nem máscara,
+   senão isolaria o backdrop das camadas. */
+.scroll-edge { position: absolute; left: 0; right: 0; z-index: 30; pointer-events: none; }
+.scroll-edge > * { position: absolute; inset: 0; transition: opacity 0.2s; }
+.scroll-edge > .b1 { -webkit-backdrop-filter: blur(0.6px); backdrop-filter: blur(0.6px); }
+.scroll-edge > .b2 { -webkit-backdrop-filter: blur(1.5px); backdrop-filter: blur(1.5px); }
+.scroll-edge > .b3 { -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.scroll-edge > .b4 { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.scroll-edge.top > .b1 { -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+.scroll-edge.top > .b2 { -webkit-mask-image: linear-gradient(#000 50%, transparent 78%); mask-image: linear-gradient(#000 50%, transparent 78%); }
+.scroll-edge.top > .b3 { -webkit-mask-image: linear-gradient(#000 32%, transparent 58%); mask-image: linear-gradient(#000 32%, transparent 58%); }
+.scroll-edge.top > .b4 { -webkit-mask-image: linear-gradient(#000 15%, transparent 40%); mask-image: linear-gradient(#000 15%, transparent 40%); }
+.scroll-edge.top > .fade { background: linear-gradient(rgb(var(--edge-bg)) 0%, rgb(var(--edge-bg) / 0.78) 50%, transparent); }
+.scroll-edge.top > * { opacity: 0; }
+.scroll-edge.top.on > * { opacity: 1; }
+.scroll-edge.bottom > .b1 { -webkit-mask-image: linear-gradient(transparent 28%, #000 48%); mask-image: linear-gradient(transparent 28%, #000 48%); }
+.scroll-edge.bottom > .b2 { -webkit-mask-image: linear-gradient(transparent 42%, #000 62%); mask-image: linear-gradient(transparent 42%, #000 62%); }
+.scroll-edge.bottom > .b3 { -webkit-mask-image: linear-gradient(transparent 55%, #000 76%); mask-image: linear-gradient(transparent 55%, #000 76%); }
+.scroll-edge.bottom > .b4 { -webkit-mask-image: linear-gradient(transparent 68%, #000 90%); mask-image: linear-gradient(transparent 68%, #000 90%); }
+.scroll-edge.bottom > .fade { background: linear-gradient(transparent 30%, rgb(var(--edge-bg) / 0.45) 85%); }
+
+/* ---------- Barra de abas ---------- */
+.tab-bar {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  height: 62px;
+  border-radius: 31px;
+  padding: 4px;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.tab-bar .tab-item {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  border-radius: 27px;
+  color: hsl(var(--foreground));
+  /* caption2 (spec §3: nada abaixo de 11px). */
+  font-size: 11px;
+  line-height: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06px;
+  -webkit-tap-highlight-color: transparent;
+}
+.tab-bar .tab-item > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-bar .tab-item[aria-selected="true"] { color: hsl(var(--primary)); }
+.tab-bar.dragging .tab-item[aria-selected="true"]:not(.drag-over) { color: hsl(var(--foreground)); }
+.tab-bar.dragging .tab-item.drag-over { color: hsl(var(--primary)); }
+.tab-bar .tab-lens {
+  position: absolute;
+  z-index: 1;
+  top: 4px;
+  left: 0;
+  height: 54px;
+  width: var(--lens-w, 70px);
+  border-radius: 27px;
+  background: var(--lens-rest);
+  transform: translateX(var(--lens-x, 4px)) scale(var(--lens-s, 1));
+  transition: transform 0.42s cubic-bezier(0.3, 1.25, 0.45, 1), width 0.3s, background 0.2s, box-shadow 0.2s;
+  pointer-events: none;
+}
+.tab-bar.lifted .tab-lens {
+  --lens-s: 1.16;
+  background: linear-gradient(180deg, var(--lg-sheen), transparent 50%), var(--lens-lift);
+  box-shadow: inset 1px 1.5px 0 -0.5px var(--lg-hi), inset -1px -1px 0 -0.5px var(--lg-lo), inset 0 0 0 0.5px var(--lg-stroke), 0 10px 24px -8px var(--lg-shadow);
+  -webkit-backdrop-filter: blur(2px) saturate(160%);
+  backdrop-filter: blur(2px) saturate(160%);
+}
+.tab-bar.dragging .tab-lens { transition: width 0.3s, background 0.2s, box-shadow 0.2s, transform 0.12s cubic-bezier(0.2, 0.8, 0.3, 1); }
+
+/* ---------- Título grande → inline ---------- */
+.inline-title { opacity: 0; transform: translateY(4px); transition: opacity 0.2s, transform 0.2s; }
+.inline-title.on { opacity: 1; transform: none; }
+
+/* ---------- Folhas ---------- */
+@keyframes ios-sheet-in { from { transform: translateY(105%); } to { transform: none; } }
+@keyframes ios-sheet-out { from { transform: none; } to { transform: translateY(105%); } }
+@keyframes ios-pop-in { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
+@keyframes ios-alert-in { from { opacity: 0; transform: translate(-50%, -50%) scale(1.12); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+.ios-grabber { width: 36px; height: 5px; border-radius: 3px; background: hsl(var(--label-tertiary)); margin: 6px auto 0; }
+
+/* ---------- Foco: só teclado ---------- */
+:focus-visible { outline: 3px solid rgb(var(--ios-blue-rgb)); outline-offset: 2px; }
+.pointer-mode :focus-visible { outline: none; }
+
+/* ---------- Acessibilidade ---------- */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .liquid-glass, .liquid-glass-thick { background: hsl(var(--card)); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: inset 0 0 0 1px hsl(var(--border)), 0 4px 14px -4px var(--lg-shadow); }
+  .liquid-glass::after, .liquid-glass-thick::after, .scroll-edge > [class^="b"] { display: none; }
+  .scroll-edge.top > .fade { background: linear-gradient(rgb(var(--edge-bg)) 70%, transparent); }
+  .tab-bar.lifted .tab-lens { background: var(--fill-secondary); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-bar .tab-lens, .inline-title, .glass-button, .scroll-edge > * { transition: none !important; }
+  .tab-bar.lifted .tab-lens { --lens-s: 1; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .liquid-glass, .liquid-glass-thick { background: hsl(var(--card)); }
+}

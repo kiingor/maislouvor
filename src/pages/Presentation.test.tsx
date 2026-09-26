@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -147,7 +147,8 @@ describe("áudios adicionais e sequência de loops", () => {
     fireEvent.keyDown(window, { key: "n" });
     expect(main.paused).toBe(true);
     expect(main.src).toBe("audio:main");
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    // O ✕ da folha vem de ui/dialog (closeLabel "Fechar").
+    fireEvent.click(screen.getByRole("button", { name: "Fechar" }));
     expect(screen.getByRole("button", { name: "Remover Refrão da sequência" })).toHaveAttribute("aria-current", "step");
     fireEvent.click(screen.getByRole("button", { name: "Reproduzir música" }));
     await waitFor(() => expect(stem.paused).toBe(false));
@@ -231,5 +232,51 @@ describe("avanço automático durante o ensaio", () => {
     await waitFor(() => expect(main.src).toBe(""));
     expect(main.paused).toBe(true);
     await waitFor(() => expect(TestAudio.instances.some((item) => item.src === "audio:next")).toBe(true));
+  });
+});
+
+describe("tema do palco e foco", () => {
+  it("aplica o tema do palco no <html> e na theme-color e devolve o do sistema ao sair", async () => {
+    const metas = ["(prefers-color-scheme: light)", "(prefers-color-scheme: dark)"].map((media, index) => {
+      const meta = document.createElement("meta");
+      meta.name = "theme-color";
+      meta.media = media;
+      meta.content = index === 0 ? "#F2F2F7" : "#000000";
+      document.head.appendChild(meta);
+      return meta;
+    });
+    try {
+      vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify({ instrument: "voz", theme: "light" }));
+      document.documentElement.classList.add("dark");
+      await setup();
+      expect(document.documentElement.classList.contains("dark")).toBe(false);
+      expect(metas.map((meta) => meta.content)).toEqual(["#FFFFFF", "#FFFFFF"]);
+      cleanup();
+      // matchMedia do setup responde "claro": ao sair, volta o esquema do sistema e as cores originais.
+      expect(document.documentElement.classList.contains("dark")).toBe(false);
+      expect(metas.map((meta) => meta.content)).toEqual(["#F2F2F7", "#000000"]);
+
+      vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify({ instrument: "voz", theme: "dark" }));
+      await setup();
+      expect(document.documentElement.classList.contains("dark")).toBe(true);
+      expect(metas.map((meta) => meta.content)).toEqual(["#000000", "#000000"]);
+      cleanup();
+      expect(document.documentElement.classList.contains("dark")).toBe(false);
+      expect(metas.map((meta) => meta.content)).toEqual(["#F2F2F7", "#000000"]);
+    } finally {
+      metas.forEach((meta) => meta.remove());
+    }
+  });
+
+  it("não devolve o foco ao seletor de músicas: o espaço volta a tocar/pausar", async () => {
+    const main = (await setup())!;
+    const trigger = screen.getAllByRole("button", { name: /Aleluia, Hosana/ })[0];
+    fireEvent.click(trigger);
+    const menu = await screen.findByRole("dialog");
+    fireEvent.click(within(menu).getByRole("button", { name: /Aleluia, Hosana/ }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(document.activeElement).not.toBe(trigger);
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: " " });
+    await waitFor(() => expect(main.paused).toBe(false));
   });
 });

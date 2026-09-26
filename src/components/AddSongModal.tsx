@@ -1,16 +1,14 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { GlassInput } from "@/components/GlassInput";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Music, Globe, Loader2, ListMusic, Search } from "lucide-react";
+import { Dialog, DialogContent, DialogToolbar } from "@/components/ui/dialog";
+import { SongSearchField } from "@/components/SongCard";
+import { cn } from "@/lib/utils";
+import { Music, Globe, Loader2, ListMusic, Check, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface AddSongModalProps {
   open: boolean;
@@ -185,150 +183,204 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: AddSongModalP
 
   const newSelectedCount = [...selected].filter((sid) => !lib?.already.has(sid)).length;
 
+  const sheetTitle =
+    mode === "choose"
+      ? (inRepertorio ? "Adicionar música" : "Nova música")
+      : mode === "search"
+      ? "Buscar músicas cadastradas"
+      : mode === "manual"
+      ? "Criar manualmente"
+      : "Importar do Cifra Club";
+
+  const confirm =
+    mode === "search"
+      ? { label: `Adicionar${newSelectedCount > 0 ? ` (${newSelectedCount})` : ""}`, onClick: handleAddSelected, disabled: newSelectedCount === 0 || loading, loading }
+      : mode === "manual"
+      ? { label: "Criar", type: "submit" as const, form: "add-song-manual", disabled: !title.trim() || loading, loading }
+      : mode === "import"
+      ? { label: "Importar", type: "submit" as const, form: "add-song-import", disabled: !url.trim() || loading, loading }
+      : undefined;
+
+  // Linha de opção (lista agrupada): ícone 30pt, título Body, descrição Footnote, chevron.
+  const optionRow = (icon: ReactNode, label: string, description: string, onClick: () => void, first: boolean) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className="relative flex min-h-[60px] w-full items-center gap-3 py-2.5 pl-4 pr-3 text-left transition-colors active:bg-fill-tertiary focus-visible:outline-offset-[-3px]"
+    >
+      {!first && <span aria-hidden="true" className="pointer-events-none absolute left-[58px] right-0 top-0 border-t border-separator" />}
+      <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[8px] bg-fill-tertiary text-muted-foreground [&_svg]:h-4 [&_svg]:w-4">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-body text-foreground">{label}</span>
+        <span className="block text-footnote text-muted-foreground">{description}</span>
+      </span>
+      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-label-tertiary" strokeWidth={2.5} aria-hidden="true" />
+    </button>
+  );
+
+  // Nos subníveis, "Voltar" devolve à escolha (a folha continua aberta).
+  const backLink = (
+    <button
+      type="button"
+      onClick={() => setMode("choose")}
+      disabled={loading}
+      className="-ml-1 mb-2 inline-flex min-h-11 items-center gap-0.5 rounded-[10px] px-1 text-subhead font-medium text-primary disabled:opacity-40"
+    >
+      <ChevronLeft className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
+      Voltar
+    </button>
+  );
+
+  const group = "overflow-hidden rounded-card bg-card";
+  const fieldLabel = "mx-4 mb-1.5 block text-footnote text-muted-foreground";
+  const fieldClass = "h-[52px] w-full bg-transparent px-4 text-body text-foreground placeholder:text-label-tertiary outline-none focus-visible:outline-none";
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="glass sm:rounded-2xl border-0">
-        <DialogHeader>
-          <DialogTitle>
-            {mode === "choose"
-              ? (inRepertorio ? "Adicionar música" : "Nova música")
-              : mode === "search"
-              ? "Buscar músicas cadastradas"
-              : mode === "manual"
-              ? "Criar manualmente"
-              : "Importar do Cifra Club"}
-          </DialogTitle>
-        </DialogHeader>
+      <DialogContent className="sm:max-w-lg">
+        <DialogToolbar title={sheetTitle} confirm={confirm} />
 
         {mode === "choose" && (
-          <div className="grid gap-3 pt-2">
-            {inRepertorio && (
-              <button
-                onClick={() => setMode("search")}
-                className="flex items-center gap-4 p-4 rounded-xl glass-subtle hover-lift text-left transition-all"
-              >
-                <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center">
-                  <ListMusic className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Buscar cadastradas</p>
-                  <p className="text-xs text-muted-foreground">Escolha músicas já existentes na sua biblioteca</p>
-                </div>
-              </button>
-            )}
-            <button
-              onClick={() => setMode("manual")}
-              className="flex items-center gap-4 p-4 rounded-xl glass-subtle hover-lift text-left transition-all"
-            >
-              <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center">
-                <Music className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Criar nova</p>
-                <p className="text-xs text-muted-foreground">Preencha título, cifra e detalhes</p>
-              </div>
-            </button>
-            <button
-              onClick={() => setMode("import")}
-              className="flex items-center gap-4 p-4 rounded-xl glass-subtle hover-lift text-left transition-all"
-            >
-              <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center">
-                <Globe className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Importar do Cifra Club</p>
-                <p className="text-xs text-muted-foreground">Cole o link e importe automaticamente</p>
-              </div>
-            </button>
+          <div className={cn(group, "mb-2 min-w-0")}>
+            {inRepertorio && optionRow(<ListMusic strokeWidth={2.25} />, "Buscar cadastradas", "Escolha músicas já existentes na sua biblioteca", () => setMode("search"), true)}
+            {optionRow(<Music strokeWidth={2.25} />, "Criar nova", "Preencha título, cifra e detalhes", () => setMode("manual"), !inRepertorio)}
+            {optionRow(<Globe strokeWidth={2.25} />, "Importar do Cifra Club", "Cole o link e importe automaticamente", () => setMode("import"), false)}
           </div>
         )}
 
         {mode === "search" && (
-          <div className="space-y-3 pt-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <GlassInput
-                placeholder="Buscar por título ou artista…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10"
-                autoFocus
-              />
-            </div>
-            <ScrollArea className="h-[300px] -mx-1 px-1">
+          <div className="min-w-0 pb-2">
+            {backLink}
+            <SongSearchField
+              value={search}
+              onChange={setSearch}
+              placeholder="Buscar por título ou artista…"
+              autoFocus
+              className="mb-3"
+            />
+            <div className={cn(group, "max-h-[min(50dvh,420px)] overflow-y-auto overscroll-contain")}>
               {libLoading ? (
-                <div className="space-y-2">{[1, 2, 3, 4].map((i) => <div key={i} className="h-12 rounded-xl glass-subtle animate-pulse" />)}</div>
+                <div aria-hidden="true">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="relative flex min-h-[56px] items-center gap-3 px-4">
+                      {i > 1 && <span className="absolute left-[50px] right-0 top-0 border-t border-separator" />}
+                      <span className="h-[22px] w-[22px] shrink-0 animate-pulse rounded-full bg-fill-tertiary" />
+                      <span className="h-4 w-2/5 animate-pulse rounded-full bg-fill-tertiary" />
+                    </div>
+                  ))}
+                </div>
               ) : filteredLib.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
+                <p className="px-4 py-8 text-center text-subhead text-muted-foreground">
                   {search.trim() ? "Nenhuma música encontrada." : "Nenhuma música cadastrada ainda."}
                 </p>
               ) : (
-                <div className="space-y-1.5">
-                  {filteredLib.map((s: any) => {
+                <ul>
+                  {filteredLib.map((s: any, i: number) => {
                     const already = lib?.already.has(s.id);
                     const checked = already || selected.has(s.id);
                     return (
-                      <label
-                        key={s.id}
-                        className={`flex items-center gap-3 rounded-xl glass-subtle px-3 py-2.5 ${already ? "opacity-50" : "cursor-pointer hover-lift"}`}
-                      >
-                        <Checkbox checked={checked} disabled={already} onCheckedChange={() => toggleSelect(s.id)} />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate">{s.title}</p>
-                          {s.artist && <p className="text-xs text-muted-foreground truncate">{s.artist}</p>}
-                        </div>
-                        {already && <span className="text-[10px] text-muted-foreground shrink-0">já no repertório</span>}
-                        {s.key_current && !already && (
-                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-accent text-muted-foreground shrink-0">{s.key_current}</span>
-                        )}
-                      </label>
+                      <li key={s.id} className="relative">
+                        {i > 0 && <span aria-hidden="true" className="pointer-events-none absolute left-[50px] right-0 top-0 border-t border-separator" />}
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked={checked}
+                          disabled={already}
+                          onClick={() => toggleSelect(s.id)}
+                          className="flex min-h-[56px] w-full items-center gap-3 py-2 pl-4 pr-4 text-left transition-colors enabled:active:bg-fill-tertiary focus-visible:outline-offset-[-3px]"
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              "grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full border-2 transition-colors",
+                              checked
+                                ? already
+                                  ? "border-transparent bg-fill text-muted-foreground"
+                                  : "border-transparent bg-prominent text-prominent-foreground"
+                                : "border-label-tertiary",
+                            )}
+                          >
+                            {checked && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className={cn("block truncate text-body", already ? "text-muted-foreground" : "text-foreground")}>{s.title}</span>
+                            {already ? (
+                              <span className="block truncate text-footnote text-muted-foreground">Já no repertório</span>
+                            ) : (
+                              s.artist && <span className="block truncate text-footnote text-muted-foreground">{s.artist}</span>
+                            )}
+                          </span>
+                          {s.key_current && !already && (
+                            <span className="shrink-0 text-subhead tabular-nums text-muted-foreground">
+                              <span className="sr-only">Tom </span>
+                              {s.key_current}
+                            </span>
+                          )}
+                        </button>
+                      </li>
                     );
                   })}
-                </div>
+                </ul>
               )}
-            </ScrollArea>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" className="rounded-xl" onClick={() => setMode("choose")} disabled={loading}>
-                Voltar
-              </Button>
-              <Button className="rounded-xl" onClick={handleAddSelected} disabled={newSelectedCount === 0 || loading}>
-                {loading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                Adicionar{newSelectedCount > 0 ? ` (${newSelectedCount})` : ""}
-              </Button>
             </div>
+            <p className="mx-4 mt-1.5 min-h-[18px] text-footnote text-muted-foreground" aria-live="polite">
+              {newSelectedCount > 0 ? `${newSelectedCount} selecionada(s)` : ""}
+            </p>
           </div>
         )}
 
         {mode === "manual" && (
-          <div className="space-y-4 pt-2">
-            <GlassInput placeholder="Nome da música" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" className="rounded-xl" onClick={() => setMode("choose")}>Voltar</Button>
-              <Button className="rounded-xl" onClick={handleManual} disabled={!title.trim() || loading}>
-                {loading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                Criar
-              </Button>
+          <form id="add-song-manual" className="min-w-0 pb-2" onSubmit={(e) => { e.preventDefault(); handleManual(); }}>
+            {backLink}
+            <label htmlFor="add-song-title" className={fieldLabel}>
+              Nome da música
+            </label>
+            <div className={group}>
+              <input
+                id="add-song-title"
+                placeholder="Ex: Bondade de Deus"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                autoFocus
+                autoComplete="off"
+                enterKeyHint="done"
+                className={fieldClass}
+              />
             </div>
-          </div>
+          </form>
         )}
 
         {mode === "import" && (
-          <div className="space-y-4 pt-2">
-            <GlassInput placeholder="https://www.cifraclub.com.br/..." value={url} onChange={(e) => setUrl(e.target.value)} autoFocus />
+          <form id="add-song-import" className="min-w-0 pb-2" onSubmit={(e) => { e.preventDefault(); handleImport(); }}>
+            {backLink}
+            <label htmlFor="add-song-url" className={fieldLabel}>
+              Link do Cifra Club
+            </label>
+            <div className={group}>
+              <input
+                id="add-song-url"
+                type="text"
+                inputMode="url"
+                placeholder="https://www.cifraclub.com.br/..."
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                autoFocus
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                enterKeyHint="go"
+                className={fieldClass}
+              />
+            </div>
             {loading && (
-              <div className="flex items-center gap-3 p-4 rounded-xl glass-subtle">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Importando do Cifra Club...</span>
+              <div className="mt-3 flex items-center gap-3 px-4" role="status">
+                <Loader2 className="h-[17px] w-[17px] animate-spin text-muted-foreground" aria-hidden="true" />
+                <span className="text-footnote text-muted-foreground">Importando do Cifra Club...</span>
               </div>
             )}
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" className="rounded-xl" onClick={() => setMode("choose")} disabled={loading}>Voltar</Button>
-              <Button className="rounded-xl" onClick={handleImport} disabled={!url.trim() || loading}>
-                {loading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                Importar
-              </Button>
-            </div>
-          </div>
+          </form>
         )}
       </DialogContent>
     </Dialog>

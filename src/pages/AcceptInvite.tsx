@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { GlassCard } from "@/components/GlassCard";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { BrandMark } from "@/components/BrandMark";
+import { CheckCircle2, Loader2, TicketX } from "lucide-react";
+import { AuthAppIcon, AuthScreen, ProminentButton } from "./Login";
 
 export default function AcceptInvite() {
   const { token } = useParams<{ token: string }>();
@@ -41,52 +40,52 @@ export default function AcceptInvite() {
   }, [token]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <AuthScreen className="items-center text-center">
       <div className="w-full max-w-sm animate-in-up">
-        <div className="flex flex-col items-center mb-8">
-          <div className="h-14 w-14 rounded-2xl bg-foreground flex items-center justify-center mb-4">
-            <BrandMark className="h-8 w-8 text-background" />
-          </div>
-          <h1 className="text-2xl font-semibold tracking-tight">+Louvor</h1>
-        </div>
+        <AuthAppIcon className="mx-auto" />
+        <h1 className="mt-5 text-large-title">+Louvor</h1>
 
-        <GlassCard className="p-6 sm:p-8 text-center">
+        <div className="mt-10" aria-live="polite">
           {status === "loading" || status === "accepting" ? (
-            <>
-              <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin mx-auto mb-4" />
-              <p className="text-sm text-muted-foreground">Processando convite...</p>
-            </>
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
+              <p className="text-subhead text-muted-foreground">Processando convite...</p>
+            </div>
           ) : status === "success" ? (
-            <>
-              <h2 className="text-lg font-semibold mb-2">Bem-vindo à equipe!</h2>
-              <p className="text-sm text-muted-foreground">Redirecionando...</p>
-            </>
+            <div className="flex flex-col items-center">
+              <CheckCircle2 className="h-12 w-12 text-ios-green" strokeWidth={2} aria-hidden="true" />
+              <h2 className="mt-4 text-title3">Bem-vindo à equipe!</h2>
+              <p className="mt-1 text-subhead text-muted-foreground">Redirecionando...</p>
+            </div>
           ) : status === "login" ? (
-            <>
-              <h2 className="text-lg font-semibold mb-2">Faça login para continuar</h2>
-              <p className="text-sm text-muted-foreground mb-4">
+            <div>
+              <h2 className="text-title3">Faça login para continuar</h2>
+              <p className="mt-1 text-subhead text-muted-foreground">
                 Você precisa estar logado para aceitar o convite.
               </p>
-              <div className="space-y-2">
-                <Button className="w-full rounded-xl" onClick={() => navigate(`/login?redirect=/invite/${token}`)}>
+              <div className="mt-8 space-y-3">
+                <ProminentButton type="button" onClick={() => navigate(`/login?redirect=/invite/${token}`)}>
                   Entrar
-                </Button>
-                <Button variant="outline" className="w-full rounded-xl" onClick={() => navigate(`/signup?redirect=/invite/${token}`)}>
+                </ProminentButton>
+                <ProminentButton type="button" variant="gray" onClick={() => navigate(`/signup?redirect=/invite/${token}`)}>
                   Criar conta
-                </Button>
+                </ProminentButton>
               </div>
-            </>
+            </div>
           ) : (
-            <>
-              <h2 className="text-lg font-semibold mb-2">Convite inválido</h2>
-              <p className="text-sm text-muted-foreground mb-4">
+            <div className="flex flex-col items-center">
+              <TicketX className="h-12 w-12 text-muted-foreground" strokeWidth={1.75} aria-hidden="true" />
+              <h2 className="mt-4 text-title3">Convite inválido</h2>
+              <p className="mt-1 text-subhead text-muted-foreground">
                 Este convite não existe ou já foi utilizado.
               </p>
-              <Button className="rounded-xl" onClick={() => navigate("/login")}>Ir para login</Button>
-            </>
+              <ProminentButton type="button" onClick={() => navigate("/login")} className="mt-8">
+                Ir para login
+              </ProminentButton>
+            </div>
           )}
-        </GlassCard>
+        </div>
       </div>
-    </div>
+    </AuthScreen>
   );
 }

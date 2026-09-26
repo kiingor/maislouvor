@@ -1,15 +1,11 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useParams } from "react-router-dom";
+import * as SliderPrimitive from "@radix-ui/react-slider";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogToolbar } from "@/components/ui/dialog";
+import { ToolbarButton } from "@/components/shell/ToolbarButton";
 import {
   Play,
   Pause,
@@ -23,7 +19,7 @@ import {
   Search,
   Volume2,
   VolumeX,
-  Type,
+  MessageSquareQuote,
   Shuffle,
   Download,
   X,
@@ -32,6 +28,7 @@ import {
   ListMusic,
 } from "lucide-react";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
+import { applyAppearance, isAppearanceDark, paintTheme } from "@/lib/appearance";
 
 interface PlaylistSong {
   id: string;
@@ -373,85 +370,96 @@ export default function PublicPlaylist() {
     return `${m}:${sec.toString().padStart(2, "0")}`;
   };
 
-  const [isDark, setIsDark] = useState(true);
+  // Tema: começa no do sistema (classe .dark aplicada em main.tsx); o botão troca só nesta página.
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"));
+  // Depois que o usuário escolhe o tema no botão, a escolha vale até sair da página.
+  const userPickedTheme = useRef(false);
+  const isDarkRef = useRef(isDark);
+  isDarkRef.current = isDark;
 
-  // Theme mode
   useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+    const scheme = window.matchMedia?.("(prefers-color-scheme: dark)");
+    const follow = () => {
+      if (userPickedTheme.current) {
+        // main.tsx já reaplicou o tema do sistema no <html>; mantém a escolha manual.
+        paintTheme(isDarkRef.current);
+        return;
+      }
+      setIsDark(isAppearanceDark());
+    };
+    scheme?.addEventListener?.("change", follow);
+    return () => scheme?.removeEventListener?.("change", follow);
+  }, []);
+
+  // Theme mode — ao sair, devolve a Aparência escolhida pelo usuário (lib/appearance).
+  useEffect(() => {
+    paintTheme(isDark);
     return () => {
-      document.documentElement.classList.remove("dark");
+      applyAppearance();
     };
   }, [isDark]);
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex h-[100dvh] items-center justify-center bg-background">
+        <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" aria-label="Carregando" />
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="h-screen flex items-center justify-center bg-background">
-        <p className="text-muted-foreground">{error || "Erro ao carregar playlist."}</p>
+      <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 bg-background px-8 text-center">
+        <ListMusic className="h-[52px] w-[52px] text-label-tertiary" strokeWidth={1.75} aria-hidden="true" />
+        <p className="text-title3 text-foreground">{error || "Erro ao carregar playlist."}</p>
       </div>
     );
   }
 
+  const openSongList = () => {
+    setSearchQuery("");
+    setShowSearchDialog(true);
+  };
+  // Botões da barra inferior (estilo Música): só o símbolo; ligado = preenchimento cinza.
+  const toolButton =
+    "grid h-11 w-11 place-items-center rounded-full text-muted-foreground transition-colors duration-200 hover:text-foreground disabled:pointer-events-none disabled:opacity-30 motion-reduce:transition-none";
+  const transportButton =
+    "grid h-14 w-14 place-items-center rounded-full text-foreground transition-transform duration-200 active:scale-90 active:bg-fill-tertiary disabled:pointer-events-none disabled:opacity-30 motion-reduce:transition-none";
+  const artworkSize = "w-[min(100%,22rem,calc(100dvh-23rem))] md:w-[min(100%,26rem,calc(100dvh-24rem))]";
+
   return (
     <div
       ref={containerRef}
-      className="h-[100dvh] flex flex-col bg-background text-foreground overflow-hidden relative"
+      className="relative flex h-[100dvh] flex-col overflow-hidden bg-background text-foreground"
     >
-      {/* Radial gradient background */}
-      <div
-        className="absolute inset-0 pointer-events-none z-0"
-        style={{
-          background: `radial-gradient(ellipse at 30% 40%, hsl(var(--primary) / 0.15) 0%, transparent 60%), 
-                       radial-gradient(ellipse at 70% 60%, hsl(var(--primary) / 0.08) 0%, transparent 60%)`,
-        }}
-      />
-
-      {/* Header - minimal */}
-      <header className="relative z-10 flex items-center justify-between px-4 py-3">
-        <h1 className="text-sm font-medium text-muted-foreground truncate">{data.name}</h1>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-full h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={() => setIsDark(!isDark)}
-            title={isDark ? "Tema claro" : "Tema escuro"}
-          >
-            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-full h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={() => {
-              setSearchQuery("");
-              setShowSearchDialog(true);
-            }}
-          >
-            <Search className="h-4 w-4" />
-          </Button>
+      {/* Barra: nome da playlist + ações em vidro */}
+      <header className="relative z-10 flex items-center gap-2 px-4 pb-2 pt-[max(env(safe-area-inset-top),12px)] min-[430px]:px-5">
+        <div className="min-w-0 flex-1 px-0.5">
+          <p className="text-footnote text-muted-foreground">Playlist</p>
+          <h1 className="truncate text-headline">{data.name}</h1>
         </div>
+        <ToolbarButton
+          icon={<Search />}
+          onClick={openSongList}
+          aria-label="Buscar músicas"
+          title="Buscar músicas"
+        />
+        <ToolbarButton
+          icon={isDark ? <Sun /> : <Moon />}
+          onClick={() => { userPickedTheme.current = true; setIsDark(!isDark); }}
+          aria-label={isDark ? "Tema claro" : "Tema escuro"}
+          title={isDark ? "Tema claro" : "Tema escuro"}
+        />
       </header>
 
       {/* Main content - centered cover/video */}
-      <div className="relative z-10 flex-1 flex flex-col items-center justify-center overflow-hidden px-6">
+      <div className="relative z-0 flex min-h-0 flex-1 flex-col items-center justify-center px-6 min-[430px]:px-8">
         {isVideoMode && videoId ? (
-          <div className="relative w-full" style={{ maxWidth: '100%' }}>
+          <div className="relative w-full max-w-3xl">
             <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
               <div
                 id="yt-player"
-                className="absolute inset-0 rounded-2xl overflow-hidden shadow-2xl"
+                className="absolute inset-0 overflow-hidden rounded-[20px] shadow-[0_24px_60px_-18px_var(--lg-shadow)]"
               />
               <div className="absolute inset-0 z-10" />
             </div>
@@ -460,219 +468,218 @@ export default function PublicPlaylist() {
           <img
             src={currentSong.cover_url}
             alt={currentSong.title}
-            className="w-64 h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 rounded-2xl object-cover"
-            style={{
-              boxShadow: "0 25px 80px -12px hsl(var(--primary) / 0.35), 0 10px 40px -8px rgba(0,0,0,0.5)",
-            }}
+            className={`${artworkSize} aspect-square rounded-[20px] object-cover shadow-[0_24px_60px_-18px_var(--lg-shadow)] transition-transform duration-500 [transition-timing-function:cubic-bezier(0.3,1.25,0.45,1)] motion-reduce:transition-none ${
+              isPlaying ? "scale-100" : "scale-[0.88]"
+            }`}
           />
         ) : (
           <div
-            className="w-64 h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 rounded-2xl bg-accent/50 flex items-center justify-center"
-            style={{
-              boxShadow: "0 25px 80px -12px hsl(var(--primary) / 0.35), 0 10px 40px -8px rgba(0,0,0,0.5)",
-            }}
+            className={`${artworkSize} grid aspect-square place-items-center rounded-[20px] bg-fill-tertiary transition-transform duration-500 [transition-timing-function:cubic-bezier(0.3,1.25,0.45,1)] motion-reduce:transition-none ${
+              isPlaying ? "scale-100" : "scale-[0.88]"
+            }`}
           >
-            <Music className="h-20 w-20 text-muted-foreground/40" />
+            <Music className="h-20 w-20 text-label-tertiary" strokeWidth={1.75} aria-hidden="true" />
           </div>
         )}
-
-        {/* Song info */}
-        <div className="mt-8 text-center w-full max-w-md">
-          <p className="text-xl md:text-2xl font-bold truncate">
-            {currentSong?.title ?? "—"}
-          </p>
-          {currentSong?.artist && (
-            <p className="text-base text-muted-foreground truncate mt-1">
-              {currentSong.artist}
-            </p>
-          )}
-        </div>
       </div>
 
-      {/* Transport bar - Spotify style */}
-      <footer className="relative z-10 px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-8">
-        <div className="max-w-2xl mx-auto space-y-3">
-          {/* Row 1: Action buttons */}
-          <div className="flex items-center justify-between">
-            {/* Left: shuffle + song counter */}
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className={`h-8 w-8 rounded-full transition-colors ${isShuffle ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
-                onClick={() => setIsShuffle(!isShuffle)}
-                title="Ordem aleatória"
-              >
-                <Shuffle className="h-4 w-4" />
-              </Button>
-              <span className="text-xs text-muted-foreground">
-                {currentIndex + 1} / {data.songs.length}
-              </span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  setSearchQuery("");
-                  setShowSearchDialog(true);
-                }}
-                title="Lista de músicas"
-              >
-                <ListMusic className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {/* Right: action buttons */}
-            <div className="flex items-center gap-1">
-              {hasBothOptions && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
-                  onClick={() => {
-                    // Stop current playback
-                    if (isVideoMode) {
-                      try { ytPlayerRef.current?.pauseVideo(); } catch {}
-                    } else {
-                      audioRef.current?.pause();
-                    }
-                    setProgress(0);
-                    setDuration(0);
-                    // Toggle mode — autoplay effect will handle starting playback
-                    setIsPlaying(true);
-                    setShowVideo(!showVideo);
-                  }}
-                  title={showVideo ? "Ver Áudio" : "Ver Vídeo"}
-                >
-                  {showVideo ? <Music className="h-4 w-4" /> : <Video className="h-4 w-4" />}
-                </Button>
+      {/* Transport — estilo "Tocando agora" do Música */}
+      <footer className="relative z-10 px-6 pb-[max(env(safe-area-inset-bottom),12px)] pt-4 min-[430px]:px-8">
+        <div className="mx-auto max-w-md">
+          {/* Song info */}
+          <div className="flex items-end justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-title3">{currentSong?.title ?? "—"}</p>
+              {currentSong?.artist && (
+                <p className="truncate text-body text-muted-foreground">{currentSong.artist}</p>
               )}
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className={`h-8 w-8 rounded-full ${hasLyrics ? "text-muted-foreground hover:text-foreground" : "text-muted-foreground/30"}`}
-                disabled={!hasLyrics}
-                onClick={() => setShowLyricsDialog(true)}
-                title="Letra"
-              >
-                <Type className="h-4 w-4" />
-              </Button>
-
-              {/* Volume group */}
-              <div className="hidden md:flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
-                  onClick={() => setIsMuted(!isMuted)}
-                >
-                  {isMuted || volume === 0 ? (
-                    <VolumeX className="h-4 w-4" />
-                  ) : (
-                    <Volume2 className="h-4 w-4" />
-                  )}
-                </Button>
-                <Slider
-                  value={[isMuted ? 0 : volume]}
-                  onValueChange={(v) => {
-                    setVolume(v[0]);
-                    if (v[0] > 0) setIsMuted(false);
-                  }}
-                  max={1}
-                  step={0.01}
-                  className="w-20"
-                />
-              </div>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
-                onClick={toggleFullscreen}
-              >
-                {isFullscreen ? (
-                  <Minimize className="h-4 w-4" />
-                ) : (
-                  <Maximize className="h-4 w-4" />
-                )}
-              </Button>
             </div>
+            <span className="shrink-0 pb-0.5 text-footnote tabular-nums text-muted-foreground">
+              {currentIndex + 1} / {data.songs.length}
+            </span>
           </div>
 
-          {/* Row 2: Playback controls */}
-          <div className="flex items-center justify-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-full text-foreground hover:text-foreground hover:scale-105 transition-transform"
+          {/* Progress bar — cápsula fina que engrossa ao arrastar */}
+          <SliderPrimitive.Root
+            value={[progress]}
+            onValueChange={seek}
+            max={duration || 1}
+            step={0.5}
+            aria-label="Posição da música"
+            className="group relative -mb-2.5 mt-2.5 flex h-11 w-full touch-none select-none items-center"
+          >
+            <SliderPrimitive.Track className="relative h-[7px] grow overflow-hidden rounded-full bg-fill transition-[height] duration-200 group-active:h-3 motion-reduce:transition-none">
+              <SliderPrimitive.Range className="absolute h-full bg-foreground/70" />
+            </SliderPrimitive.Track>
+            <SliderPrimitive.Thumb
+              aria-label="Posição da música"
+              className="relative block h-4 w-4 rounded-full bg-foreground opacity-0 shadow-[0_1px_4px_var(--lg-shadow)] transition-opacity group-active:opacity-100 focus-visible:opacity-100 before:absolute before:-inset-3.5"
+            />
+          </SliderPrimitive.Root>
+          <div className="mt-1 flex justify-between text-caption2 tabular-nums text-muted-foreground">
+            <span>{formatTime(progress)}</span>
+            <span>{formatTime(duration)}</span>
+          </div>
+
+          {/* Playback controls */}
+          <div className="mt-3 flex items-center justify-center gap-8">
+            <button
+              type="button"
+              className={transportButton}
               onClick={prev}
               disabled={currentIndex === 0}
+              aria-label="Música anterior"
             >
-              <SkipBack className="h-5 w-5" fill="currentColor" />
-            </Button>
-            <Button
-              size="icon"
-              className="h-12 w-12 rounded-full bg-foreground text-background hover:bg-foreground/90 hover:scale-105 transition-transform"
+              <SkipBack className="h-8 w-8" fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="grid h-[68px] w-[68px] place-items-center rounded-full bg-prominent text-prominent-foreground shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_8px_20px_-8px_var(--lg-shadow)] transition-transform duration-200 active:scale-95 motion-reduce:transition-none"
               onClick={togglePlay}
+              aria-label={isPlaying ? "Pausar" : "Reproduzir"}
             >
               {isPlaying ? (
-                <Pause className="h-6 w-6" fill="currentColor" />
+                <Pause className="h-8 w-8" fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
               ) : (
-                <Play className="h-6 w-6 ml-0.5" fill="currentColor" />
+                <Play className="ml-1 h-8 w-8" fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
               )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-full text-foreground hover:text-foreground hover:scale-105 transition-transform"
+            </button>
+            <button
+              type="button"
+              className={transportButton}
               onClick={next}
               disabled={!data || currentIndex >= data.songs.length - 1}
+              aria-label="Próxima música"
             >
-              <SkipForward className="h-5 w-5" fill="currentColor" />
-            </Button>
+              <SkipForward className="h-8 w-8" fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
+            </button>
           </div>
 
-          {/* Row 3: Progress bar */}
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-muted-foreground w-10 text-right font-mono tabular-nums">
-              {formatTime(progress)}
-            </span>
+          {/* Volume group */}
+          <div className="mt-3 hidden items-center gap-2 md:flex">
+            <button
+              type="button"
+              className={toolButton}
+              onClick={() => setIsMuted(!isMuted)}
+              aria-label={isMuted || volume === 0 ? "Ativar som" : "Silenciar"}
+              title={isMuted || volume === 0 ? "Ativar som" : "Silenciar"}
+            >
+              {isMuted || volume === 0 ? (
+                <VolumeX className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
+              ) : (
+                <Volume2 className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
+              )}
+            </button>
             <Slider
-              value={[progress]}
-              onValueChange={seek}
-              max={duration || 1}
-              step={0.5}
+              value={[isMuted ? 0 : volume]}
+              onValueChange={(v) => {
+                setVolume(v[0]);
+                if (v[0] > 0) setIsMuted(false);
+              }}
+              max={1}
+              step={0.01}
               className="flex-1"
+              aria-label="Volume"
             />
-            <span className="text-[11px] text-muted-foreground w-10 font-mono tabular-nums">
-              {formatTime(duration)}
-            </span>
+            <Volume2 className="mx-3 h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={2.25} aria-hidden="true" />
+          </div>
+
+          {/* Barra inferior: letra, vídeo/áudio, aleatório, tela cheia, lista */}
+          <div className="mt-3 flex items-center justify-around">
+            <button
+              type="button"
+              className={toolButton}
+              disabled={!hasLyrics}
+              onClick={() => setShowLyricsDialog(true)}
+              title="Letra"
+              aria-label="Letra"
+            >
+              <MessageSquareQuote className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden="true" />
+            </button>
+
+            {hasBothOptions && (
+              <button
+                type="button"
+                className={toolButton}
+                onClick={() => {
+                  // Stop current playback
+                  if (isVideoMode) {
+                    try { ytPlayerRef.current?.pauseVideo(); } catch {}
+                  } else {
+                    audioRef.current?.pause();
+                  }
+                  setProgress(0);
+                  setDuration(0);
+                  // Toggle mode — autoplay effect will handle starting playback
+                  setIsPlaying(true);
+                  setShowVideo(!showVideo);
+                }}
+                title={showVideo ? "Ver áudio" : "Ver vídeo"}
+                aria-label={showVideo ? "Ver áudio" : "Ver vídeo"}
+              >
+                {showVideo ? <Music className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden="true" /> : <Video className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden="true" />}
+              </button>
+            )}
+
+            <button
+              type="button"
+              className={`${toolButton} ${isShuffle ? "bg-fill-secondary !text-foreground" : ""}`}
+              onClick={() => setIsShuffle(!isShuffle)}
+              title="Ordem aleatória"
+              aria-label="Ordem aleatória"
+              aria-pressed={isShuffle}
+            >
+              <Shuffle className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden="true" />
+            </button>
+
+            <button
+              type="button"
+              className={toolButton}
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
+              aria-label={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
+            >
+              {isFullscreen ? (
+                <Minimize className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden="true" />
+              ) : (
+                <Maximize className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden="true" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              className={toolButton}
+              onClick={openSongList}
+              title="Lista de músicas"
+              aria-label="Lista de músicas"
+            >
+              <ListMusic className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden="true" />
+            </button>
           </div>
         </div>
       </footer>
 
-      {/* Search dialog */}
+      {/* Search dialog — folha com busca e lista agrupada */}
       <Dialog open={showSearchDialog} onOpenChange={setShowSearchDialog}>
-        <DialogContent className="max-w-sm sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Músicas</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Nome da música ou artista..."
-                className="pl-10"
-                autoFocus
-              />
-            </div>
-            <ScrollArea className="max-h-72">
-              <div className="space-y-0.5">
-                {filteredSongs.map((song) => {
+        <DialogContent className="max-h-[85dvh] sm:max-w-md">
+          <DialogToolbar title="Músicas" />
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-muted-foreground" strokeWidth={2.25} aria-hidden="true" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Nome da música ou artista..."
+              aria-label="Buscar música"
+              className="h-10 rounded-full pl-9"
+              autoFocus
+            />
+          </div>
+          <div className="-mx-1 max-h-[55dvh] overflow-y-auto overscroll-contain px-1">
+            {filteredSongs.length > 0 ? (
+              <div className="overflow-hidden rounded-card bg-card">
+                {filteredSongs.map((song, idx) => {
                   const originalIndex = data.songs.findIndex((s) => s.id === song.id);
+                  const isCurrent = originalIndex === currentIndex;
                   return (
                     <button
                       key={song.id}
@@ -681,86 +688,77 @@ export default function PublicPlaylist() {
                         setSearchQuery("");
                         setShowSearchDialog(false);
                       }}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm transition-colors ${
-                        originalIndex === currentIndex
-                          ? "bg-primary/15 text-primary font-medium"
-                          : "hover:bg-accent text-foreground"
+                      aria-current={isCurrent ? "true" : undefined}
+                      className={`relative flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left transition-colors active:bg-fill-tertiary ${
+                        idx > 0 ? "before:absolute before:left-[52px] before:right-0 before:top-0 before:border-t before:border-separator" : ""
                       }`}
                     >
-                      <span className="w-6 text-center text-muted-foreground shrink-0 text-xs">
-                        {originalIndex === currentIndex && isPlaying ? (
-                          <Music className="h-3.5 w-3.5 inline" />
+                      <span className="w-6 shrink-0 text-center text-subhead tabular-nums text-muted-foreground">
+                        {isCurrent && isPlaying ? (
+                          <Volume2 className="inline h-4 w-4 text-primary" strokeWidth={2.25} aria-label="Tocando" />
                         ) : (
                           originalIndex + 1
                         )}
                       </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="truncate font-medium">{song.title}</p>
+                      <span className="min-w-0 flex-1">
+                        <span className={`block truncate text-body ${isCurrent ? "font-semibold" : ""}`}>{song.title}</span>
                         {song.artist && (
-                          <p className="truncate text-xs text-muted-foreground">{song.artist}</p>
+                          <span className="block truncate text-subhead text-muted-foreground">{song.artist}</span>
                         )}
-                      </div>
+                      </span>
                     </button>
                   );
                 })}
-                {filteredSongs.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-6">
-                    Nenhuma música encontrada
-                  </p>
-                )}
               </div>
-            </ScrollArea>
+            ) : (
+              <div className="flex flex-col items-center gap-2 py-8 text-center">
+                <Search className="h-7 w-7 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+                <p className="text-body text-muted-foreground">Nenhuma música encontrada</p>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Lyrics dialog */}
       <Dialog open={showLyricsDialog} onOpenChange={setShowLyricsDialog}>
-        <DialogContent className="max-w-sm sm:max-w-lg max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Type className="h-4 w-4" />
-              {currentSong?.title ?? "Letra"}
-            </DialogTitle>
-          </DialogHeader>
-          <ScrollArea className="flex-1 pr-2">
+        <DialogContent className="max-h-[88dvh] sm:max-w-lg">
+          <DialogToolbar title={currentSong?.title ?? "Letra"} />
+          <div className="max-h-[70dvh] overflow-y-auto overscroll-contain px-1">
             {currentSong?.lyrics_text ? (
-              <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground/90 pb-4">
+              <pre className="whitespace-pre-wrap pb-4 font-sans text-body text-foreground">
                 {currentSong.lyrics_text}
               </pre>
             ) : (
-              <p className="text-muted-foreground text-center py-8">
+              <p className="py-8 text-center text-body text-muted-foreground">
                 Letra não disponível
               </p>
             )}
-          </ScrollArea>
+          </div>
         </DialogContent>
       </Dialog>
 
-      {/* PWA Install Banner */}
+      {/* PWA Install Banner — cartão flutuante no topo (estilo notificação) */}
       {canInstall && !installDismissed && (
-        <div className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] left-2 right-2 sm:left-4 sm:right-4 z-50 animate-in slide-in-from-bottom-4 duration-300">
-          <div className="rounded-2xl bg-card/90 backdrop-blur-lg p-4 flex items-center gap-3 max-w-sm mx-auto shadow-lg border border-border/50">
-            <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center shrink-0">
-              <Music className="h-5 w-5 text-primary-foreground" />
+        <div className="fixed inset-x-2 top-[calc(max(env(safe-area-inset-top),12px)+56px)] z-50 animate-in fade-in slide-in-from-top-2 duration-300 sm:inset-x-4">
+          <div className="mx-auto flex max-w-sm items-center gap-3 rounded-card bg-card p-3 pl-3.5 shadow-[0_18px_40px_-12px_var(--lg-shadow)] ring-1 ring-separator">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-prominent">
+              <Music className="h-5 w-5 text-prominent-foreground" strokeWidth={2.25} aria-hidden="true" />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold">Instalar +Louvor</p>
-              <p className="text-xs text-muted-foreground">Abra direto nesta playlist</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-headline">Instalar +Louvor</p>
+              <p className="text-footnote text-muted-foreground">Abra direto nesta playlist</p>
             </div>
-            <Button
-              size="sm"
-              className="rounded-xl gap-1.5 shrink-0"
-              onClick={handleInstall}
-            >
-              <Download className="h-3.5 w-3.5" />
+            <Button size="sm" className="shrink-0 gap-1.5" onClick={handleInstall}>
+              <Download aria-hidden="true" />
               Instalar
             </Button>
             <button
               onClick={() => setInstallDismissed(true)}
-              className="p-1 rounded-lg hover:bg-accent transition-colors shrink-0"
+              aria-label="Dispensar"
+              className="relative grid h-7 w-7 shrink-0 place-items-center rounded-full bg-fill-tertiary text-muted-foreground before:absolute before:-inset-2"
             >
-              <X className="h-4 w-4 text-muted-foreground" />
+              <X className="h-3.5 w-3.5" strokeWidth={2.75} aria-hidden="true" />
             </button>
           </div>
         </div>

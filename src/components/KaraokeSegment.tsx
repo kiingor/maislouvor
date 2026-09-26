@@ -230,7 +230,7 @@ export function KaraokeSegment({
                   src={coverUrl}
                   alt={title ?? ""}
                   draggable={false}
-                  className="w-32 h-32 sm:w-40 sm:h-40 rounded-2xl object-cover shadow-lg select-none"
+                  className="w-32 h-32 sm:w-40 sm:h-40 rounded-[16px] object-cover shadow-[0_12px_32px_-12px_var(--lg-shadow)] select-none"
                 />
               )}
               {title && (
@@ -240,7 +240,7 @@ export function KaraokeSegment({
                   </div>
                   {artist && (
                     <div
-                      className={isDark ? "text-white/50" : "text-black/50"}
+                      className="text-muted-foreground"
                       style={{ fontSize: `${fontScale * 0.9}rem`, marginTop: "0.25rem" }}
                     >
                       {artist}
@@ -259,7 +259,7 @@ export function KaraokeSegment({
               return (
                 <div
                   key={i}
-                  className="text-primary/60 uppercase tracking-wider font-mono mt-4 mb-1"
+                  className="text-foreground/70 uppercase tracking-wider font-mono mt-4 mb-1"
                   style={{ fontSize: `${fontScale * 0.85}rem` }}
                 >
                   {line.text}
@@ -303,11 +303,7 @@ export function KaraokeSegment({
       {/* Side chord diagrams */}
       {!isVoz && visibleChords.length > 0 && (
         <div className="hidden md:flex flex-col items-center gap-3 w-32 lg:w-40 py-8 overflow-y-auto hide-scrollbar shrink-0">
-          <span
-            className={`text-[9px] font-semibold uppercase tracking-wider ${
-              isDark ? "text-white/40" : "text-black/40"
-            } mb-1`}
-          >
+          <span className="mb-1 text-caption2 font-semibold text-muted-foreground">
             Acordes
           </span>
           {visibleChords.map((chord) => (

@@ -14,7 +14,22 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        // Fonte do sistema: SF Pro (iOS/macOS), Roboto (Android). HIG > Typography.
+        sans: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Text"', 'system-ui', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', 'sans-serif'],
+      },
+      // Estilos Dynamic Type (tamanho "Large", padrão) — HIG > Typography > Specifications.
+      fontSize: {
+        "large-title": ["34px", { lineHeight: "41px", letterSpacing: "0.40px", fontWeight: "700" }],
+        title1: ["28px", { lineHeight: "34px", letterSpacing: "0.38px", fontWeight: "700" }],
+        title2: ["22px", { lineHeight: "28px", letterSpacing: "-0.26px", fontWeight: "700" }],
+        title3: ["20px", { lineHeight: "25px", letterSpacing: "-0.45px", fontWeight: "600" }],
+        headline: ["17px", { lineHeight: "22px", letterSpacing: "-0.43px", fontWeight: "600" }],
+        body: ["17px", { lineHeight: "22px", letterSpacing: "-0.43px" }],
+        callout: ["16px", { lineHeight: "21px", letterSpacing: "-0.31px" }],
+        subhead: ["15px", { lineHeight: "20px", letterSpacing: "-0.23px" }],
+        footnote: ["13px", { lineHeight: "18px", letterSpacing: "-0.08px" }],
+        caption1: ["12px", { lineHeight: "16px", letterSpacing: "0px" }],
+        caption2: ["11px", { lineHeight: "13px", letterSpacing: "0.06px" }],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -50,6 +65,31 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        prominent: {
+          DEFAULT: "hsl(var(--prominent))",
+          foreground: "hsl(var(--prominent-foreground))",
+        },
+        grouped: {
+          tertiary: "hsl(var(--grouped-tertiary))",
+        },
+        label: {
+          tertiary: "hsl(var(--label-tertiary))",
+        },
+        separator: "hsl(var(--border))",
+        fill: {
+          DEFAULT: "var(--fill-primary)",
+          secondary: "var(--fill-secondary)",
+          tertiary: "var(--fill-tertiary)",
+          quaternary: "var(--fill-quaternary)",
+        },
+        ios: {
+          red: "hsl(var(--ios-red))",
+          green: "hsl(var(--ios-green))",
+          orange: "hsl(var(--ios-orange))",
+          yellow: "hsl(var(--ios-yellow))",
+          blue: "hsl(var(--ios-blue))",
+          gray: "hsl(var(--ios-gray))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -62,6 +102,8 @@ export default {
         },
       },
       borderRadius: {
+        card: "24px",
+        sheet: "38px",
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",

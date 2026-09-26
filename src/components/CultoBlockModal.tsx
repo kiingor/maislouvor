@@ -1,12 +1,10 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { GlassInput } from "@/components/GlassInput";
-import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogToolbar } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, Sparkles } from "lucide-react";
+import { Check } from "lucide-react";
 
 interface Props {
   open: boolean;
@@ -19,6 +17,19 @@ interface Props {
 
 // Sugestões de tipo comuns (campo é livre).
 const KIND_SUGGESTIONS = ["Abertura", "Oração", "Palavra", "Ministração", "Avisos", "Ofertas", "Santa Ceia", "Encerramento"];
+
+// Formulário agrupado dentro da folha (protótipo `.group` / `.group-label`).
+// Na folha, --card já vira branco (claro) / #2C2C2E (escuro) — ver ui/dialog.tsx.
+const group = "overflow-hidden rounded-card bg-card";
+const groupLabel = "mx-4 mb-1.5 block text-footnote text-muted-foreground";
+const row = "relative flex min-h-[48px] items-center gap-3 px-4";
+const rowSeparator = "before:absolute before:top-0 before:right-0 before:left-4 before:border-t before:border-border";
+const fieldInput = "min-w-0 flex-1 bg-transparent py-3 text-body text-foreground placeholder:text-label-tertiary focus-visible:outline-none";
+// Foco de teclado nas linhas com campo de texto: anel interno na linha inteira (o contorno global
+// de :focus-visible seria cortado pelo overflow do grupo). Some no toque, como a regra global (.pointer-mode).
+const keyboardFocusRow =
+  "[html:not(.pointer-mode)_&:focus-within]:ring-[3px] [html:not(.pointer-mode)_&:focus-within]:ring-inset [html:not(.pointer-mode)_&:focus-within]:ring-ios-blue";
+
 
 export function CultoBlockModal({ open, onOpenChange, cultoId, editBlock, nextSortOrder = 0 }: Props) {
   const { toast } = useToast();
@@ -78,58 +89,89 @@ export function CultoBlockModal({ open, onOpenChange, cultoId, editBlock, nextSo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass rounded-2xl border-0 sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-lg font-semibold">{editBlock ? "Editar momento" : "Adicionar momento"}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Título</label>
-            <GlassInput placeholder="Ex: Oração de abertura" value={title} onChange={(e) => setTitle(e.target.value)} required autoFocus />
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Tipo</label>
-            <GlassInput placeholder="Ex: Abertura, Palavra, Ministração..." value={kind} onChange={(e) => setKind(e.target.value)} />
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1">
+      <DialogContent className="sm:max-w-md">
+        <DialogToolbar
+          title={editBlock ? "Editar momento" : "Adicionar momento"}
+          confirm={{
+            label: editBlock ? "Salvar" : "Adicionar",
+            type: "submit",
+            form: "culto-block-form",
+            disabled: saving || !title.trim(),
+            loading: saving,
+          }}
+        />
+        <form id="culto-block-form" onSubmit={handleSubmit} className="space-y-6">
+          <div className={group}>
+            <div className={`${row} ${keyboardFocusRow}`}>
+              <label htmlFor="block-title" className="w-20 shrink-0 text-body text-foreground">Título</label>
+              <input
+                id="block-title"
+                placeholder="Ex: Oração de abertura"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+                autoFocus
+                className={fieldInput}
+              />
+            </div>
+            <div className={`${row} ${rowSeparator} ${keyboardFocusRow}`}>
+              <label htmlFor="block-kind" className="w-20 shrink-0 text-body text-foreground">Tipo</label>
+              <input
+                id="block-kind"
+                placeholder="Ex: Abertura, Palavra, Ministração..."
+                value={kind}
+                onChange={(e) => setKind(e.target.value)}
+                className={fieldInput}
+              />
+            </div>
+            {/* Sugestões de tipo (o campo continua livre) */}
+            <div className="flex flex-wrap gap-2 px-4 pb-3 pt-1" role="group" aria-label="Sugestões de tipo">
               {KIND_SUGGESTIONS.map((k) => (
                 <button
                   key={k}
                   type="button"
+                  aria-pressed={kind === k}
                   onClick={() => setKind(k)}
-                  className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors flex items-center justify-center gap-1 ${
+                  className={`relative inline-flex h-8 items-center gap-1 rounded-full px-3 text-subhead font-medium transition-colors before:absolute before:inset-x-0 before:-inset-y-1.5 ${
                     kind === k
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-accent/50 text-muted-foreground border-border hover:border-primary/50"
+                      ? "bg-prominent text-prominent-foreground"
+                      : "bg-fill-tertiary text-foreground active:bg-fill-secondary"
                   }`}
                 >
-                  {kind === k && <Sparkles className="h-2.5 w-2.5" />}
+                  {kind === k && <Check className="h-[15px] w-[15px]" strokeWidth={2.5} aria-hidden="true" />}
                   {k}
                 </button>
               ))}
             </div>
+            <div className={`${row} ${rowSeparator} justify-between`}>
+              <label htmlFor="block-duration" className="text-body text-foreground">Duração</label>
+              <span className="flex items-center gap-1.5">
+                <input
+                  id="block-duration"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={300}
+                  value={durationMin}
+                  onChange={(e) => setDurationMin(parseInt(e.target.value) || 0)}
+                  className="h-9 w-[72px] rounded-[8px] border-0 bg-fill-tertiary px-2.5 text-right text-body tabular-nums text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ios-blue/40"
+                />
+                <span className="text-body text-muted-foreground">min</span>
+              </span>
+            </div>
           </div>
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Duração (min)</label>
-            <GlassInput
-              type="number"
-              min={0}
-              max={300}
-              value={durationMin}
-              onChange={(e) => setDurationMin(parseInt(e.target.value) || 0)}
-            />
+          <div>
+            <label htmlFor="block-notes" className={groupLabel}>Notas</label>
+            <div className={group}>
+              <Textarea
+                id="block-notes"
+                placeholder="Detalhes do momento (opcional)"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="min-h-[88px] resize-none rounded-none bg-transparent focus-visible:outline-none focus-visible:ring-0 [html:not(.pointer-mode)_&:focus-visible]:ring-[3px] [html:not(.pointer-mode)_&:focus-visible]:ring-inset [html:not(.pointer-mode)_&:focus-visible]:ring-ios-blue"
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Notas</label>
-            <Textarea
-              placeholder="Detalhes do momento (opcional)"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="glass-subtle rounded-xl border-0 min-h-[70px] resize-none"
-            />
-          </div>
-          <Button type="submit" disabled={saving || !title.trim()} className="w-full h-11 rounded-xl text-sm font-semibold">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editBlock ? "Salvar" : "Adicionar"}
-          </Button>
         </form>
       </DialogContent>
     </Dialog>

@@ -4,11 +4,17 @@ import { cn } from "@/lib/utils";
 
 export interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
 
+/** Área de texto iOS: mesmo campo do Input (preenchimento terciário, sem borda). */
 const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(({ className, ...props }, ref) => {
   return (
     <textarea
       className={cn(
-        "flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        "flex min-h-[88px] w-full rounded-[12px] border-0 bg-fill-tertiary px-4 py-3 text-body text-foreground caret-primary",
+        "placeholder:text-label-tertiary",
+        "transition-[background-color,box-shadow] duration-200",
+        // Toque: anel suave. Teclado: soma-se o contorno global de 3px ios-blue (:focus-visible).
+        "focus-visible:ring-[3px] focus-visible:ring-ios-blue/25",
+        "disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       ref={ref}

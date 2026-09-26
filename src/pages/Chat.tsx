@@ -1,15 +1,27 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
-import { GlassCard } from "@/components/GlassCard";
+import { DESKTOP_QUERY, useHideTabBar, useMediaQuery, useShell } from "@/contexts/ShellContext";
+import { PageHeader } from "@/components/shell/PageHeader";
+import { ToolbarButton } from "@/components/shell/ToolbarButton";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Send, Hash, Church, Settings, Image as ImageIcon } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ArrowUp, ChevronDown, Hash, Church, Loader2, MessageCircle, Settings, Image as ImageIcon } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import { ChatEmojiPicker } from "@/components/ChatEmojiPicker";
 import { ChatChannelsModal, CustomChannel } from "@/components/ChatChannelsModal";
 import { ChatAudioRecorder } from "@/components/ChatAudioRecorder";
@@ -34,19 +46,86 @@ type ActiveChannel =
   | { kind: "custom"; id: string }
   | { kind: "culto"; id: string };
 
+const sentenceCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/**
+ * Teclado virtual (celular): aberto quando a viewport visual encolhe bem abaixo da maior altura
+ * já vista. `overlap` = quanto o teclado cobre a viewport de layout (WebViews que só redimensionam
+ * a viewport visual); em modo "adjustResize" o layout encolhe sozinho e o overlap fica em 0.
+ */
+function useSoftKeyboard(enabled: boolean) {
+  const [state, setState] = useState({ open: false, overlap: 0 });
+  useEffect(() => {
+    if (!enabled || typeof window === "undefined") {
+      setState((s) => (s.open || s.overlap ? { open: false, overlap: 0 } : s));
+      return;
+    }
+    const vv = window.visualViewport;
+    let width = window.innerWidth;
+    let maxH = 0;
+    const update = () => {
+      if (window.innerWidth !== width) {
+        width = window.innerWidth; // rotação: recomeça a medir
+        maxH = 0;
+      }
+      const zoomed = !!vv && Math.abs(vv.scale - 1) > 0.01;
+      const h = vv && !zoomed ? vv.height : window.innerHeight;
+      // Teclado só conta como aberto com um campo de texto em foco: redimensionar a janela
+      // (navegador no desktop, rotação) não pode esconder a barra de abas.
+      const el = document.activeElement as HTMLElement | null;
+      const editing =
+        !!el &&
+        (el.isContentEditable ||
+          el.tagName === "TEXTAREA" ||
+          (el instanceof HTMLInputElement && !/^(checkbox|radio|range|button|submit|reset|file|color|image|hidden)$/.test(el.type)));
+      // A altura de referência só é medida sem campo em foco: redimensionar a janela não "abre" o teclado.
+      if (!editing) maxH = h;
+      else maxH = Math.max(maxH, h);
+      const open = editing && maxH - h > 150;
+      const overlap = vv && !zoomed && open ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
+      setState((s) => (s.open === open && s.overlap === overlap ? s : { open, overlap }));
+    };
+    update();
+    const onFocus = () => setTimeout(update, 50);
+    document.addEventListener("focusin", onFocus);
+    document.addEventListener("focusout", onFocus);
+    vv?.addEventListener("resize", update);
+    vv?.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    return () => {
+      document.removeEventListener("focusin", onFocus);
+      document.removeEventListener("focusout", onFocus);
+      vv?.removeEventListener("resize", update);
+      vv?.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [enabled]);
+  return state;
+}
+
 export default function Chat() {
   const { currentTeam, profileId, can, loading: teamLoading } = useTeam();
   const canEdit = can("chat", "editar");
   const { toast } = useToast();
+  const shell = useShell();
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const [active, setActive] = useState<ActiveChannel>({ kind: "general" });
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [recording, setRecording] = useState(false);
   const [channelsModalOpen, setChannelsModalOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const nearBottomRef = useRef(true);
+  const jumpRef = useRef(true);
+
+  // Com o teclado aberto no celular, a barra de abas sai e o compositor desce (como no Mensagens).
+  const keyboard = useSoftKeyboard(!isDesktop);
+  useHideTabBar(!isDesktop && keyboard.open);
 
   // Fetch upcoming cultos for channel list
   const { data: cultos = [] } = useQuery({
@@ -179,10 +258,69 @@ export default function Chat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTeam, active]);
 
+  // A conversa rola no contêiner do shell (conteúdo passa sob as barras de vidro).
+  const scrollToBottom = (behavior: ScrollBehavior) => {
+    const el = shell?.scrollEl;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior });
+    else messagesEndRef.current?.scrollIntoView({ behavior });
+  };
+
+  // Ao trocar de canal, a nova conversa abre direto no fim (sem animar a lista inteira).
+  useEffect(() => {
+    jumpRef.current = true;
+  }, [active]);
+
   // Auto-scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    nearBottomRef.current = true;
+    scrollToBottom(jumpRef.current ? "auto" : "smooth");
+    if (messages.length) jumpRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
+
+  // Mantém o fim da conversa visível quando imagens carregam ou o teclado muda a altura.
+  useEffect(() => {
+    const el = shell?.scrollEl;
+    if (!el) return;
+    // Só a rolagem feita pela pessoa solta o fim da conversa; as nossas (e o crescimento de
+    // imagens, que chega antes do evento de rolagem) não podem desprender.
+    let userScrolling = false;
+    let pointerDown = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const markUser = () => {
+      userScrolling = true;
+      clearTimeout(timer);
+      timer = setTimeout(() => (userScrolling = pointerDown), 700);
+    };
+    const onPointerDown = () => { pointerDown = true; markUser(); };
+    const onPointerUp = () => { pointerDown = false; markUser(); };
+    const onScroll = () => {
+      const near = el.scrollHeight - el.scrollTop - el.clientHeight < 96;
+      if (near) nearBottomRef.current = true;
+      else if (userScrolling) nearBottomRef.current = false;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    el.addEventListener("wheel", markUser, { passive: true });
+    el.addEventListener("touchmove", markUser, { passive: true });
+    el.addEventListener("keydown", markUser);
+    el.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointerup", onPointerUp);
+    const ro = new ResizeObserver(() => {
+      if (nearBottomRef.current) el.scrollTo({ top: el.scrollHeight });
+    });
+    ro.observe(el);
+    if (listRef.current) ro.observe(listRef.current);
+    return () => {
+      clearTimeout(timer);
+      el.removeEventListener("scroll", onScroll);
+      el.removeEventListener("wheel", markUser);
+      el.removeEventListener("touchmove", markUser);
+      el.removeEventListener("keydown", markUser);
+      el.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", onPointerUp);
+      ro.disconnect();
+    };
+  }, [shell?.scrollEl, teamLoading]);
 
   // Base insert payload for the active channel.
   const channelFields = () => ({
@@ -258,11 +396,33 @@ export default function Chat() {
     await uploadAttachment(blob, "audio.webm", "audio");
   };
 
+  // ---- Geometria da tela cheia dentro do rolador do shell ----
+  // O shell já reserva topo (barra superior) e base (barra de abas). A página ocupa a altura
+  // visível e o compositor fica "grudado" logo acima da barra de abas (ou do teclado).
+  // `restGap` = distância do compositor até a base da viewport; `shellPad` = folga que o shell
+  // deixa embaixo. A margem negativa devolve a diferença para o compositor não "pular" no fim.
+  const shellPadBottom = isDesktop ? "40px" : "(max(env(safe-area-inset-bottom), 8px) + 96px)";
+  const shellPadTop = isDesktop ? "32px" : "(max(env(safe-area-inset-top), 12px) + 56px)";
+  const restGap = isDesktop
+    ? "24px"
+    : keyboard.open
+      ? `(${keyboard.overlap}px + 8px)`
+      : "(max(env(safe-area-inset-bottom), 8px) + 78px)";
+  const rootStyle: CSSProperties = {
+    minHeight: `calc(100dvh - ${shellPadTop} - ${restGap})`,
+    marginBottom: `calc(${restGap} - ${shellPadBottom})`,
+  };
+  const composerStyle: CSSProperties = { bottom: `calc(${restGap})` };
+
   if (teamLoading) {
     return (
-      <div className="space-y-4 max-w-3xl mx-auto">
-        <Skeleton className="h-10 w-full rounded-2xl" />
-        <Skeleton className="h-96 w-full rounded-2xl" />
+      <div>
+        <PageHeader title="Chat" />
+        <div className="space-y-3" aria-hidden="true">
+          <Skeleton className="h-10 w-3/5 rounded-[18px] bg-fill-tertiary" />
+          <Skeleton className="h-10 w-2/5 rounded-[18px] bg-fill-tertiary ml-auto" />
+          <Skeleton className="h-16 w-4/6 rounded-[18px] bg-fill-tertiary" />
+        </div>
       </div>
     );
   }
@@ -290,273 +450,291 @@ export default function Chat() {
   const isActiveCustom = (id: string) => active.kind === "custom" && active.id === id;
   const isActiveCulto = (id: string) => active.kind === "culto" && active.id === id;
 
-  return (
-    <div className="max-w-6xl mx-auto animate-in-up h-full flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between mb-4 shrink-0">
-        <h1 className="text-2xl font-semibold tracking-tight">Chat</h1>
+  // Valor do seletor de canal (menu da barra superior no celular).
+  const activeValue = active.kind === "general" ? "general" : `${active.kind}:${active.id}`;
+  const selectChannel = (value: string) => {
+    if (value === "general") return setActive({ kind: "general" });
+    const sep = value.indexOf(":");
+    const kind = value.slice(0, sep);
+    const id = value.slice(sep + 1);
+    if (kind === "custom" || kind === "culto") setActive({ kind, id });
+  };
+  // Defensivo: uma data ausente/inválida mostra vazio em vez de derrubar a tela inteira.
+  const cultoDate = (date: string) => {
+    const d = new Date(date + "T12:00:00");
+    return Number.isNaN(d.getTime()) ? "" : format(d, "dd/MM");
+  };
+  const hasText = !!newMessage.trim();
+
+  const channelMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <ToolbarButton
+          label={activeChannelName}
+          icon={active.kind === "culto" ? <Church strokeWidth={2.2} /> : <Hash strokeWidth={2.2} />}
+          aria-label={`Canal: ${activeChannelName}`}
+          className="max-w-[210px]"
+        >
+          <span className="relative z-[4] -ml-0.5 inline-flex text-muted-foreground" aria-hidden="true">
+            <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} />
+          </span>
+        </ToolbarButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" sideOffset={8} className="w-64 max-h-[min(65dvh,480px)] overflow-y-auto">
+        <DropdownMenuLabel inset>Canais</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={activeValue} onValueChange={selectChannel}>
+          {/* Padrão iOS: marca à esquerda, símbolo à direita. */}
+          <DropdownMenuRadioItem value="general">
+            <span className="min-w-0 flex-1 truncate">Geral</span>
+            <Hash className="order-last text-muted-foreground" aria-hidden="true" />
+          </DropdownMenuRadioItem>
+          {customChannels.map((c) => (
+            <DropdownMenuRadioItem key={c.id} value={`custom:${c.id}`}>
+              <span className="min-w-0 flex-1 truncate">{c.name}</span>
+              <Hash className="order-last text-muted-foreground" aria-hidden="true" />
+            </DropdownMenuRadioItem>
+          ))}
+          {cultos.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel inset>Cultos</DropdownMenuLabel>
+              {cultos.map((c: any) => (
+                <DropdownMenuRadioItem key={c.id} value={`culto:${c.id}`}>
+                  <Church className="order-last text-muted-foreground" aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{c.name}</span>
+                    <span className="block text-footnote text-muted-foreground tabular-nums">{cultoDate(c.date)}</span>
+                  </span>
+                </DropdownMenuRadioItem>
+              ))}
+            </>
+          )}
+        </DropdownMenuRadioGroup>
         {canEdit && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-xl gap-1.5 lg:hidden"
-            onClick={() => setChannelsModalOpen(true)}
-          >
-            <Settings className="h-4 w-4" />
-            Canais
-          </Button>
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem inset onSelect={() => setChannelsModalOpen(true)}>
+              <Settings aria-hidden="true" />
+              Gerenciar canais
+            </DropdownMenuItem>
+          </>
         )}
-      </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
-      <div className="flex gap-4 flex-1 min-h-0">
-        {/* Desktop channel sidebar */}
-        <div className="hidden lg:flex flex-col w-56 shrink-0">
-          <GlassCard className="p-2 space-y-1">
-            <div className="flex items-center justify-between px-2 py-1">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                Canais
-              </p>
-              {canEdit && (
-                <button
-                  onClick={() => setChannelsModalOpen(true)}
-                  className="p-1 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                  title="Gerenciar canais"
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
+  const headerActions = isDesktop
+    ? canEdit && (
+        <ToolbarButton
+          icon={<Settings strokeWidth={2} />}
+          aria-label="Gerenciar canais"
+          title="Gerenciar canais"
+          onClick={() => setChannelsModalOpen(true)}
+        />
+      )
+    : channelMenu;
 
-            <button
-              onClick={() => setActive({ kind: "general" })}
-              className={`flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
-                isActiveGeneral
-                  ? "bg-accent text-foreground"
-                  : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-              }`}
-            >
-              <Hash className="h-4 w-4" /> Geral
-            </button>
+  return (
+    <div className="flex flex-col" style={rootStyle}>
+      <PageHeader title="Chat" actions={headerActions || undefined} />
 
-            {customChannels.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setActive({ kind: "custom", id: c.id })}
-                className={`flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm font-medium transition-colors text-left ${
-                  isActiveCustom(c.id)
-                    ? "bg-accent text-foreground"
-                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-                }`}
-              >
-                <Hash className="h-4 w-4 shrink-0" />
-                <span className="truncate">{c.name}</span>
-              </button>
-            ))}
-
+      <div className="flex flex-1 gap-6 min-h-0">
+        {/* Desktop: lista agrupada de canais (estilo barra lateral do iPadOS) */}
+        <aside className="hidden lg:block w-64 shrink-0" aria-label="Canais">
+          <div className="sticky top-8 space-y-6">
+            <ChannelGroup title="Canais">
+              <ChannelRow
+                icon={<Hash />}
+                label="Geral"
+                selected={isActiveGeneral}
+                onClick={() => setActive({ kind: "general" })}
+              />
+              {customChannels.map((c) => (
+                <ChannelRow
+                  key={c.id}
+                  icon={<Hash />}
+                  label={c.name}
+                  selected={isActiveCustom(c.id)}
+                  onClick={() => setActive({ kind: "custom", id: c.id })}
+                />
+              ))}
+            </ChannelGroup>
             {cultos.length > 0 && (
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 pt-2 pb-1">
-                Cultos
-              </p>
+              <ChannelGroup title="Cultos">
+                {cultos.map((c: any) => (
+                  <ChannelRow
+                    key={c.id}
+                    icon={<Church />}
+                    label={c.name}
+                    detail={cultoDate(c.date)}
+                    selected={isActiveCulto(c.id)}
+                    onClick={() => setActive({ kind: "culto", id: c.id })}
+                  />
+                ))}
+              </ChannelGroup>
             )}
-            {cultos.map((c: any) => (
-              <button
-                key={c.id}
-                onClick={() => setActive({ kind: "culto", id: c.id })}
-                className={`flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm font-medium transition-colors text-left ${
-                  isActiveCulto(c.id)
-                    ? "bg-accent text-foreground"
-                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-                }`}
-              >
-                <Church className="h-4 w-4 shrink-0" />
-                <span className="truncate">{c.name}</span>
-                <span className="text-[10px] opacity-60 shrink-0 ml-auto">
-                  {format(new Date(c.date + "T12:00:00"), "dd/MM")}
-                </span>
-              </button>
-            ))}
-          </GlassCard>
-        </div>
-
-        <div className="flex-1 min-w-0 flex flex-col min-h-0">
-          {/* Mobile channel pills */}
-          <div className="flex gap-1.5 overflow-x-auto pb-3 scrollbar-hide shrink-0 lg:hidden">
-            <button
-              onClick={() => setActive({ kind: "general" })}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition-colors shrink-0 max-w-[140px] ${
-                isActiveGeneral
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-accent/50 text-muted-foreground border-border hover:border-primary/50"
-              }`}
-            >
-              <Hash className="h-3 w-3 shrink-0" /> Geral
-            </button>
-            {customChannels.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setActive({ kind: "custom", id: c.id })}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition-colors shrink-0 max-w-[140px] ${
-                  isActiveCustom(c.id)
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-accent/50 text-muted-foreground border-border hover:border-primary/50"
-                }`}
-              >
-                <Hash className="h-3 w-3 shrink-0" />
-                <span className="truncate">{c.name}</span>
-              </button>
-            ))}
-            {cultos.map((c: any) => (
-              <button
-                key={c.id}
-                onClick={() => setActive({ kind: "culto", id: c.id })}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition-colors shrink-0 max-w-[160px] ${
-                  isActiveCulto(c.id)
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-accent/50 text-muted-foreground border-border hover:border-primary/50"
-                }`}
-              >
-                <Church className="h-3 w-3 shrink-0" />
-                <span className="truncate">{c.name}</span>
-                <span className="opacity-60 shrink-0">
-                  {format(new Date(c.date + "T12:00:00"), "dd/MM")}
-                </span>
-              </button>
-            ))}
           </div>
+        </aside>
 
-          {/* Chat area */}
-          <GlassCard className="flex flex-col flex-1 min-h-0">
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-1">
-              {messages.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center h-full">
-                  <p className="text-sm text-muted-foreground text-center px-4">
-                    Nenhuma mensagem em{" "}
-                    <span className="font-medium">{activeChannelName}</span>. Comece a conversa!
+        <section className="flex flex-1 min-w-0 flex-col" aria-label={`Conversa em ${activeChannelName}`}>
+          {/* Messages */}
+          <div ref={listRef} className="flex flex-1 flex-col pb-3">
+            {messages.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-16 text-center">
+                <MessageCircle className="h-7 w-7 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+                <p className="text-body text-muted-foreground max-w-xs">
+                  Nenhuma mensagem em{" "}
+                  <span className="font-semibold text-foreground">{activeChannelName}</span>. Comece a conversa!
+                </p>
+              </div>
+            ) : (
+              groupedMessages.map((group) => (
+                <div key={group.date}>
+                  <p className="mt-4 mb-2 text-center text-footnote font-medium text-muted-foreground">
+                    {sentenceCase(
+                      format(new Date(group.date + "T12:00:00"), "EEEE, dd 'de' MMMM", {
+                        locale: ptBR,
+                      }),
+                    )}
                   </p>
-                </div>
-              ) : (
-                groupedMessages.map((group) => (
-                  <div key={group.date}>
-                    <div className="flex items-center justify-center my-3">
-                      <span className="text-[10px] text-muted-foreground bg-accent/60 px-2.5 py-0.5 rounded-full">
-                        {format(new Date(group.date + "T12:00:00"), "EEEE, dd 'de' MMMM", {
-                          locale: ptBR,
-                        })}
-                      </span>
-                    </div>
-                    {group.msgs.map((msg, i) => {
-                      const isMe = msg.sender_profile_id === profileId;
-                      const profile = msg.profiles as any;
-                      const prevMsg = i > 0 ? group.msgs[i - 1] : null;
-                      const sameAsPrev = prevMsg?.sender_profile_id === msg.sender_profile_id;
-                      const initials =
-                        profile?.full_name
-                          ?.split(" ")
-                          .map((n: string) => n[0])
-                          .join("")
-                          .slice(0, 2)
-                          .toUpperCase() ?? "?";
+                  {group.msgs.map((msg, i) => {
+                    const isMe = msg.sender_profile_id === profileId;
+                    const profile = msg.profiles as any;
+                    const prevMsg = i > 0 ? group.msgs[i - 1] : null;
+                    const nextMsg = i < group.msgs.length - 1 ? group.msgs[i + 1] : null;
+                    const sameAsPrev = prevMsg?.sender_profile_id === msg.sender_profile_id;
+                    const sameAsNext = nextMsg?.sender_profile_id === msg.sender_profile_id;
+                    const initials =
+                      profile?.full_name
+                        ?.split(" ")
+                        .map((n: string) => n[0])
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase() ?? "?";
 
-                      return (
-                        <div
-                          key={msg.id}
-                          className={`flex gap-2 ${isMe ? "flex-row-reverse" : ""} ${
-                            sameAsPrev ? "mt-0.5" : "mt-3"
-                          }`}
-                        >
-                          {!isMe && !sameAsPrev ? (
-                            <Avatar className="h-7 w-7 shrink-0 mt-0.5">
-                              {profile?.avatar_url && <AvatarImage src={profile.avatar_url} />}
-                              <AvatarFallback className="text-[9px] bg-accent">
+                    return (
+                      <div
+                        key={msg.id}
+                        className={cn("flex items-end gap-2", isMe ? "justify-end" : "justify-start", sameAsPrev ? "mt-0.5" : "mt-3")}
+                      >
+                        {/* Mensagens do iOS: avatar ao lado da última bolha da sequência */}
+                        {!isMe &&
+                          (!sameAsNext ? (
+                            <Avatar className="h-7 w-7 shrink-0">
+                              {profile?.avatar_url && <AvatarImage src={profile.avatar_url} alt="" />}
+                              <AvatarFallback className="bg-fill-secondary text-caption2 font-semibold text-muted-foreground">
                                 {initials}
                               </AvatarFallback>
                             </Avatar>
-                          ) : !isMe ? (
-                            <div className="w-7 shrink-0" />
-                          ) : null}
-                          <div
-                            className={`max-w-[85%] md:max-w-[70%] flex flex-col ${
-                              isMe ? "items-end" : "items-start"
-                            }`}
-                          >
-                            {!sameAsPrev && !isMe && (
-                              <p className="text-[10px] font-medium text-muted-foreground mb-0.5 ml-1 truncate max-w-full">
-                                {profile?.full_name ?? "Usuário"}
-                              </p>
-                            )}
-                            <ChatMessageBubble
-                              type={msg.message_type ?? "text"}
-                              content={msg.content}
-                              attachmentPath={msg.attachment_path}
-                              isMe={isMe}
-                            />
-                            <p
-                              className={`text-[9px] text-muted-foreground mt-0.5 ${
-                                isMe ? "text-right mr-1" : "ml-1"
-                              }`}
+                          ) : (
+                            <div className="w-7 shrink-0" aria-hidden="true" />
+                          ))}
+                        <div className={cn("flex min-w-0 max-w-[82%] md:max-w-[68%] flex-col", isMe ? "items-end" : "items-start")}>
+                          {!sameAsPrev && !isMe && (
+                            <p className="mb-0.5 max-w-full truncate px-3 text-caption1 text-muted-foreground">
+                              {profile?.full_name ?? "Usuário"}
+                            </p>
+                          )}
+                          <div className={cn("flex max-w-full items-end gap-1.5", isMe && "flex-row-reverse")}>
+                            <div className="min-w-0">
+                              <ChatMessageBubble
+                                type={msg.message_type ?? "text"}
+                                content={msg.content}
+                                attachmentPath={msg.attachment_path}
+                                isMe={isMe}
+                                tail={!sameAsNext}
+                              />
+                            </div>
+                            <time
+                              dateTime={msg.created_at}
+                              className="shrink-0 pb-0.5 text-caption2 text-muted-foreground tabular-nums"
                             >
                               {format(new Date(msg.created_at), "HH:mm")}
-                            </p>
+                            </time>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                ))
-              )}
-              <div ref={messagesEndRef} />
-            </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))
+            )}
+            <div ref={messagesEndRef} />
+          </div>
 
-            {/* Input */}
-            <div className="p-3 border-t border-border/50 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-              <div className="flex gap-1.5 items-center">
-                <input
-                  ref={imageInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleImagePick}
-                />
-                <Button
+          {/* Compositor: cápsula de vidro flutuante (camada funcional) */}
+          <div className="sticky z-[35] pt-1" style={composerStyle}>
+            {uploading && (
+              <p className="mb-1.5 px-4 text-caption1 text-muted-foreground" role="status">
+                Enviando anexo…
+              </p>
+            )}
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImagePick}
+            />
+            <div className="flex items-end gap-2">
+              {!recording && (
+                <button
                   type="button"
-                  size="icon"
-                  variant="ghost"
                   disabled={uploading}
-                  className="rounded-xl h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => imageInputRef.current?.click()}
                   title="Enviar imagem"
+                  aria-label="Enviar imagem"
+                  className="liquid-glass-thick glass-button shrink-0 w-11 disabled:opacity-40"
                 >
-                  <ImageIcon className="h-5 w-5" />
-                </Button>
-                <ChatEmojiPicker onSelect={insertEmoji} disabled={uploading} />
-                <ChatAudioRecorder onRecorded={handleAudioRecorded} disabled={uploading} />
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={`Mensagem em ${activeChannelName}...`}
-                  className="flex-1 min-w-0 bg-accent/40 border border-border/50 rounded-xl px-3.5 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
-                />
-                <Button
-                  size="icon"
-                  className="rounded-xl h-9 w-9 shrink-0"
-                  onClick={handleSend}
-                  disabled={!newMessage.trim() || sending || uploading}
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
-              {uploading && (
-                <p className="text-[10px] text-muted-foreground mt-1.5 ml-1">Enviando anexo…</p>
+                  <ImageIcon className="relative z-[4] h-5 w-5" strokeWidth={2} aria-hidden="true" />
+                </button>
               )}
+              <div className="liquid-glass-thick flex min-h-11 min-w-0 flex-1 items-center gap-0.5 rounded-[22px] py-1 pl-4 pr-1">
+                {!recording && (
+                  <>
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      enterKeyHint="send"
+                      aria-label={`Mensagem em ${activeChannelName}`}
+                      placeholder={`Mensagem em ${activeChannelName}...`}
+                      className="relative z-[4] min-w-0 flex-1 bg-transparent py-[7px] text-body text-foreground placeholder:text-muted-foreground outline-none focus-visible:outline-none"
+                    />
+                    <ChatEmojiPicker onSelect={insertEmoji} disabled={uploading} />
+                  </>
+                )}
+                {recording || !hasText ? (
+                  <ChatAudioRecorder
+                    onRecorded={handleAudioRecorded}
+                    onRecordingChange={setRecording}
+                    disabled={uploading}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={handleSend}
+                    disabled={!newMessage.trim() || sending || uploading}
+                    title="Enviar"
+                    aria-label="Enviar mensagem"
+                    className="relative z-[4] before:absolute before:-inset-1 before:rounded-full before:content-[''] grid h-9 w-9 shrink-0 place-items-center rounded-full bg-prominent text-prominent-foreground transition-[transform,opacity] active:scale-95 disabled:opacity-40"
+                  >
+                    {sending ? (
+                      <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden="true" />
+                    ) : (
+                      <ArrowUp className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
-          </GlassCard>
-        </div>
-        {/* end flex-1 */}
+          </div>
+        </section>
       </div>
-      {/* end flex */}
 
       <ChatChannelsModal
         open={channelsModalOpen}
@@ -565,5 +743,53 @@ export default function Chat() {
         onChanged={() => refetchChannels()}
       />
     </div>
+  );
+}
+
+/* ---------- Lista de canais (desktop) ---------- */
+
+function ChannelGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section>
+      <h2 className="mb-1.5 px-4 text-footnote text-muted-foreground">{title}</h2>
+      <div className="overflow-hidden rounded-card bg-card [&>*+*]:before:absolute [&>*+*]:before:left-[46px] [&>*+*]:before:right-0 [&>*+*]:before:top-0 [&>*+*]:before:border-t [&>*+*]:before:border-separator [&>*+*]:before:content-['']">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function ChannelRow({
+  icon,
+  label,
+  detail,
+  selected,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  detail?: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={selected ? "true" : undefined}
+      className={cn(
+        "relative flex min-h-11 w-full items-center gap-3 px-4 py-2 text-left transition-colors",
+        selected ? "bg-fill-tertiary" : "hover:bg-fill-quaternary active:bg-fill-tertiary",
+      )}
+    >
+      <span
+        className={cn("inline-flex shrink-0 [&_svg]:h-[18px] [&_svg]:w-[18px]", selected ? "text-primary" : "text-muted-foreground")}
+        aria-hidden="true"
+      >
+        {icon}
+      </span>
+      <span className={cn("min-w-0 flex-1 truncate text-body", selected && "font-semibold")}>{label}</span>
+      {detail && <span className="shrink-0 text-footnote text-muted-foreground tabular-nums">{detail}</span>}
+    </button>
   );
 }

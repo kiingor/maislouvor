@@ -24,12 +24,12 @@ export function ChordDiagram({ chord, instrument, size = 80 }: ChordDiagramProps
     return (
       <div className="flex flex-col items-center gap-1">
         <div
-          className="rounded-lg border border-muted-foreground/30 flex items-center justify-center bg-muted/20"
+          className="flex items-center justify-center rounded-[10px] bg-fill-tertiary"
           style={{ width: w, height: h }}
         >
-          <span className="text-muted-foreground text-xs">?</span>
+          <span className="text-footnote text-muted-foreground">?</span>
         </div>
-        <span className="text-[10px] font-mono text-muted-foreground">{chord}</span>
+        <span className="font-mono text-caption2 font-semibold text-muted-foreground">{chord}</span>
       </div>
     );
   }
@@ -62,7 +62,7 @@ export function ChordDiagram({ chord, instrument, size = 80 }: ChordDiagramProps
             y1={padTop + i * fretSpacing}
             x2={padX + gridW}
             y2={padTop + i * fretSpacing}
-            className="stroke-muted-foreground/40"
+            className="stroke-label-tertiary"
             strokeWidth={1}
           />
         ))}
@@ -75,7 +75,7 @@ export function ChordDiagram({ chord, instrument, size = 80 }: ChordDiagramProps
             y1={padTop}
             x2={padX + i * stringSpacing}
             y2={padTop + gridH}
-            className="stroke-muted-foreground/50"
+            className="stroke-muted-foreground/60"
             strokeWidth={1}
           />
         ))}
@@ -126,7 +126,7 @@ export function ChordDiagram({ chord, instrument, size = 80 }: ChordDiagramProps
           );
         })}
       </svg>
-      <span className="text-[10px] font-mono font-semibold text-foreground">{chord}</span>
+      <span className="font-mono text-caption2 font-semibold text-foreground">{chord}</span>
     </div>
   );
 }

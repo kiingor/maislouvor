@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./index.css";
+import { initAppearance } from "./lib/appearance";
 
 // Erros que acontecem FORA do render (handlers, timers, promises) não passam pelo
 // ErrorBoundary. Sem estes dois listeners eles somem silenciosamente.
@@ -11,6 +12,23 @@ window.addEventListener("error", (e) => {
 window.addEventListener("unhandledrejection", (e) => {
   console.error("[unhandledrejection]", e.reason);
 });
+
+// Aparência (HIG > Dark Mode): Automático segue o sistema; Claro/Escuro ficam fixos (lib/appearance).
+try {
+  initAppearance();
+} catch (e) {
+  console.error("[appearance]", e);
+}
+
+// Anel de foco só para teclado: foco programático depois de toque não desenha anel.
+document.addEventListener("pointerdown", () => document.documentElement.classList.add("pointer-mode"), true);
+document.addEventListener(
+  "keydown",
+  (e) => {
+    if (e.key === "Tab" || e.key.startsWith("Arrow")) document.documentElement.classList.remove("pointer-mode");
+  },
+  true,
+);
 
 const root = document.getElementById("root");
 

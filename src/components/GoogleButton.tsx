@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Capacitor } from "@capacitor/core";
-import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-/** Logo "G" oficial do Google (4 cores). */
+/** Logo "G" oficial do Google (4 cores — exigência da marca, não recolorir). */
 function GoogleLogo({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
@@ -31,6 +31,7 @@ function GoogleLogo({ className }: { className?: string }) {
 /**
  * Botão "Entrar/Cadastrar com Google". Redireciona pro fluxo OAuth do Supabase
  * (provider precisa estar habilitado no GoTrue do self-host).
+ * Visual: cápsula secundária de 50pt com contorno fino (HIG > Buttons), largura total.
  */
 export function GoogleButton({ label = "Continuar com Google" }: { label?: string }) {
   const { toast } = useToast();
@@ -70,19 +71,19 @@ export function GoogleButton({ label = "Continuar com Google" }: { label?: strin
   };
 
   return (
-    <Button
+    <button
       type="button"
-      variant="outline"
       onClick={handle}
       disabled={loading}
-      className="w-full h-12 rounded-xl text-sm font-medium gap-2.5 hover-lift"
+      aria-busy={loading || undefined}
+      className="flex h-[50px] w-full items-center justify-center gap-2.5 rounded-full border border-separator bg-card px-5 text-headline text-foreground transition-[background-color,transform] duration-200 hover:bg-fill-quaternary active:scale-[0.98] disabled:opacity-60"
     >
       {loading ? (
-        <div className="h-4 w-4 rounded-full border-2 border-foreground/30 border-t-transparent animate-spin" />
+        <Loader2 className="h-[18px] w-[18px] animate-spin text-muted-foreground" aria-hidden="true" />
       ) : (
-        <GoogleLogo />
+        <GoogleLogo className="shrink-0" />
       )}
-      {label}
-    </Button>
+      <span className="truncate">{label}</span>
+    </button>
   );
 }

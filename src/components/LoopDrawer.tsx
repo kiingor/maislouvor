@@ -14,13 +14,16 @@ export function LoopDrawer({ open, onOpenChange, isDark, children }: LoopDrawerP
     <Drawer open={open} onOpenChange={onOpenChange} handleOnly>
       <DrawerPortal>
         <DrawerOverlay />
+        {/* Folha iOS flutuante (raio 38, puxador 36×5). Fundo opaco e SEM desfoque: o palco pode
+            estar rolando por baixo, e o blur seria recalculado a cada quadro. --popover = #1C1C1E no
+            escuro, sem a troca de --card que a folha faz para as células. */}
         <DrawerPrimitive.Content
-          className={`fixed inset-x-0 bottom-0 z-50 flex h-[90dvh] max-h-[calc(100dvh-1rem)] flex-col overflow-hidden rounded-t-[10px] border bg-background pb-[env(safe-area-inset-bottom)] text-foreground ${isDark ? "dark" : ""}`}
+          className={`fixed inset-x-2 bottom-2 z-50 mx-auto flex h-[88dvh] max-h-[calc(100dvh-env(safe-area-inset-top)-24px)] max-w-lg flex-col overflow-hidden rounded-sheet bg-[var(--sheet-bg)] [--sheet-bg:hsl(var(--background))] dark:[--sheet-bg:hsl(var(--popover))] pb-[max(env(safe-area-inset-bottom),8px)] text-foreground shadow-[0_-10px_40px_rgba(0,0,0,0.12)] outline-none [--grouped-tertiary:var(--card)] dark:[--card:240_3%_17%] ${isDark ? "dark" : ""}`}
           style={{ touchAction: "pan-y" }}
         >
-          <div className="flex shrink-0 justify-center py-4">
+          <div className="flex shrink-0 justify-center pb-0.5 pt-1.5">
             <DrawerPrimitive.Handle
-              className="h-2 w-[100px] rounded-full bg-muted"
+              className="!h-[5px] !w-9 rounded-full !bg-label-tertiary !opacity-100"
               style={{ touchAction: "none" }}
               role="button"
               tabIndex={0}

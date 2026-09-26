@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { GlassCard } from "@/components/GlassCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Church, Music, MessageCircle, Activity } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -19,10 +18,11 @@ interface FeedItem {
   date: string; // ISO created_at
 }
 
-const ICONS: Record<FeedKind, { icon: any; className: string }> = {
-  culto: { icon: Church, className: "text-blue-500 bg-blue-500/10" },
-  song: { icon: Music, className: "text-purple-500 bg-purple-500/10" },
-  message: { icon: MessageCircle, className: "text-emerald-500 bg-emerald-500/10" },
+// Ícones monocromáticos em quadrado de 30px (lista agrupada do iOS): cor só para status.
+const ICONS: Record<FeedKind, { icon: any }> = {
+  culto: { icon: Church },
+  song: { icon: Music },
+  message: { icon: MessageCircle },
 };
 
 /**
@@ -106,46 +106,59 @@ export function HomeTeamFeed({ teamId }: HomeTeamFeedProps) {
   }, [teamId]);
 
   return (
-    <div>
-      <h2 className="text-sm font-medium text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
-        <Activity className="h-3.5 w-3.5" /> Atividade da equipe
+    <section aria-labelledby="home-feed-title">
+      <h2 id="home-feed-title" className="text-title3 text-foreground mx-1 mb-2">
+        Atividade da equipe
       </h2>
-      <GlassCard variant="subtle" className="p-2">
+      <div className="rounded-card bg-card overflow-hidden">
         {loading ? (
-          <div className="space-y-1">
+          <div aria-busy="true">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="flex items-center gap-3 p-2">
-                <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
-                <Skeleton className="h-4 flex-1 rounded" />
+              <div key={i} className="relative flex items-center gap-3 min-h-[52px] px-4 py-2.5">
+                {i > 0 && <Separator />}
+                <Skeleton className="h-[30px] w-[30px] shrink-0 rounded-[8px] bg-fill-tertiary" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-3.5 w-3/4 rounded-full bg-fill-tertiary" />
+                  <Skeleton className="h-3 w-1/3 rounded-full bg-fill-quaternary" />
+                </div>
               </div>
             ))}
           </div>
         ) : items.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            Nenhuma atividade recente.
-          </p>
+          <div className="flex items-center gap-3 px-4 py-3.5">
+            <Activity className="h-7 w-7 shrink-0 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+            <p className="text-body text-muted-foreground">Nenhuma atividade recente.</p>
+          </div>
         ) : (
-          <div className="space-y-0.5">
-            {items.map((item) => {
-              const cfg = ICONS[item.kind];
-              const Icon = cfg.icon;
+          <ul>
+            {items.map((item, i) => {
+              const Icon = ICONS[item.kind].icon;
               return (
-                <div key={item.id} className="flex items-center gap-3 p-2 rounded-xl">
-                  <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${cfg.className}`}>
-                    <Icon className="h-4 w-4" />
-                  </div>
+                <li key={item.id} className="relative flex items-center gap-3 min-h-[52px] px-4 py-2.5">
+                  {i > 0 && <Separator />}
+                  <span
+                    aria-hidden="true"
+                    className="grid place-items-center h-[30px] w-[30px] shrink-0 rounded-[8px] bg-fill-tertiary text-muted-foreground"
+                  >
+                    <Icon className="h-4 w-4" strokeWidth={2.25} />
+                  </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm truncate">{item.text}</p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-subhead text-foreground [overflow-wrap:anywhere]">{item.text}</p>
+                    <p className="text-footnote text-muted-foreground">
                       {formatDistanceToNow(new Date(item.date), { addSuffix: true, locale: ptBR })}
                     </p>
                   </div>
-                </div>
+                </li>
               );
             })}
-          </div>
+          </ul>
         )}
-      </GlassCard>
-    </div>
+      </div>
+    </section>
   );
+}
+
+/** Separador hairline recuado até o texto (58px = margem 16 + ícone 30 + espaço 12). */
+function Separator() {
+  return <span aria-hidden="true" className="absolute top-0 left-[58px] right-0 border-t border-separator" />;
 }

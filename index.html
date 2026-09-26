@@ -1,9 +1,34 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F2F2F7" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
+    <script>
+      // Evita piscar claro↔escuro antes do React montar (mesma regra de src/lib/appearance.ts).
+      (function () {
+        var a = null;
+        try { a = localStorage.getItem("louvor-appearance"); } catch (e) {}
+        var dark = a === "dark" || (a !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        var r = document.documentElement;
+        // Modo ensaio aberto direto (recarregar): usa o tema do palco (padrão escuro), sem piscar.
+        if (/\/present\/?$/.test(location.pathname)) {
+          var t = null;
+          try { t = JSON.parse(localStorage.getItem("louvor-presentation-prefs") || "null").theme; } catch (e) {}
+          dark = t !== "light";
+          r.setAttribute("data-stage-theme", dark ? "dark" : "light");
+          a = dark ? "dark" : "light";
+        }
+        if (dark) r.classList.add("dark");
+        if (a === "dark" || a === "light") {
+          var ms = document.querySelectorAll('meta[name="theme-color"]');
+          for (var i = 0; i < ms.length; i++) ms[i].setAttribute("content", dark ? "#000000" : "#F2F2F7");
+        }
+      })();
+    </script>
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="+Louvor" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2" />
