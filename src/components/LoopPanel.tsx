@@ -6,7 +6,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Switch } from "@/components/ui/switch";
 import { LoopEditor } from "./LoopEditor";
 import { formatLoopTime as formatTime, type LoopDraft, type LoopRange } from "@/lib/loopTime";
-import type { Database } from "@/integrations/supabase/types";
+import type { LoopPoint } from "@/hooks/useLoopSequence";
 import {
   Plus,
   Trash2,
@@ -31,8 +31,6 @@ function errorMessage(error: unknown): string {
   return "Não foi possível salvar o loop";
 }
 
-type LoopPoint = Database["public"]["Tables"]["song_loop_points"]["Row"];
-
 interface LoopPanelProps {
   songId: string;
   currentTime: number;
@@ -42,10 +40,12 @@ interface LoopPanelProps {
   onSeek: (time: number) => void;
   onTogglePlayback: () => void;
   onPreview: (range: LoopRange | null) => void;
+  selectedLoops: LoopPoint[];
   activeLoopId: string | null;
   currentRepetition: number;
   playbackRate: number;
   onSelectLoop: (loop: LoopPoint | null) => void;
+  onRemoveLoop: (id: string) => void;
   onPlaybackRateChange: (rate: number) => void;
   isDark: boolean;
   onClose: () => void;
@@ -64,10 +64,12 @@ export function LoopPanel({
   onSeek,
   onTogglePlayback,
   onPreview,
+  selectedLoops,
   activeLoopId,
   currentRepetition,
   playbackRate,
   onSelectLoop,
+  onRemoveLoop,
   onPlaybackRateChange,
   isDark,
   onClose,
@@ -194,7 +196,8 @@ export function LoopPanel({
       const { error } = await supabase.from("song_loop_points").delete().eq("id", loopId);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_, loopId) => {
+      onRemoveLoop(loopId);
       queryClient.invalidateQueries({ queryKey: ["my-loops", songId] });
       queryClient.invalidateQueries({ queryKey: ["all-my-loops"] });
       queryClient.invalidateQueries({ queryKey: ["public-loops", songId] });
@@ -246,6 +249,44 @@ export function LoopPanel({
     ? publicLoops.filter((l) => l.profile_id === selectedProfileId)
     : [];
 
+  const loopSelection = (loop: LoopPoint) => {
+    const order = selectedLoops.findIndex((selected) => selected.id === loop.id);
+    const isActive = activeLoopId === loop.id;
+    const infinite = loop.repeat_count === 0 && selectedLoops.length <= 1;
+    return (
+      <button
+        type="button"
+        aria-label={`Selecionar ${loop.label}`}
+        aria-pressed={order >= 0}
+        onClick={(event) => {
+          event.stopPropagation();
+          onSelectLoop(loop);
+        }}
+        className="min-w-0 flex-1 rounded-lg p-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <span className="flex items-center gap-2">
+          {order >= 0 && (
+            <span aria-label={`${order + 1}º na sequência`} className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+              {order + 1}
+            </span>
+          )}
+          <span className="min-w-0 break-words text-sm font-medium">{loop.label}</span>
+        </span>
+        <span className={`mt-1 block font-mono text-xs ${subtleText}`}>
+          {formatTime(loop.start_time)} → {formatTime(loop.end_time)}
+        </span>
+        {isActive ? (
+          <span className="mt-1 flex items-center gap-1 text-[10px] text-primary">
+            {isPlaying ? "Tocando" : "Atual"} · {infinite ? currentRepetition : Math.min(currentRepetition, Math.max(1, loop.repeat_count))}
+            {infinite ? <InfinityIcon className="h-3 w-3" /> : `/${Math.max(1, loop.repeat_count)}`}
+          </span>
+        ) : loop.repeat_count > 0 && (
+          <span className={`mt-1 block text-[10px] ${subtleText}`}>Repetir {loop.repeat_count}x</span>
+        )}
+      </button>
+    );
+  };
+
   const content = (
     <div onKeyDown={(event) => event.stopPropagation()} className={`flex h-full min-h-0 flex-col overflow-hidden ${isDark ? "text-white" : "text-black"}`}>
       {/* Header */}
@@ -283,6 +324,43 @@ export function LoopPanel({
           </button>
         ))}
       </div>
+
+      {!showForm && (
+        <div className={`shrink-0 border-b px-4 py-2.5 ${borderSubtle}`}>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold">Sequência{selectedLoops.length > 0 ? ` (${selectedLoops.length})` : ""}</span>
+            {selectedLoops.length > 0 && (
+              <button type="button" onClick={() => onSelectLoop(null)} className={`rounded-lg px-2 py-1 text-xs ${subtleText} ${hoverBg}`}>
+                Limpar seleção
+              </button>
+            )}
+          </div>
+          <p className={`mt-1 text-[10px] leading-relaxed ${subtleText}`}>
+            {selectedLoops.length > 1
+              ? "A sequência se repete. Loops infinitos tocam uma vez por rodada."
+              : "Selecione os loops na ordem em que deseja ouvir."}
+          </p>
+          {selectedLoops.length > 0 && (
+            <ol aria-label="Ordem dos loops" className="mt-2 flex gap-1.5 overflow-x-auto pb-1" data-vaul-no-drag>
+              {selectedLoops.map((loop, index) => (
+                <li key={loop.id} className="shrink-0">
+                  <button
+                    type="button"
+                    aria-label={`Remover ${loop.label} da sequência`}
+                    aria-current={activeLoopId === loop.id ? "step" : undefined}
+                    onClick={() => onRemoveLoop(loop.id)}
+                    className={`flex max-w-48 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs ${activeLoopId === loop.id ? "bg-primary text-primary-foreground" : `${accentBg} ${hoverBg}`}`}
+                  >
+                    <span className="font-mono">{index + 1}.</span>
+                    <span className="truncate">{loop.label}</span>
+                    <X className="h-3 w-3 shrink-0" />
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
 
       {/* Tabs */}
       <Tabs value={tab} onValueChange={(value) => { onPreview(null); setTab(value); }} className="flex h-0 min-h-0 flex-1 flex-col overflow-hidden">
@@ -351,31 +429,21 @@ export function LoopPanel({
                 )}
 
                 {myLoops.map((loop) => {
-                  const isActive = activeLoopId === loop.id;
+                  const isSelected = selectedLoops.some((selected) => selected.id === loop.id);
                   return (
                     <div
                       key={loop.id}
                       role="listitem"
-                      onClick={() => onSelectLoop(isActive ? null : loop)}
+                      onClick={() => onSelectLoop(loop)}
                       className={`cursor-pointer rounded-xl border p-3 transition-all ${
-                        isActive
+                        isSelected
                           ? "border-primary bg-primary/10"
                           : `border-transparent ${cardBg} ${hoverBg}`
                       }`}
                     >
-                      <div className="mb-1 flex items-center justify-between">
-                        <span className="text-sm font-medium">{loop.label}</span>
-                        <div className="flex items-center gap-2">
-                          {isActive && loop.repeat_count > 0 && (
-                            <span className="font-mono text-[10px] text-primary">
-                              {currentRepetition}/{loop.repeat_count}
-                            </span>
-                          )}
-                          {isActive && loop.repeat_count === 0 && (
-                            <span className="flex items-center gap-0.5 font-mono text-[10px] text-primary">
-                              {currentRepetition}<InfinityIcon className="h-3 w-3" />
-                            </span>
-                          )}
+                      <div className="mb-1 flex items-start justify-between gap-2">
+                        {loopSelection(loop)}
+                        <div className="flex shrink-0 items-center gap-2">
                           <button
                             type="button"
                             onClick={(e) => {
@@ -391,7 +459,6 @@ export function LoopPanel({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (isActive) onSelectLoop(null);
                               deleteLoop.mutate(loop.id);
                             }}
                             className={`rounded-lg p-1 ${hoverBg}`}
@@ -401,10 +468,7 @@ export function LoopPanel({
                           </button>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className={`font-mono text-xs ${subtleText}`}>
-                          {formatTime(loop.start_time)} → {formatTime(loop.end_time)}
-                        </span>
+                      <div className="flex items-center justify-end">
                         <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                           <span className={`text-[10px] ${subtleText}`}>
                             {loop.is_public ? "Público" : "Privado"}
@@ -419,11 +483,6 @@ export function LoopPanel({
                           />
                         </div>
                       </div>
-                      {loop.repeat_count > 0 && (
-                        <span className={`mt-1 block text-[10px] ${subtleText}`}>
-                          Repetir {loop.repeat_count}x
-                        </span>
-                      )}
                     </div>
                   );
                 })}
@@ -450,29 +509,14 @@ export function LoopPanel({
               {profileLoops.map((loop) => (
                 <div
                   key={loop.id}
-                  onClick={() => onSelectLoop(activeLoopId === loop.id ? null : loop)}
-                  className={`rounded-xl p-3 border transition-all cursor-pointer ${
-                    activeLoopId === loop.id
+                  onClick={() => onSelectLoop(loop)}
+                  className={`flex cursor-pointer rounded-xl p-3 border transition-all ${
+                    selectedLoops.some((selected) => selected.id === loop.id)
                       ? "border-primary bg-primary/10"
-                      : `border-transparent ${cardBg}`
+                      : `border-transparent ${cardBg} ${hoverBg}`
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium">{loop.label}</span>
-                    {activeLoopId === loop.id && loop.repeat_count > 0 && (
-                      <span className="text-[10px] font-mono text-primary">
-                        {currentRepetition}/{loop.repeat_count}
-                      </span>
-                    )}
-                  </div>
-                  <span className={`text-xs font-mono ${subtleText}`}>
-                    {formatTime(loop.start_time)} → {formatTime(loop.end_time)}
-                  </span>
-                  {loop.repeat_count > 0 && (
-                    <span className={`text-[10px] ${subtleText} mt-1 block`}>
-                      Repetir {loop.repeat_count}x
-                    </span>
-                  )}
+                  {loopSelection(loop)}
                 </div>
               ))}
               {profileLoops.length === 0 && (

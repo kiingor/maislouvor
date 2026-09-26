@@ -11,10 +11,10 @@ import { detectKeyFromUrl, parseKeyName, DetectedKey } from "@/lib/detectKey";
 import { LoopPanel } from "@/components/LoopPanel";
 import { LoopDrawer } from "@/components/LoopDrawer";
 import type { LoopRange } from "@/lib/loopTime";
-import type { Database } from "@/integrations/supabase/types";
 import { Metronome } from "@/components/Metronome";
 import { transposeCifra, capoSuggestion, transposeKeyName as transposeKeyLabel, semitonesBetweenKeys } from "@/lib/chordpro";
 import { useTeam } from "@/contexts/TeamContext";
+import { useLoopSequence, type LoopPoint } from "@/hooks/useLoopSequence";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -53,8 +53,6 @@ import {
   Guitar,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-
-type LoopPoint = Database["public"]["Tables"]["song_loop_points"]["Row"];
 
 type Instrument = "violao" | "guitarra" | "guitarra_worship" | "voz";
 
@@ -441,13 +439,9 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
 
   // Loop / Rehearsal mode
   const [showLoopPanel, setShowLoopPanel] = useState(false);
-  const [activeLoop, setActiveLoop] = useState<LoopPoint | null>(null);
-  const [currentRepetition, setCurrentRepetition] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
-  const activeLoopRef = useRef<LoopPoint | null>(null);
   const previewRangeRef = useRef<LoopRange | null>(null);
   const [isPreviewingLoop, setIsPreviewingLoop] = useState(false);
-  const currentRepetitionRef = useRef(0);
   const isMobile = useIsMobile();
 
   // Metronome / click panel
@@ -643,6 +637,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
 
   const currentSong = songs[songIdx] as any;
   const currentSongId = currentSong?.id;
+  const { selectedLoops, activeLoop, currentRepetition, toggleLoop, removeLoop, clearLoops, advanceLoop } = useLoopSequence(currentSongId);
 
   const SONG_FALLBACK_SECONDS = 240;
 
@@ -1062,9 +1057,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
     segmentsLengthRef.current = segments.length;
     isRecordingRef.current = isRecording;
     showTimestampEditorRef.current = showTimestampEditor;
-    activeLoopRef.current = activeLoop;
-    currentRepetitionRef.current = currentRepetition;
-  }, [segmentTimestamps, segments.length, isRecording, showTimestampEditor, activeLoop, currentRepetition]);
+  }, [segmentTimestamps, segments.length, isRecording, showTimestampEditor]);
 
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -1314,8 +1307,27 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
       if (suppressPauseIntentRef.current) suppressPauseIntentRef.current = false;
       else playIntentRef.current = false;
     };
+    const advanceLoopPlayback = () => {
+      const nextTime = advanceLoop(audio.currentTime);
+      if (nextTime === null) return false;
+      const wasEnded = audio.ended;
+      audio.currentTime = nextTime;
+      setAudioProgress(nextTime);
+      syncTrackAudios("seek", nextTime);
+      if (wasEnded) {
+        playIntentRef.current = true;
+        audio.play().catch(() => { playIntentRef.current = false; });
+      }
+      if (wasEnded || !audio.paused) syncTrackAudios("play", nextTime);
+      if (!isTransicaoRef.current) syncSegmentWithAudioTime(nextTime);
+      return true;
+    };
     const handleEnded = () => {
-      if (audio.currentTime < audio.duration) return;
+      // A timeupdate may already have restarted the sequence at the file end.
+      if (!audio.ended || advanceLoopPlayback()) return;
+      setAudioPlaying(false);
+      setIsPlaying(false);
+      syncTrackAudios("pause");
       previewRangeRef.current = null;
       setIsPreviewingLoop(false);
       setIsPlaying(false);
@@ -1342,30 +1354,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
         return;
       }
 
-      // Loop logic
-      const loop = activeLoopRef.current;
-      if (loop && t >= loop.end_time) {
-        const rep = currentRepetitionRef.current + 1;
-        if (loop.repeat_count > 0 && rep > loop.repeat_count) {
-          // Finished all repetitions
-          activeLoopRef.current = null;
-          currentRepetitionRef.current = 0;
-          setActiveLoop(null);
-          setCurrentRepetition(0);
-        } else {
-          currentRepetitionRef.current = rep;
-          setCurrentRepetition(rep);
-          audio.currentTime = loop.start_time;
-          setAudioProgress(loop.start_time);
-          if (audio.paused) audio.play().catch(() => {});
-          // sync tracks too
-          const map = trackAudiosRef.current;
-          for (const [, trk] of map) {
-            trk.currentTime = loop.start_time;
-          }
-        }
-        return;
-      }
+      if (advanceLoopPlayback()) return;
       
       // iOS: <audio> independentes derivam entre si com o tempo. Re-sincroniza as
       // faixas que saíram do clock-mestre além de ~0,2s (raro → sem glitch contínuo).
@@ -1415,7 +1404,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
     // estável): com eles aqui, o elemento era destruído e recriado NO MEIO da música
     // quando a query de faixas resolvia — a playback parava "do nada".
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioUrl, syncSegmentWithAudioTime]);
+  }, [audioUrl, syncSegmentWithAudioTime, syncTrackAudios, advanceLoop]);
 
   // Sync playbackRate to audio + tracks (ref: elementos novos nascem na velocidade certa)
   useEffect(() => {
@@ -1429,16 +1418,28 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
   useEffect(() => { isTransicaoRef.current = isTransicao; }, [isTransicao]);
 
   const handleSelectLoop = useCallback((loop: LoopPoint | null) => {
-    activeLoopRef.current = loop;
-    currentRepetitionRef.current = loop ? 1 : 0;
-    setActiveLoop(loop);
-    setCurrentRepetition(loop ? 1 : 0);
-    if (loop && audioRef.current) {
-      audioRef.current.currentTime = loop.start_time;
-      syncTrackAudios("seek", loop.start_time);
-      setAudioProgress(loop.start_time);
+    if (!loop) {
+      clearLoops();
+      return;
     }
-  }, [syncTrackAudios]);
+    const nextTime = toggleLoop(loop);
+    if (nextTime !== null && audioRef.current) {
+      audioRef.current.currentTime = nextTime;
+      syncTrackAudios("seek", nextTime);
+      setAudioProgress(nextTime);
+      if (!isTransicao) syncSegmentWithAudioTime(nextTime);
+    }
+  }, [clearLoops, toggleLoop, syncTrackAudios, syncSegmentWithAudioTime, isTransicao]);
+
+  const handleRemoveLoop = useCallback((id: string) => {
+    const nextTime = removeLoop(id);
+    if (nextTime !== null && audioRef.current) {
+      audioRef.current.currentTime = nextTime;
+      syncTrackAudios("seek", nextTime);
+      setAudioProgress(nextTime);
+      if (!isTransicao) syncSegmentWithAudioTime(nextTime);
+    }
+  }, [removeLoop, syncTrackAudios, syncSegmentWithAudioTime, isTransicao]);
 
   const handleLoopSeek = useCallback((time: number) => {
     const audio = audioRef.current;
@@ -1495,10 +1496,6 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
   useEffect(() => {
     previewRangeRef.current = null;
     setIsPreviewingLoop(false);
-    activeLoopRef.current = null;
-    setActiveLoop(null);
-    currentRepetitionRef.current = 0;
-    setCurrentRepetition(0);
   }, [currentSongId]);
 
   const handlePlaybackRateChange = useCallback((rate: number) => {
@@ -2349,10 +2346,12 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
               onSeek={handleLoopSeek}
               onTogglePlayback={togglePlay}
               onPreview={handlePreviewLoop}
+              selectedLoops={selectedLoops}
               activeLoopId={activeLoop?.id ?? null}
               currentRepetition={currentRepetition}
               playbackRate={playbackRate}
               onSelectLoop={handleSelectLoop}
+              onRemoveLoop={handleRemoveLoop}
               onPlaybackRateChange={handlePlaybackRateChange}
               isDark={isDark}
               onClose={closeLoopPanel}
@@ -2431,10 +2430,12 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
                   onSeek={handleLoopSeek}
                   onTogglePlayback={togglePlay}
                   onPreview={handlePreviewLoop}
+                  selectedLoops={selectedLoops}
                   activeLoopId={activeLoop?.id ?? null}
                   currentRepetition={currentRepetition}
                   playbackRate={playbackRate}
                   onSelectLoop={handleSelectLoop}
+                  onRemoveLoop={handleRemoveLoop}
                   onPlaybackRateChange={handlePlaybackRateChange}
                   isDark={isDark}
                   onClose={closeLoopPanel}
@@ -2612,6 +2613,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
                   {/* Loop markers on progress bar */}
                   {audioDuration > 0 && allLoops.map((loop, i) => {
                     const isActive = activeLoop?.id === loop.id;
+                    const isSelected = selectedLoops.some((selected) => selected.id === loop.id);
                     const colors = [
                       "bg-blue-400/30",
                       "bg-green-400/30",
@@ -2632,7 +2634,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
                       <div
                         key={loop.id}
                         className={`absolute top-0 bottom-0 rounded-full pointer-events-none ${
-                          isActive ? activeColors[i % activeColors.length] : colors[i % colors.length]
+                          isSelected ? activeColors[i % activeColors.length] : colors[i % colors.length]
                         } ${isActive ? "ring-1 ring-primary" : ""}`}
                         style={{
                           left: `${(loop.start_time / audioDuration) * 100}%`,

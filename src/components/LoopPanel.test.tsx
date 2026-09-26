@@ -1,7 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { LoopPanel } from "./LoopPanel";
+import { useLoopSequence } from "@/hooks/useLoopSequence";
+import { supabase } from "@/integrations/supabase/client";
 
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
@@ -23,6 +26,24 @@ const loops = Array.from({ length: 12 }, (_, index) => ({
   created_at: new Date(0).toISOString(),
 }));
 
+function StatefulPanel(props: ComponentProps<typeof LoopPanel>) {
+  const sequence = useLoopSequence(props.songId);
+  return <LoopPanel {...props}
+    selectedLoops={sequence.selectedLoops}
+    activeLoopId={sequence.activeLoop?.id ?? null}
+    currentRepetition={sequence.currentRepetition}
+    onSelectLoop={(loop) => {
+      props.onSelectLoop(loop);
+      if (loop) sequence.toggleLoop(loop);
+      else sequence.clearLoops();
+    }}
+    onRemoveLoop={(id) => {
+      props.onRemoveLoop(id);
+      sequence.removeLoop(id);
+    }}
+  />;
+}
+
 function setup(songId = "song-1") {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -43,10 +64,12 @@ function setup(songId = "song-1") {
     onSeek: vi.fn(),
     onTogglePlayback: vi.fn(),
     onPreview: vi.fn(),
+    selectedLoops: [],
     activeLoopId: null,
     currentRepetition: 0,
     playbackRate: 1,
     onSelectLoop: vi.fn(),
+    onRemoveLoop: vi.fn(),
     onPlaybackRateChange: vi.fn(),
     isDark: true,
     onClose: vi.fn(),
@@ -54,7 +77,7 @@ function setup(songId = "song-1") {
 
   const view = render(
     <QueryClientProvider client={queryClient}>
-      <LoopPanel songId={songId} {...props} />
+      <StatefulPanel songId={songId} {...props} />
     </QueryClientProvider>,
   );
 
@@ -101,5 +124,63 @@ describe("LoopPanel", () => {
     });
     expect(screen.queryByText("Novo loop")).not.toBeInTheDocument();
     expect(screen.getByText(/nenhum loop criado/i)).toBeInTheDocument();
+  });
+
+  it("mostra a ordem escolhida, mantém múltiplos selecionados e permite remover e limpar", () => {
+    const { props } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Selecionar Trecho 3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Selecionar Trecho 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Selecionar Trecho 2" }));
+
+    const selectedNames = () => within(screen.getByRole("list", { name: "Ordem dos loops" }))
+      .getAllByRole("button").map((button) => button.getAttribute("aria-label"));
+    expect(selectedNames()).toEqual([
+      "Remover Trecho 3 da sequência", "Remover Trecho 1 da sequência", "Remover Trecho 2 da sequência",
+    ]);
+    expect(screen.getByRole("button", { name: "Selecionar Trecho 1" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Remover Trecho 3 da sequência" })).toHaveAttribute("aria-current", "step");
+
+    fireEvent.click(screen.getByRole("button", { name: "Selecionar Trecho 1" }));
+    expect(props.onSelectLoop).toHaveBeenLastCalledWith(loops[0]);
+    expect(screen.getByRole("button", { name: "Selecionar Trecho 1" })).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(screen.getByRole("button", { name: "Selecionar Trecho 1" }));
+    expect(selectedNames()).toEqual([
+      "Remover Trecho 3 da sequência", "Remover Trecho 2 da sequência", "Remover Trecho 1 da sequência",
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Remover Trecho 3 da sequência" }));
+    expect(screen.getByRole("button", { name: "Remover Trecho 2 da sequência" })).toHaveAttribute("aria-current", "step");
+    fireEvent.click(screen.getByRole("button", { name: "Limpar seleção" }));
+    expect(screen.queryByRole("list", { name: "Ordem dos loops" })).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("button", { pressed: true })).toHaveLength(0);
+  });
+
+  it("compartilha a sequência entre meus loops e os loops públicos", async () => {
+    const { queryClient } = setup();
+    const publicLoop = { ...loops[0], id: "public-loop", profile_id: "profile-2", label: "Ponte pública", is_public: true };
+    await act(async () => {
+      queryClient.setQueryData(["loop-profiles", "profile-2"], [{ id: "profile-2", full_name: "Membro", avatar_url: null }]);
+      queryClient.setQueryData(["public-loops", "song-1"], [publicLoop]);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Selecionar Trecho 3" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /perfis/i }), { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByRole("button", { name: /membro/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Selecionar Ponte pública" }));
+    expect(within(screen.getByRole("list", { name: "Ordem dos loops" })).getAllByRole("button")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Selecionar Ponte pública" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("remove somente o loop excluído da sequência após a exclusão ser salva", async () => {
+    const { props, queryClient } = setup();
+    vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+    const eq = vi.fn().mockResolvedValue({ error: null });
+    vi.mocked(supabase.from).mockReturnValue({ delete: () => ({ eq }) } as unknown as ReturnType<typeof supabase.from>);
+    fireEvent.click(screen.getByRole("button", { name: "Selecionar Trecho 3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Selecionar Trecho 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remover Trecho 3" }));
+    await waitFor(() => expect(props.onRemoveLoop).toHaveBeenCalledWith(loops[2].id));
+    expect(eq).toHaveBeenCalledWith("id", loops[2].id);
+    expect(screen.getByRole("button", { name: "Remover Trecho 1 da sequência" })).toHaveAttribute("aria-current", "step");
+    expect(props.onSelectLoop).toHaveBeenCalledTimes(2);
   });
 });
