@@ -1097,16 +1097,10 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSongId, baseTranspose]);
 
-  // Música nova: volta a tocar só o master (leve) e descarta o loop A-B da música
-  // anterior — sem isso o loop antigo "sequestrava" a música nova, rebobinando ela
-  // para um trecho definido em outra música. (Só em [currentSongId]: mudança tardia
-  // de baseTranspose não pode derrubar os stems.)
+  // Música nova: volta a tocar só o master (leve). useLoopSequence descarta os
+  // loops da música anterior. Mudança tardia de baseTranspose preserva os stems.
   useEffect(() => {
     setStemsWanted(false);
-    setActiveLoop(null);
-    setCurrentRepetition(0);
-    activeLoopRef.current = null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSongId]);
 
   // Mixer aberto = usuário quer os stems desta música. `!stemsWanted` nas deps

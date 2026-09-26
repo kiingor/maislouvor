@@ -1,6 +1,6 @@
 # Áudios adicionais por música
 
-Integração local sobre a `main` no commit `2fb6d64` (sequência de loops). A implementação de `4afe38c`, da branch `feat/audios-adicionais`, foi adaptada à interface e às permissões desta base. Não foi incorporada a árvore inteira de `release/loops-20260921`, que usa outro esquema de banco. A correção local do avanço indevido aos 1:09 e seus cinco testes também estão incluídos.
+Versão integrada à base exata da produção `31a752d` (correção do avanço no ensaio e página do APK 1.0.2). Inclui os áudios adicionais de `4afe38c`, a sequência de loops de `2fb6d64` e autorização compatível com os modelos legado e granular. A integração antiga permanece na `main` local; esta release preserva a interface, o mixer e as correções mais recentes da produção.
 
 ## Uso
 
@@ -19,44 +19,38 @@ O worker consulta `claim_song_audio_import`, reutiliza o cache do YouTube quando
 
 A leitura acompanha as políticas da música. Os arquivos ficam no bucket privado `audio`, com URLs assinadas. Permissões de coluna impedem clientes autenticados de alterar status e destinos da fila; o banco valida o caminho exclusivo de cada adicional.
 
-## Validação da integração
+## Validação da release de produção
 
-- Vitest: **89 testes aprovados**, incluindo sequência de loops, pausa/retomada dos adicionais na segunda repetição e em velocidade reduzida, correção aos 1:09, upload, importação, permissões e limpeza do player.
-- Python: **7 testes aprovados** do worker, sem rede, cobrindo cache, download, erros, remoção concorrente e preservação do fluxo principal.
-- PostgreSQL/PGlite: **61 verificações aprovadas** (28 no modelo legado e 33 no modelo de permissões granulares, incluindo concessões e bloqueios explícitos), usando a migration real em memória: permissões de editor/leitor/equipe externa/compartilhamento, caminhos, fila, expiração e preservação da música principal.
-- TypeScript e build Vite/PWA aprovados. Arquivos novos sem erros de ESLint; os arquivos legados editados mantêm os mesmos 41 diagnósticos anteriores.
-- Chromium com componentes reais, dados sintéticos e backend simulado em **320, 390 e 1280 px**: layout sem overflow, upload isolado, player no resumo, fechamento do áudio e acesso ao último de 40 loops.
-- Reprodução nativa no navegador: o áudio principal toca, pausa para os adicionais, preserva fonte/posição/loop, bloqueia os atalhos de fundo e retoma ao fechar. Capturas e scripts em `/tmp/maislouvor-merge-20260926`.
+- Vitest: **122 testes aprovados em 14 arquivos**. Inclui upload, importação, permissões, sequência de loops, pausa/retomada na segunda repetição com velocidade reduzida e faixas carregadas, passagem entre loops no fim do arquivo e os cinco testes da correção do avanço aos 1:09.
+- Worker: **7 testes Python aprovados**, sem rede, cobrindo cache, download, erros, remoção concorrente e preservação do fluxo principal.
+- PostgreSQL/PGlite: **61 verificações** nos modelos legado (28) e granular (33). A release atual repetiu as 33 verificações granulares. A migration também passou em uma transação revertida no PostgreSQL de produção antes da aplicação definitiva.
+- Build Vite/PWA e ESLint dos arquivos novos aprovados. O TypeScript mantém os **14 diagnósticos preexistentes** da base `31a752d`, nos mesmos arquivos/linhas/códigos; não foi apresentado como um typecheck sem erros.
+- Backend real: upload por usuário autenticado, renomeação, reprodução por leitor, bloqueio de escrita do leitor, rejeição de URL inválida, autenticação e importação YouTube processada pelo worker ativo. Música principal, faixas, loops e repertório permaneceram idênticos antes/depois. O teste YouTube usou um vídeo já no cache; o download sem cache está coberto pelo teste isolado do worker.
+- Chrome com o **bundle final** e backend real em **320, 390 e 1280 px**: editor, formulário YouTube, importação concluída, reprodução nativa do adicional, pausa/retomada do ensaio na mesma posição, seleção/ordem dos loops e velocidade 0,75x preservadas. Sem overflow horizontal. Fechar o diálogo removeu o player adicional.
+- O seletor de arquivos do Chrome bloqueou a automação por ausência da permissão da extensão para URLs de arquivo. O upload real foi validado pela API autenticada; o componente e a seleção de arquivo têm testes automatizados.
 
 ```sh
 npm test
-./node_modules/.bin/tsc --noEmit -p tsconfig.app.json
 npm run build
 python3 -m unittest discover -s worker-gpu -p 'test_*.py' -v
-```
-
-O teste SQL usa um banco isolado em memória, sem credenciais externas:
-
-```sh
-PGLITE_MODULE=/caminho/node_modules/@electric-sql/pglite/dist/index.js node supabase/tests/song_audio_attachments.mjs
 PERMISSION_MODEL=granular PGLITE_MODULE=/caminho/node_modules/@electric-sql/pglite/dist/index.js node supabase/tests/song_audio_attachments.mjs
 ```
 
-## Ativação do backend pendente
+## Produção e publicação
 
-O Vite de `localhost:8080` usa o Supabase online definido no ambiente; não é um banco local. Uma consulta de leitura em 26/09/2026 confirmou que `song_audio_attachments` e `import-song-audio` ainda não existem nesse backend. O frontend mostra a indisponibilidade e desabilita novos uploads enquanto a estrutura está ausente, preservando o restante do ensaio.
+Destino autorizado: **https://maislouvor.com**, usando **https://api.maislouvor.com**. A publicação web usa a base `31a752d`, preserva o APK 1.0.2 e os assets antigos e troca os arquivos de entrada atomicamente, com o service worker por último. O script recusa substituir uma versão que mudou desde a preparação e guarda backup completo do site e fonte sem credenciais. Evidências e hashes da publicação ficam no registro independente do BrainHub e em `release.json` no backup privado da VPS.
 
-Para testar upload e YouTube de ponta a ponta nesse ambiente:
+Backend aplicado em 26/09/2026:
 
-1. Aplicar somente `20260926120000_song_audio_attachments.sql` em uma transação, na base confirmada para a ativação; a autorização se adapta ao modelo existente. Não executar migrations antigas indiscriminadamente.
-2. Publicar `import-song-audio` com verificação JWT.
-3. Atualizar o worker que importa YouTube com `worker-gpu/worker.py`, preservando sua configuração privada e `YT_ENABLED=1`; ele precisa apontar para o mesmo backend do frontend.
-4. Validar com uma música de teste: upload/importação reais, acesso de outro membro e retomada do ensaio.
+1. `20260926120000_song_audio_attachments.sql` aplicada em transação, após backup do schema e verificação dos dados existentes. O cache PostgREST foi atualizado.
+2. `import-song-audio` publicada no runtime Edge, com autenticação JWT, sem substituir as funções antigas.
+3. Worker do LaunchAgent `com.maislouvor.worker` atualizado somente em `worker.py`, preservando configuração, cookies e ambiente Python. Reinício após confirmar filas vazias; processamento da nova fila verificado.
+4. Contas, equipe, música, loops, repertório e arquivos temporários usados no teste são removidos após a verificação.
 
-Não foram feitos push, publicação, alterações no banco online ou no worker em execução. A migration, função e interface agora atendem tanto ao modelo legado quanto ao modelo de permissões granulares, sem ignorar bloqueios específicos de edição.
+Backups desta ativação:
 
-### Divergência de ambiente confirmada em 26/09/2026
+- Banco/função: `/var/backups/maislouvor/20260926-additional-audio-backend` (schema anterior e SQL aplicado; a função é nova).
+- Worker: `~/.local/share/maislouvor/worker-backups/20260926-additional-audio/worker.py`.
+- Site: `/var/backups/maislouvor/20260926-additional-audio`, criado pelo script no momento da troca.
 
-A autorização para ativação foi recebida. Entretanto, o localhost usa o projeto Supabase Cloud `hhqzapwtuyzchismcuie`, que não está entre os projetos acessíveis à conta autenticada no CLI e no painel. O worker ativo, gerenciado pelo LaunchAgent `com.maislouvor.worker`, usa `https://api.maislouvor.com`, na VPS acessível por `louvor-vps`. Essa produção possui `member_can` e não contém o repertório `7e6bcb37-9a56-420f-9160-473196ffada8` do link solicitado.
-
-Foi pedida uma definição de destino: manter a base antiga com acesso administrativo, ou usar a produção e alinhar a configuração local. Até essa definição, os dois backends e o worker permanecem sem alterações. As consultas à VPS foram de leitura; as novas verificações SQL rodaram apenas no PGlite isolado.
+O localhost `:8080` continua apontando ao projeto legado Supabase Cloud `hhqzapwtuyzchismcuie`, que não está acessível à conta administrativa atual. O repertório `7e6bcb37-9a56-420f-9160-473196ffada8` desse ambiente não existe na produção; o teste no site deve usar os repertórios da própria produção. Não houve cópia de músicas entre as bases.

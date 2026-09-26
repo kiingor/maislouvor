@@ -96,6 +96,12 @@ describe("additional audio interface", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Não foi possível carregar");
     expect(screen.queryByText("Nenhum áudio adicional nesta música.")).not.toBeInTheDocument();
   });
+  it("prevents uploads before the additional audio backend is available", () => {
+    mocks.query.mockReturnValue({ isError: true, error: { code: "PGRST205" }, refetch: vi.fn() });
+    render(<SongAudioAttachments songId="song" teamId="team" readOnly={false} />, { wrapper });
+    expect(screen.getByRole("alert")).toHaveTextContent("ainda não estão disponíveis neste ambiente");
+    expect(screen.getByRole("button", { name: "Adicionar" })).toBeDisabled();
+  });
   it("unmounts the player on close and when switching songs", async () => {
     const props = { open: true, onOpenChange: vi.fn(), songId: "song", songTitle: "Música" };
     const { rerender } = render(<SongAudioAttachmentsDialog {...props} />, { wrapper });

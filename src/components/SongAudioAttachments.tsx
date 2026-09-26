@@ -45,7 +45,8 @@ interface Props {
 }
 
 export function SongAudioAttachments({ songId, teamId, readOnly = true, onPlaybackStart }: Props) {
-  const { data: attachments = [], isPending, isError, refetch } = useSongAudioAttachments(songId);
+  const { data: attachments = [], isPending, isError, error, refetch } = useSongAudioAttachments(songId);
+  const notEnabled = ["PGRST205", "42P01"].includes((error as { code?: string } | null)?.code ?? "");
   const qc = useQueryClient();
   const { toast } = useToast();
   const formId = useId();
@@ -95,11 +96,11 @@ export function SongAudioAttachments({ songId, teamId, readOnly = true, onPlayba
     <section aria-label="Áudios adicionais" className="min-w-0 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 text-sm font-semibold"><Headphones className="h-4 w-4 shrink-0" />Áudios adicionais{attachments.length > 0 && <span className="text-xs font-normal text-muted-foreground">({attachments.length})</span>}</h3>
-        {canEdit && <Button size="sm" variant="outline" className="rounded-xl gap-1.5" onClick={() => openForm()} disabled={busy}><Plus className="h-3.5 w-3.5" />Adicionar</Button>}
+        {canEdit && <Button size="sm" variant="outline" className="rounded-xl gap-1.5" onClick={() => openForm()} disabled={busy || isPending || isError}><Plus className="h-3.5 w-3.5" />Adicionar</Button>}
       </div>
       <p className="text-xs text-muted-foreground">Kit de voz, versões e referências para estudar a música.</p>
       {isPending ? <p role="status" className="text-xs text-muted-foreground">Carregando adicionais...</p>
-        : isError ? <div role="alert" className="text-xs text-destructive">Não foi possível carregar os adicionais. <button className="underline" onClick={() => refetch()}>Tentar novamente</button></div>
+        : isError ? <div role="alert" className="text-xs text-destructive">{notEnabled ? "Áudios adicionais ainda não estão disponíveis neste ambiente." : "Não foi possível carregar os adicionais."} <button className="underline" onClick={() => refetch()}>Tentar novamente</button></div>
         : !attachments.length ? <p className="rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground">{canEdit ? "Adicione um arquivo de áudio ou importe do YouTube." : "Nenhum áudio adicional nesta música."}</p> : (
           <ul className="space-y-2">
             {attachments.map((item) => {
