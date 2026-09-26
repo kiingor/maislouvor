@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { SongContentModal } from "@/components/SongContentModal";
-import { Music, FileText, Youtube, Volume2, ChevronRight, MessageSquare } from "lucide-react";
+import { SongAudioAttachmentsDialog } from "@/components/SongAudioAttachmentsDialog";
+import { Music, FileText, Youtube, Volume2, ChevronRight, MessageSquare, Headphones } from "lucide-react";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
 interface SongSummaryModalProps {
@@ -20,11 +21,13 @@ interface SongSummaryModalProps {
 export function SongSummaryModal({ open, onOpenChange, songId, cultoNotes, cultoNotesAuthor }: SongSummaryModalProps) {
   const [contentOpen, setContentOpen] = useState(false);
   const [contentTab, setContentTab] = useState<"cifra" | "lyrics">("cifra");
-  const [mediaOpen, setMediaOpen] = useState<"audio" | "video" | null>(null);
+  const [mediaOpen, setMediaOpen] = useState<"audio" | "video" | "additional" | null>(null);
 
   useEffect(() => {
     if (!open) setMediaOpen(null);
   }, [open]);
+
+  useEffect(() => { setMediaOpen(null); }, [songId]);
 
   const { data: song } = useQuery({
     queryKey: ["song-summary", songId],
@@ -94,6 +97,13 @@ export function SongSummaryModal({ open, onOpenChange, songId, cultoNotes, culto
       icon: Youtube,
       available: !!youtubeId,
       onClick: () => setMediaOpen("video"),
+    },
+    {
+      key: "additional",
+      label: "Áudios adicionais",
+      icon: Headphones,
+      available: true,
+      onClick: () => setMediaOpen("additional"),
     },
   ];
 
@@ -220,6 +230,14 @@ export function SongSummaryModal({ open, onOpenChange, songId, cultoNotes, culto
         lyricsText={song.lyrics_text || ""}
         title={song.title}
         defaultTab={contentTab}
+      />
+
+      {/* Additional recordings */}
+      <SongAudioAttachmentsDialog
+        open={open && mediaOpen === "additional"}
+        onOpenChange={(o) => !o && setMediaOpen(null)}
+        songId={song.id}
+        songTitle={song.title}
       />
 
       {/* Audio popup */}

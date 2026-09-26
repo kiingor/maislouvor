@@ -7,6 +7,7 @@ import { GlassCard } from "@/components/GlassCard";
 import { GlassInput } from "@/components/GlassInput";
 import { CoverUpload } from "@/components/CoverUpload";
 import { AudioUpload } from "@/components/AudioUpload";
+import { SongAudioAttachments } from "@/components/SongAudioAttachments";
 import { AudioTrimmer } from "@/components/AudioTrimmer";
 import { StemPreviewPlayer } from "@/components/StemPreviewPlayer";
 import { SongRepertoriosCard } from "@/components/SongRepertoriosCard";
@@ -511,7 +512,7 @@ export default function SongEditor() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1.5fr] lg:items-start">
         {/* === Coluna esquerda: pipeline de cadastro (zonas 1-4) === */}
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           {/* Zona 1 — Identidade */}
           <GlassCard className="p-6 space-y-4">
             <ZoneHeader n={1} icon={Music2} title="Identidade" hint="Capa, nome e como a equipe encontra a música" />
@@ -666,6 +667,15 @@ export default function SongEditor() {
                 )}
               </div>
             </div>
+          </GlassCard>
+
+          <GlassCard className="min-w-0 p-6">
+            <SongAudioAttachments
+              key={song.id}
+              songId={song.id}
+              teamId={song.team_id}
+              readOnly={readOnly || song.team_id !== currentTeam?.id}
+            />
           </GlassCard>
 
           {/* Zona 3 — Processamento (aparece quando há áudio) */}

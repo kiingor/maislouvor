@@ -5,6 +5,7 @@ import { splitSegments, extractChords } from "@/data/chordDictionary";
 import { ChordDiagram } from "@/components/ChordDiagram";
 import { KaraokeSegment } from "@/components/KaraokeSegment";
 import { TrackMixer } from "@/components/TrackMixer";
+import { SongAudioAttachmentsDialog } from "@/components/SongAudioAttachmentsDialog";
 import * as Tone from "tone";
 import { detectKeyFromUrl, parseKeyName, DetectedKey } from "@/lib/detectKey";
 import { LoopPanel } from "@/components/LoopPanel";
@@ -23,6 +24,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { isVocalRole } from "@/data/instruments";
 import {
   ArrowLeft,
+  Headphones,
   ChevronDown,
   ChevronUp,
   ChevronsDown,
@@ -405,6 +407,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
   const [countdown, setCountdown] = useState<number | null>(null);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [showMediaPlayer, setShowMediaPlayer] = useState(false);
+  const [showAdditionalAudio, setShowAdditionalAudio] = useState(false);
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
@@ -1714,6 +1717,22 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
 
 
 
+  const pauseForAdditionalAudio = useCallback(() => {
+    playIntentRef.current = false;
+    audioRef.current?.pause();
+    syncTrackAudios("pause");
+    setAudioPlaying(false);
+    setBuffering(false);
+    setIsPlaying(false);
+    setIsAutoScrolling(false);
+    setCountdown(null);
+    setShowMediaPlayer(false);
+    previewRangeRef.current = null;
+    setIsPreviewingLoop(false);
+  }, [syncTrackAudios]);
+
+  useEffect(() => { setShowAdditionalAudio(false); }, [currentSongId]);
+
   const togglePlay = useCallback(() => {
     setCountdown(null);
     // While a roteiro "momento" (block) is showing there's no song to play.
@@ -1885,6 +1904,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (showAdditionalAudio) return;
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
       const target = e.target;
       if (target instanceof HTMLElement && target.closest('input, textarea, select, button, [role="slider"], [contenteditable="true"]')) return;
@@ -1900,7 +1920,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [togglePlay, goNextSegment, goPrevSegment, goNextSong, navigate, backPath, isRecording, recordTimestamp, cancelRecording, increaseFontSize, decreaseFontSize, isTransicao]);
+  }, [showAdditionalAudio, togglePlay, goNextSegment, goPrevSegment, goNextSong, navigate, backPath, isRecording, recordTimestamp, cancelRecording, increaseFontSize, decreaseFontSize, isTransicao]);
 
   useEffect(() => {
     setControlsVisible(true);
@@ -1952,7 +1972,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
         {/* Top bar */}
         <div ref={topBarRef} className="absolute top-0 left-0 right-0 z-30 flex flex-col pt-[max(env(safe-area-inset-top),1.25rem)]">
           {/* Linha 1 — utilitários (ocupa a largura toda: controles à esquerda, toggle à direita) */}
-          <div className="flex items-center gap-1.5 px-3 pb-2">
+          <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2">
             <button onClick={() => navigate(backPath)} className={`p-2 rounded-xl ${accentBg} backdrop-blur-sm ${hoverBg} transition-colors shrink-0`}>
               <ArrowLeft className="h-4 w-4" />
             </button>
@@ -2032,6 +2052,16 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
               <span className="text-xs font-medium truncate flex-1 text-left">{currentSong?.title || "Música"}</span>
               {showMobileSongList ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
             </button>
+            {currentSongId && !activeBlock && (
+              <button
+                aria-label="Áudios adicionais"
+                title="Áudios adicionais"
+                onClick={() => { pauseForAdditionalAudio(); setShowAdditionalAudio(true); }}
+                className={`p-2 rounded-xl shrink-0 ${accentBg} ${hoverBg} transition-colors`}
+              >
+                <Headphones className="h-4 w-4" />
+              </button>
+            )}
             {/* Tom / capotraste — interativo (modo cifra). Transpõe a cifra offline,
                 pro usuário estudar; funciona com ou sem stems. */}
             {!isVoz && countdown === null && !activeBlock && segments.length > 0 && (
@@ -2414,6 +2444,18 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
         </LoopDrawer>
       )}
 
+      {/* Additional recordings keep their own playback outside the rehearsal timeline. */}
+      {currentSongId && (
+        <SongAudioAttachmentsDialog
+          open={showAdditionalAudio}
+          onOpenChange={setShowAdditionalAudio}
+          songId={currentSongId}
+          songTitle={currentSong?.title || "Música"}
+          isDark={isDark}
+          onPlaybackStart={pauseForAdditionalAudio}
+        />
+      )}
+
       {/* Mixer — mobile drawer (bandeja, igual ao loop e ao metrônomo) */}
       {isMobile && hasTracks && (
         <Drawer open={showMixer} onOpenChange={setShowMixer}>
@@ -2532,6 +2574,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
             className={`rounded-xl shrink-0 h-12 w-12 ${hoverBg} ${notPublished ? "opacity-40" : ""}`}
             onClick={togglePlay}
             aria-disabled={notPublished}
+            aria-label={audioPlaying || buffering || isPlaying ? "Pausar música" : "Reproduzir música"}
             title={notPublished ? "Música não publicada" : undefined}
           >
             {/* Com áudio, o ícone segue o estado REAL do player (nunca mais "pause"

@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Worker configuration and local runtime (never commit credentials or cookies).
+worker-gpu/.env
+worker-gpu/.venv/
+worker-gpu/*cookies*.txt
+__pycache__/

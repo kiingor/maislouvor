@@ -1,0 +1,16 @@
+# IMPORTANT: install torch + torchaudio (MATCHING versions, CUDA) FIRST — see README.md —
+# then: pip install -r requirements.txt
+# (Installing them first stops demucs from pulling a mismatched torchaudio.)
+#
+# macOS / Apple Silicon (mac-mini): NAO use torch 2.5.1 — no MPS o htdemucs_6s
+# aborta com "Output channels > 65536 not supported at the MPS device" (e o
+# PYTORCH_ENABLE_MPS_FALLBACK nao cobre esse caso: a op existe, so rejeita a
+# forma). Use torch>=2.13 / torchaudio>=2.11, que separam em ~25s. O Windows/CUDA
+# segue no par 2.5.1 validado.
+# demucs 4.1.0 removeu load_track de demucs.separate (worker.py usa) — fixado na
+# versao validada em producao. Se for atualizar, ajuste separate_file() antes.
+demucs==4.0.1
+requests>=2.31
+lameenc       # mp3 stem output
+soundfile     # audio I/O backend on Windows
+yt-dlp[default]==2026.8.19  # YouTube + EJS scripts; needs ffmpeg and Node on PATH

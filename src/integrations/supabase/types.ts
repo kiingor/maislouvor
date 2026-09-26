@@ -472,6 +472,40 @@ export type Database = {
           },
         ]
       }
+      song_audio_attachments: {
+        Row: {
+          id: string
+          song_id: string
+          title: string
+          audio_path: string | null
+          youtube_url: string | null
+          status: string
+          error: string | null
+          claimed_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          song_id: string
+          title: string
+          audio_path?: string | null
+          youtube_url?: string | null
+          status?: string
+          error?: string | null
+          claimed_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          title?: string
+        }
+        Relationships: [{
+          foreignKeyName: "song_audio_attachments_song_id_fkey"
+          columns: ["song_id"]
+          isOneToOne: false
+          referencedRelation: "songs"
+          referencedColumns: ["id"]
+        }]
+      }
       song_tracks: {
         Row: {
           audio_path: string
