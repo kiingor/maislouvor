@@ -1527,7 +1527,9 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
   useEffect(() => {
     if (isTransicao) return; // transicao uses auto-scroll, not timer
     if (isRecording) return;
-    if (hasSync) return;
+    // The text-only timer must not advance the playlist while rehearsing audio,
+    // even when the song has no valid lyric timestamps or only has stems.
+    if (hasAudioFile || hasTracks) return;
     if (!isPlaying || countdown !== null) return;
     playTimer.current = setTimeout(() => {
       if (isLastSegment) {
@@ -1542,7 +1544,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
       }
     }, prefs.speed * 1000);
     return () => clearTimeout(playTimer.current);
-  }, [isTransicao, isRecording, isPlaying, segIdx, prefs.speed, isLastSegment, isLastSong, countdown, prefs.countdownSeconds, hasSync, autoRoteiro]);
+  }, [isTransicao, isRecording, isPlaying, segIdx, prefs.speed, isLastSegment, isLastSong, countdown, prefs.countdownSeconds, hasAudioFile, hasTracks, autoRoteiro]);
 
   useEffect(() => {
     if (countdown === null) return;

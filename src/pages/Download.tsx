@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/BrandMark";
 import { Download as DownloadIcon, Smartphone, ShieldCheck, ArrowRight } from "lucide-react";
 
-const APP_VERSION = "1.0";
-const APK_URL = "/LouvorMais.apk";
+const APP_VERSION = "1.0.2";
+const APK_URL = "/LouvorMais-1.0.2.apk";
 
 export default function Download() {
   const [size, setSize] = useState<string | null>(null);
@@ -15,6 +15,7 @@ export default function Download() {
   useEffect(() => {
     fetch(APK_URL, { method: "HEAD", cache: "no-store" })
       .then((r) => {
+        if (!r.ok) return;
         const len = r.headers.get("content-length");
         if (len) setSize((Number(len) / 1024 / 1024).toFixed(1) + " MB");
         const lm = r.headers.get("last-modified");
@@ -64,8 +65,18 @@ export default function Download() {
             <p className="text-[11px] text-muted-foreground mt-2">Atualizado em {updated}</p>
           )}
 
+          <div role="note" className="mt-5 rounded-xl border border-primary/30 bg-primary/5 p-3.5 text-left">
+            <p className="text-xs font-semibold mb-1.5">Já tem o app instalado?</p>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Se você instalou a versão 1.0.1 deste site, <strong>atualize sem desinstalar</strong>.
+              {" "}A versão 1.0 usa outra assinatura: esta atualização <strong>não instala por cima da versão 1.0</strong>.
+              {" "}Antes de remover o app antigo, confira seus dados sincronizados e salve o que existe
+              apenas no celular. A desinstalação pode apagar esses dados locais.
+            </p>
+          </div>
+
           {/* Download button */}
-          <a href={APK_URL} download="LouvorMais.apk" className="block mt-6">
+          <a href={APK_URL} download="LouvorMais-1.0.2.apk" className="block mt-6">
             <Button className="w-full h-14 rounded-2xl text-base font-semibold gap-2.5 hover-lift">
               <DownloadIcon className="h-5 w-5" /> Baixar APK
             </Button>
@@ -78,8 +89,8 @@ export default function Download() {
             </p>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
               Toque em <strong>Baixar APK</strong> → abra o arquivo → se o Android avisar,
-              permita <strong>instalar de fontes desconhecidas</strong> → Instalar. Atualizações
-              instalam por cima, sem perder nada.
+              permita a instalação para o navegador usado → Instalar. Se você usa a versão 1.0,
+              leia o aviso acima antes de remover o app antigo. Depois, entre na mesma conta.
             </p>
           </div>
 
