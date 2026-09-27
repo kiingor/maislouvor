@@ -12,6 +12,7 @@ import { MyAvailabilityCalendar } from "@/components/MyAvailabilityCalendar";
 import { UserNotificationPrefs } from "@/components/UserNotificationPrefs";
 import { UserStatsCard } from "@/components/UserStatsCard";
 import { TeamAvailabilitySettings } from "@/components/TeamAvailabilitySettings";
+import { MyAssistantSettings, TeamAssistantSettings } from "@/components/AssistantSettings";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AppearanceSegmented } from "@/components/AppearanceControl";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -280,6 +281,7 @@ export default function TeamSettings() {
       toast({ title: "Telefone atualizado!" });
       setEditingPhone(false);
       qc.invalidateQueries({ queryKey: ["team-members"] });
+      qc.invalidateQueries({ queryKey: ["assistant-my-status"] });
     }
   };
 
@@ -437,6 +439,9 @@ export default function TeamSettings() {
                 </button>
               </div>
             </section>
+
+            {/* Assistente no WhatsApp: reconhece a pessoa pelo telefone acima */}
+            <MyAssistantSettings />
 
             {/* Minhas funções */}
             {myMember && (
@@ -696,11 +701,14 @@ export default function TeamSettings() {
       {/* ===== ABA: EQUIPE (SOMENTE LÍDER) ===== */}
       {isAdmin && currentTeam && (
         <TabsContent value="team" className="mt-2">
-          <TeamAvailabilitySettings
-            teamId={currentTeam.id}
-            value={currentTeam.availability_mode}
-            onSaved={refetch}
-          />
+          <div className="space-y-10 lg:max-w-3xl">
+            <TeamAvailabilitySettings
+              teamId={currentTeam.id}
+              value={currentTeam.availability_mode}
+              onSaved={refetch}
+            />
+            <TeamAssistantSettings key={currentTeam.id} teamId={currentTeam.id} />
+          </div>
         </TabsContent>
       )}
 

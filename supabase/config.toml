@@ -27,6 +27,11 @@ verify_jwt = false
 [functions.stems-callback]
 verify_jwt = false
 
+# Webhook da Evolution API (assistente no WhatsApp). A Evolution não manda JWT;
+# a função exige o segredo WHATSAPP_WEBHOOK_SECRET no caminho da URL.
+[functions.whatsapp-assistant]
+verify_jwt = false
+
 # As funções abaixo passaram a exigir JWT em 16/08/2026:
 #
 #   suggest-culto-songs, import-moises, import-cifra, create-invite,

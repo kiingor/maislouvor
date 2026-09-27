@@ -1,0 +1,12 @@
+[Unit]
+Description=+Louvor: rede privada entre a Evolution e as edge functions (assistente no WhatsApp)
+After=docker.service
+Requires=docker.service
+
+[Service]
+ExecStart=/opt/stacks/maislouvor-whatsapp/network-keeper.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
