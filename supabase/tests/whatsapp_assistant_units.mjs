@@ -81,6 +81,11 @@ check([msg.kind, msg.text, addressedVia(msg, bots, 'Asafe')], ['audio', '', 'rep
 check([msg.isGroup, msg.senderIds, msg.senderPhones], [false, ['10002@lid', '552199990000@s.whatsapp.net'], ['552199990000']]);
 check(parseMessages({ key: { id: 'sem-chat' } }), [], 'payload incompleto');
 
+// Menção com isolamento bidirecional (invisível) em volta, como alguns clientes mandam.
+[msg] = parseMessages({ key: { remoteJid: GROUP, id: 'M6', participant: '10002@lid' },
+  message: { extendedTextMessage: { text: '@\u2068273804936880260\u2069 ativar kyywwg\u200b', contextInfo: { mentionedJid: ['273804936880260@lid'] } } } });
+check(parseCommand(cleanText(msg, new Set(['273804936880260@lid']), 'Asafe')), { type: 'activate', code: 'KYYWWG' }, 'caracteres invisíveis não quebram o comando');
+
 // ---- Outros eventos ------------------------------------------------------------
 check(readEvent({ event: 'GROUP_PARTICIPANTS_UPDATE', data: {} }).event, 'group.participants.update');
 check(parseParticipantsUpdate({ id: GROUP, action: 'remove', participants: ['88001:2@lid', { id: '10002@lid', phoneNumber: '552199990000@s.whatsapp.net' }] }),

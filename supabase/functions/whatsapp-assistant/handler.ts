@@ -387,6 +387,8 @@ export function createHandler(deps: HandlerDeps) {
 
     const group = await rpc<GroupContext | null>("assistant_group_context", { p_group_jid: msg.chatJid });
     if (!group || !group.active) {
+      // Diagnóstico de ativação: mensagem dirigida ao assistente num grupo ainda sem equipe.
+      log("chamado em grupo não ativado", { grupo: msg.chatJid, texto: JSON.stringify(text.slice(0, 80)) });
       return await notify(msg, `inactive:${msg.chatJid}`, 30, notActivatedMessage(name), "not_activated");
     }
     if (!group.team_enabled) {

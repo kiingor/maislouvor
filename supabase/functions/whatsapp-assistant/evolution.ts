@@ -53,6 +53,12 @@ export interface GroupInfo {
 }
 
 const isObject = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * Tira caracteres invisíveis de formatação (isolamento bidirecional em volta de
+ * menções, espaço de largura zero...), que quebrariam "@<id> ativar CÓDIGO".
+ */
+const stripInvisible = (s: string) => s.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, "");
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v : null);
 const uniq = <T>(values: (T | null | undefined)[]): T[] => [...new Set(values.filter((v): v is T => v != null))];
 
@@ -131,9 +137,11 @@ export function parseMessage(item: unknown): InboundMessage | null {
   const message = unwrapMessage(item.message);
   const content = CONTENT_TYPES.map((k) => message[k]).filter(isObject);
 
-  const text = str(message.conversation)
-    ?? content.map((c) => str(c.text) ?? str(c.caption)).find(Boolean)
-    ?? "";
+  const text = stripInvisible(
+    str(message.conversation)
+      ?? content.map((c) => str(c.text) ?? str(c.caption)).find(Boolean)
+      ?? "",
+  );
 
   const contextInfo = content.map((c) => c.contextInfo).find(isObject)
     ?? (isObject(item.contextInfo) ? item.contextInfo : null);
@@ -162,7 +170,7 @@ export function parseMessage(item: unknown): InboundMessage | null {
     text: text.trim(),
     mentioned,
     quotedParticipant,
-    quotedText: quotedText?.trim() || null,
+    quotedText: quotedText ? stripInvisible(quotedText).trim() || null : null,
     kind: isObject(message.audioMessage) ? "audio" : text.trim() ? "text" : "other",
     timestamp: toSeconds(item.messageTimestamp),
     key: {
