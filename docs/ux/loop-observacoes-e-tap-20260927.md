@@ -1,6 +1,6 @@
 # Observações nos loops + correção do TAP — 27/09/2026
 
-Implementado e validado no branch `redesign/ios27`. **Não publicado**: sem deploy do site, sem migração remota, sem APK.
+Implementado no branch `redesign/ios27`. **Publicado no site em 27/09/2026** (migração e depois frontend), no commit `d67d6bd`: ver `release-20260927-loop-notes-tap.md`. O APK 1.0.3 segue com o erro do TAP.
 
 ## 1. Correção do TAP (metrônomo)
 
@@ -36,8 +36,6 @@ Sintoma, literal: «Algo deu errado nesta tela. A tela não pôde ser exibida. R
   - TAP + diálogos relacionados (Mixer, Loops, Áudios adicionais, Texto e tema): 96/96 em 402×874, 874×402, 1024×768 e 1366×900, nos dois temas, sem erros no console.
 - Typecheck: 9 erros pré-existentes, nenhum novo. ESLint sem problemas novos. Build ok.
 
-## Para publicar (exige autorização)
+## Publicação
 
-1. Aplicar a migração no banco de produção antes do frontend. Sem ela, o site continua funcionando, mas salvar observação dá aviso.
-2. Publicar o site (processo de `release-20260926-redesign-ios27.md`). Isso leva também a correção do TAP.
-3. O APK 1.0.3 tem o bug do TAP no bundle local: para corrigir no Android, gerar um APK 1.0.4.
+Feita em 27/09/2026: migração às 14:22Z, depois o site. O registro completo está em `release-20260927-loop-notes-tap.md`. Pendente: um APK 1.0.4 para levar a correção do TAP ao Android, que depende de pedido próprio.
