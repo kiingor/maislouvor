@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import { BrandMark } from "@/components/BrandMark";
 import { Download as DownloadIcon, Smartphone, ShieldCheck, ChevronRight, Info } from "lucide-react";
 
-const APP_VERSION = "1.0.2";
-const APK_URL = "/LouvorMais-1.0.2.apk";
+const APP_VERSION = "1.0.5";
+const APK_URL = `/LouvorMais-${APP_VERSION}.apk`;
 
 /** Página pública do APK, no estilo de página de produto da App Store sobre o fundo agrupado. */
 export default function Download() {
@@ -61,7 +61,7 @@ export default function Download() {
             Já tem o app instalado?
           </p>
           <p className="mt-1.5 text-footnote text-muted-foreground">
-            Se você instalou a versão 1.0.1 deste site, <strong className="font-semibold text-foreground">atualize sem desinstalar</strong>.
+            Se você instalou a versão 1.0.1 ou mais nova deste site, <strong className="font-semibold text-foreground">atualize sem desinstalar</strong>.
             {" "}A versão 1.0 usa outra assinatura: esta atualização <strong className="font-semibold text-foreground">não instala por cima da versão 1.0</strong>.
             {" "}Antes de remover o app antigo, confira seus dados sincronizados e salve o que existe
             apenas no celular. A desinstalação pode apagar esses dados locais.
@@ -71,7 +71,7 @@ export default function Download() {
         {/* Download: o próprio link é o botão proeminente (sem <button> dentro de <a>). */}
         <a
           href={APK_URL}
-          download="LouvorMais-1.0.2.apk"
+          download={`LouvorMais-${APP_VERSION}.apk`}
           className="mt-6 flex h-[50px] w-full items-center justify-center gap-2 rounded-full bg-prominent px-5 text-headline text-prominent-foreground transition-transform active:scale-[0.98]"
         >
           <DownloadIcon className="h-5 w-5" aria-hidden="true" /> Baixar APK
