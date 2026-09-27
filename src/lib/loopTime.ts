@@ -22,6 +22,16 @@ export interface LoopDraft {
   start_time: number;
   end_time: number;
   repeat_count: number;
+  /** Observações do ensaio; `null` quando não há (ou foram apagadas). */
+  notes: string | null;
+}
+
+export const LOOP_NOTES_MAX = 1000;
+
+// Só as pontas: quebras de linha internas são do texto. Vazio vira null (remove a observação).
+export function normalizeLoopNotes(value: string | null | undefined): string | null {
+  const text = (value ?? "").trim();
+  return text ? text : null;
 }
 
 export interface LoopRange {

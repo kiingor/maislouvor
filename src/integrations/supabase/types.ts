@@ -425,6 +425,7 @@ export type Database = {
           id: string
           is_public: boolean
           label: string
+          notes: string | null
           profile_id: string
           repeat_count: number
           song_id: string
@@ -437,6 +438,7 @@ export type Database = {
           id?: string
           is_public?: boolean
           label?: string
+          notes?: string | null
           profile_id: string
           repeat_count?: number
           song_id: string
@@ -449,6 +451,7 @@ export type Database = {
           id?: string
           is_public?: boolean
           label?: string
+          notes?: string | null
           profile_id?: string
           repeat_count?: number
           song_id?: string

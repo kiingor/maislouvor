@@ -280,3 +280,29 @@ describe("tema do palco e foco", () => {
     await waitFor(() => expect(main.paused).toBe(false));
   });
 });
+
+// Regressão: abrir o TAP em tela larga mostrava
+// «Error: `DialogTitle` must be used within `Dialog`.» (título de gaveta fora de Drawer).
+describe("metrônomo (TAP)", () => {
+  it("abre e fecha o painel lateral em telas largas, com nome acessível e sem erro", async () => {
+    // JSDOM usa innerWidth 1024: caminho do painel lateral (fora de Drawer/Dialog).
+    await setup();
+    fireEvent.click(screen.getByTitle("Metrônomo / Tap"));
+    const panel = await screen.findByRole("region", { name: "Metrônomo" });
+    expect(within(panel).getByRole("heading", { name: "Metrônomo" })).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole("button", { name: "Fechar metrônomo" }));
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Metrônomo" })).not.toBeInTheDocument());
+  });
+
+  it("abre a folha do celular com título acessível de diálogo", async () => {
+    const width = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    try {
+      await setup();
+      fireEvent.click(screen.getByTitle("Metrônomo / Tap"));
+      expect(await screen.findByRole("dialog", { name: "Metrônomo" })).toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+    }
+  });
+});

@@ -1,11 +1,12 @@
 import { useId, useRef, useState } from "react";
 import * as RangeSlider from "@radix-ui/react-slider";
 import { Check, GripVertical, Infinity as InfinityIcon, Loader2, Minus, Pause, Play, Plus, RotateCcw } from "lucide-react";
-import { formatLoopTime, initialLoopRange, parseLoopTime, type LoopDraft, type LoopRange } from "@/lib/loopTime";
+import { formatLoopTime, initialLoopRange, LOOP_NOTES_MAX, normalizeLoopNotes, parseLoopTime, type LoopDraft, type LoopRange } from "@/lib/loopTime";
 import "./loop-editor.css";
 
 export interface LoopEditorProps {
-  initialValue?: LoopDraft;
+  /** `notes` pode faltar em loops lidos antes da coluna existir no servidor. */
+  initialValue?: Omit<LoopDraft, "notes"> & { notes?: string | null };
   currentTime: number;
   duration: number;
   isPlaying: boolean;
@@ -23,6 +24,7 @@ export function LoopEditor({ initialValue, currentTime, duration, isPlaying, isP
   isSaving = false, onSeek, onTogglePlayback, onPreview, onSave, onCancel }: LoopEditorProps) {
   const id = useId();
   const rangeControlRef = useRef<HTMLSpanElement>(null);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
   const dragRef = useRef<{ x: number; start: number; end: number; width: number } | null>(null);
   const [initialRange] = useState(() => initialValue ?? initialLoopRange(currentTime, duration));
   const [startText, setStartText] = useState(formatLoopTime(initialRange.start_time));
@@ -30,6 +32,7 @@ export function LoopEditor({ initialValue, currentTime, duration, isPlaying, isP
   const [label, setLabel] = useState(initialValue?.label ?? "");
   const [repeat, setRepeat] = useState(initialValue?.repeat_count ?? 0);
   const [customRepeat, setCustomRepeat] = useState(false);
+  const [notes, setNotes] = useState(initialValue?.notes ?? "");
   const start = parseLoopTime(startText);
   const end = parseLoopTime(endText);
   const hasAudio = Number.isFinite(duration) && duration >= 1;
@@ -61,7 +64,7 @@ export function LoopEditor({ initialValue, currentTime, duration, isPlaying, isP
       onSubmit={(event) => {
         event.preventDefault();
         if (!valid || isSaving) return;
-        onSave({ label: label.trim() || "Meu trecho", start_time: start, end_time: end, repeat_count: repeat });
+        onSave({ label: label.trim() || "Meu trecho", start_time: start, end_time: end, repeat_count: repeat, notes: normalizeLoopNotes(notes) });
       }}
     >
       <div className="loop-editor__body">
@@ -201,6 +204,18 @@ export function LoopEditor({ initialValue, currentTime, duration, isPlaying, isP
             <input type="number" aria-label="Quantidade de repetições" min={1} max={999} step={1} value={repeat}
               onChange={(event) => setRepeat(Math.min(999, Math.max(1, Math.floor(Number(event.target.value) || 1))))} />
           </label>}
+          <div className="loop-editor__notes-heading">
+            <label htmlFor={`${id}-notes`}>Observações <span>opcional</span></label>
+            {notes && <button type="button" className="loop-editor__notes-clear" aria-label="Limpar observações"
+              onClick={() => { setNotes(""); notesRef.current?.focus(); }}>Limpar</button>}
+          </div>
+          <textarea id={`${id}-notes`} ref={notesRef} value={notes} rows={3} maxLength={LOOP_NOTES_MAX}
+            onChange={(event) => setNotes(event.target.value)} aria-describedby={`${id}-notes-hint`}
+            placeholder="Ex.: entrar junto com a bateria, respirar antes do refrão…" />
+          <p id={`${id}-notes-hint`} className="loop-editor__notes-hint">
+            <span>Aparece no loop em uma linha. Em loops públicos, a equipe também vê.</span>
+            {notes.length >= LOOP_NOTES_MAX - 200 && <span className="loop-editor__notes-count">{notes.length}/{LOOP_NOTES_MAX}</span>}
+          </p>
         </fieldset>
       </div>
 

@@ -5,7 +5,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Switch } from "@/components/ui/switch";
 import { LoopEditor } from "./LoopEditor";
-import { formatLoopTime as formatTime, type LoopDraft, type LoopRange } from "@/lib/loopTime";
+import { LoopNote } from "./LoopNote";
+import { formatLoopTime as formatTime, normalizeLoopNotes, type LoopDraft, type LoopRange } from "@/lib/loopTime";
 import type { LoopPoint } from "@/hooks/useLoopSequence";
 import {
   Plus,
@@ -27,10 +28,18 @@ function errorMessage(error: unknown): string {
     "message" in error &&
     typeof error.message === "string"
   ) {
+    // Servidor ainda sem a coluna (migração 20260927120000 não aplicada): o PostgREST recusa o campo.
+    if (/'notes' column/.test(error.message)) {
+      return "As observações ainda não estão disponíveis no servidor. Limpe a observação para salvar o loop.";
+    }
     return error.message;
   }
   return "Não foi possível salvar o loop";
 }
+
+// `notes` só vai no pedido quando há algo a gravar ou apagar: sem observação, criar e editar
+// loops funciona igual mesmo num servidor que ainda não tem a coluna.
+type LoopWrite = Omit<LoopDraft, "notes"> & { notes?: string | null };
 
 interface LoopPanelProps {
   songId: string;
@@ -144,7 +153,7 @@ export function LoopPanel({
 
   // Create loop
   const createLoop = useMutation({
-    mutationFn: async (loop: { label: string; start_time: number; end_time: number; repeat_count: number }) => {
+    mutationFn: async (loop: LoopWrite) => {
       const { data: profileId } = await supabase.rpc("get_my_profile_id");
       if (!profileId) throw new Error("Não autenticado");
       const { error } = await supabase.from("song_loop_points").insert({
@@ -155,6 +164,7 @@ export function LoopPanel({
         end_time: loop.end_time,
         repeat_count: loop.repeat_count,
         sort_order: myLoops.length,
+        ...(loop.notes !== undefined ? { notes: loop.notes } : {}),
       });
       if (error) throw error;
     },
@@ -169,7 +179,7 @@ export function LoopPanel({
 
   // Update loop
   const updateLoop = useMutation({
-    mutationFn: async (loop: { id: string; label: string; start_time: number; end_time: number; repeat_count: number }) => {
+    mutationFn: async (loop: LoopWrite & { id: string }) => {
       const { error } = await supabase
         .from("song_loop_points")
         .update({
@@ -177,6 +187,7 @@ export function LoopPanel({
           start_time: loop.start_time,
           end_time: loop.end_time,
           repeat_count: loop.repeat_count,
+          ...(loop.notes !== undefined ? { notes: loop.notes } : {}),
         })
         .eq("id", loop.id);
       if (error) throw error;
@@ -241,9 +252,13 @@ export function LoopPanel({
     setShowForm(true);
   };
 
-  const handleSubmit = (draft: LoopDraft) => {
-    if (editingLoop) updateLoop.mutate({ id: editingLoop.id, ...draft });
-    else createLoop.mutate(draft);
+  const handleSubmit = ({ notes, ...draft }: LoopDraft) => {
+    if (editingLoop) {
+      const changed = notes !== normalizeLoopNotes(editingLoop.notes);
+      updateLoop.mutate({ id: editingLoop.id, ...draft, ...(changed ? { notes } : {}) });
+    } else {
+      createLoop.mutate({ ...draft, ...(notes ? { notes } : {}) });
+    }
   };
 
   const profileLoops = selectedProfileId
@@ -263,7 +278,7 @@ export function LoopPanel({
           event.stopPropagation();
           onSelectLoop(loop);
         }}
-        className="flex min-w-0 flex-1 items-start gap-3 rounded-[12px] py-0.5 text-left"
+        className="flex w-full min-w-0 flex-1 items-start gap-3 rounded-[12px] py-0.5 text-left"
       >
         <span
           aria-hidden={order < 0 ? true : undefined}
@@ -489,6 +504,8 @@ export function LoopPanel({
                           </button>
                         </div>
                       </div>
+                      {/* Largura toda (passa sob Editar/Remover): no painel de 360pt o texto não fica espremido. */}
+                      <LoopNote notes={loop.notes} loopLabel={loop.label} />
                       <div className="mt-1 flex items-center justify-end">
                         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                           <span className="text-footnote text-muted-foreground">
@@ -532,9 +549,10 @@ export function LoopPanel({
                     <div
                       key={loop.id}
                       onClick={() => onSelectLoop(loop)}
-                      className={`relative flex cursor-pointer px-4 py-2.5 transition-colors hover:bg-fill-quaternary ${index > 0 ? rowSeparator : ""}`}
+                      className={`relative cursor-pointer px-4 py-2.5 transition-colors hover:bg-fill-quaternary ${index > 0 ? rowSeparator : ""}`}
                     >
                       {loopSelection(loop)}
+                      <LoopNote notes={loop.notes} loopLabel={loop.label} />
                     </div>
                   ))}
                 </div>

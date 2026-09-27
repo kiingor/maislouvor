@@ -58,14 +58,16 @@ describe("LoopEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Refrão" }));
     fireEvent.click(screen.getByRole("button", { name: "4×" }));
     fireEvent.click(screen.getByRole("button", { name: "Criar loop" }));
-    expect(props.onSave).toHaveBeenCalledWith({ label: "Refrão", start_time: 73, end_time: 97, repeat_count: 4 });
+    expect(props.onSave).toHaveBeenCalledWith({ label: "Refrão", start_time: 73, end_time: 97, repeat_count: 4, notes: null });
   });
 
   it("não dispara os atalhos da apresentação durante a edição", () => {
     setup();
     const shortcut = vi.fn();
     window.addEventListener("keydown", shortcut);
-    for (const key of ["n", " ", "ArrowLeft", "Escape"]) fireEvent.keyDown(screen.getByRole("textbox", { name: /Nome/ }), { key });
+    for (const field of [/Nome/, /Observações/]) {
+      for (const key of ["n", " ", "Enter", "ArrowLeft", "Escape"]) fireEvent.keyDown(screen.getByRole("textbox", { name: field }), { key });
+    }
     expect(shortcut).not.toHaveBeenCalled();
     window.removeEventListener("keydown", shortcut);
   });
@@ -118,10 +120,53 @@ describe("LoopEditor", () => {
     const { props, rerender } = setup({ initialValue: { label: "Solo", start_time: 10, end_time: 20, repeat_count: 5 } });
     expect(screen.getByRole("spinbutton", { name: "Quantidade de repetições" })).toHaveValue(5);
     fireEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
-    expect(props.onSave).toHaveBeenCalledWith({ label: "Solo", start_time: 10, end_time: 20, repeat_count: 5 });
+    expect(props.onSave).toHaveBeenCalledWith({ label: "Solo", start_time: 10, end_time: 20, repeat_count: 5, notes: null });
     rerender(<LoopEditor {...props} isSaving />);
     expect(screen.getByRole("button", { name: "Salvando…" })).toBeDisabled();
     fireEvent.submit(screen.getByRole("button", { name: "Salvando…" }).closest("form")!);
     expect(props.onSave).toHaveBeenCalledOnce();
+  });
+
+  it("salva observações de várias linhas aparando só as pontas", () => {
+    const { props } = setup();
+    const notes = screen.getByRole("textbox", { name: /Observações/ });
+    expect(notes.tagName).toBe("TEXTAREA");
+    expect(notes).toHaveAttribute("maxLength", "1000");
+    expect(notes).toHaveAccessibleDescription(/Em loops públicos, a equipe também vê/);
+    fireEvent.change(notes, { target: { value: "  Respirar antes do refrão.\n\nEntrar com a bateria.  \n" } });
+    fireEvent.click(screen.getByRole("button", { name: "Criar loop" }));
+    expect(props.onSave).toHaveBeenCalledWith({
+      label: "Meu trecho", start_time: 73, end_time: 93, repeat_count: 0,
+      notes: "Respirar antes do refrão.\n\nEntrar com a bateria.",
+    });
+  });
+
+  it("edita e remove a observação de um loop existente", () => {
+    const initialValue = { label: "Ponte", start_time: 10, end_time: 20, repeat_count: 0, notes: "Segunda voz entra aqui" };
+    const { props } = setup({ initialValue });
+    const notes = screen.getByRole("textbox", { name: /Observações/ });
+    expect(notes).toHaveValue("Segunda voz entra aqui");
+    fireEvent.change(notes, { target: { value: "Segunda voz entra no verso 2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
+    expect(props.onSave).toHaveBeenLastCalledWith({ ...initialValue, notes: "Segunda voz entra no verso 2" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Limpar observações" }));
+    expect(notes).toHaveValue("");
+    expect(notes).toHaveFocus();
+    expect(screen.queryByRole("button", { name: "Limpar observações" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
+    expect(props.onSave).toHaveBeenLastCalledWith({ ...initialValue, notes: null });
+  });
+
+  it("trata observação só com espaços como vazia e mostra a contagem perto do limite", () => {
+    const { props } = setup({ initialValue: { label: "Solo", start_time: 10, end_time: 20, repeat_count: 0 } });
+    const notes = screen.getByRole("textbox", { name: /Observações/ });
+    expect(notes).toHaveValue("");
+    fireEvent.change(notes, { target: { value: " \n\t " } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
+    expect(props.onSave).toHaveBeenLastCalledWith(expect.objectContaining({ notes: null }));
+    expect(screen.queryByText(/\/1000$/)).not.toBeInTheDocument();
+    fireEvent.change(notes, { target: { value: "a".repeat(850) } });
+    expect(screen.getByText("850/1000")).toBeInTheDocument();
   });
 });

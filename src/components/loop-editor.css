@@ -27,7 +27,7 @@
 .loop-editor[data-theme="dark"] {
   --loop-surface: hsl(var(--grouped-tertiary));
 }
-.loop-editor button, .loop-editor input { font: inherit; letter-spacing: inherit; color: inherit; }
+.loop-editor button, .loop-editor input, .loop-editor textarea { font: inherit; letter-spacing: inherit; color: inherit; }
 .loop-editor button {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   border-radius: 9999px; min-height: 44px;
@@ -36,8 +36,8 @@
 }
 .loop-editor button:disabled { opacity: .4; cursor: not-allowed; }
 .loop-editor button:not(:disabled):active { transform: scale(.97); }
-.loop-editor :is(button, input, [role="slider"]):focus-visible { outline: 3px solid rgb(var(--ios-blue-rgb)); outline-offset: 2px; }
-.pointer-mode .loop-editor :is(button, input, [role="slider"]):focus-visible { outline: none; }
+.loop-editor :is(button, input, textarea, [role="slider"]):focus-visible { outline: 3px solid rgb(var(--ios-blue-rgb)); outline-offset: 2px; }
+.pointer-mode .loop-editor :is(button, input, textarea, [role="slider"]):focus-visible { outline: none; }
 
 .loop-editor__body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 4px 16px 16px; }
 .loop-editor__heading { padding: 0 4px; }
@@ -91,7 +91,7 @@
 .loop-editor__details > label span { color: var(--loop-muted); margin-left: 3px; }
 .loop-editor__details > input { width: 100%; background: var(--loop-surface); border: 0; border-radius: 9999px; min-height: 44px; padding: 10px 16px; margin-top: 6px; font-size: 17px; line-height: 22px; letter-spacing: -.43px; }
 .loop-editor__details > input:focus { outline: none; box-shadow: 0 0 0 3px rgb(var(--ios-blue-rgb) / .25); }
-.loop-editor input::placeholder { color: hsl(var(--label-tertiary)); }
+.loop-editor :is(input, textarea)::placeholder { color: hsl(var(--label-tertiary)); }
 .loop-editor__name-options { display: flex; gap: 6px; margin: 8px 0 18px; padding: 0 4px; }
 .loop-editor .loop-editor__name-options button { padding: 0 14px; color: var(--loop-text); font-size: 15px; font-weight: 500; min-height: 32px; background: var(--loop-tint); position: relative; }
 .loop-editor .loop-editor__name-options button::before { content: ""; position: absolute; inset: -6px 0; }
@@ -104,6 +104,16 @@
 .dark .loop-editor .loop-editor__repeat button[aria-pressed="true"], .loop-editor[data-theme="dark"] .loop-editor__repeat button[aria-pressed="true"] { background: hsl(var(--prominent)); box-shadow: none; }
 .loop-editor__custom-repeat { display: flex; align-items: center; justify-content: space-between; min-height: 52px; margin-top: 10px; padding: 0 16px; border-radius: 20px; background: var(--loop-surface); font-size: 17px; }
 .loop-editor__custom-repeat input { width: 76px; min-height: 32px; padding: 4px 10px; border: 0; background: var(--loop-tint); border-radius: 9999px; text-align: center; font-variant-numeric: tabular-nums; font-size: 16px; }
+/* Observações: várias linhas, cresce com o texto até ~8 linhas e depois rola */
+.loop-editor__notes-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 18px; padding: 0 16px; }
+.loop-editor__notes-heading label { font-size: 13px; line-height: 18px; color: var(--loop-muted); }
+.loop-editor__notes-heading label span { margin-left: 3px; }
+/* 44pt de toque sem aumentar a linha do rótulo (margens negativas). */
+.loop-editor .loop-editor__notes-clear { margin: -13px -8px; padding: 0 8px; font-size: 13px; line-height: 18px; font-weight: 600; color: var(--loop-accent); }
+.loop-editor__details > textarea { display: block; width: 100%; min-height: 88px; max-height: 196px; margin-top: 6px; padding: 11px 16px; border: 0; border-radius: 20px; background: var(--loop-surface); font-size: 17px; line-height: 22px; letter-spacing: -.43px; resize: none; field-sizing: content; overflow-y: auto; overscroll-behavior: contain; }
+.loop-editor__details > textarea:focus { outline: none; box-shadow: 0 0 0 3px rgb(var(--ios-blue-rgb) / .25); }
+.loop-editor__notes-hint { display: flex; justify-content: space-between; gap: 12px; margin-top: 6px; padding: 0 16px; font-size: 13px; line-height: 18px; letter-spacing: -.08px; color: var(--loop-muted); }
+.loop-editor__notes-count { flex-shrink: 0; font-variant-numeric: tabular-nums; }
 
 /* Rodapé: Cancelar (simples) + ação principal proeminente em cápsula */
 .loop-editor__footer { display: flex; flex-shrink: 0; gap: 10px; padding: 10px 16px 12px; border-top: .5px solid var(--loop-line); }

@@ -5,7 +5,7 @@ import { useLoopSequence, type LoopPoint } from "./useLoopSequence";
 const loop = (id: string, start: number, repeat = 0): LoopPoint => ({
   id, label: id, song_id: "song-1", profile_id: "profile-1", is_public: false,
   start_time: start, end_time: start + 10, repeat_count: repeat, sort_order: start,
-  created_at: new Date(0).toISOString(),
+  created_at: new Date(0).toISOString(), notes: null,
 });
 const intro = loop("Intro", 0);
 const chorus = loop("Refrão", 40);

@@ -62,7 +62,7 @@ import {
   Mic,
   Guitar,
 } from "lucide-react";
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useId } from "react";
 
 type Instrument = "violao" | "guitarra" | "guitarra_worship" | "voz";
 
@@ -216,7 +216,7 @@ function IosStepper({
 }
 
 /** Barra de um painel/folha: Fechar (círculo de vidro) à esquerda, título centralizado. */
-function PanelBar({ title, onClose, closeLabel }: { title: string; onClose: () => void; closeLabel: string }) {
+function PanelBar({ title, onClose, closeLabel, titleId }: { title: string; onClose: () => void; closeLabel: string; titleId?: string }) {
   return (
     <div className="grid shrink-0 grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2 px-3 pb-2 pt-3 [@media(max-height:500px)]:pb-1 [@media(max-height:500px)]:pt-1.5">
       <button
@@ -228,7 +228,7 @@ function PanelBar({ title, onClose, closeLabel }: { title: string; onClose: () =
       >
         <X className="relative z-[4] h-[18px] w-[18px]" strokeWidth={2.4} aria-hidden="true" />
       </button>
-      <h2 className="truncate text-center text-headline text-foreground">{title}</h2>
+      <h2 id={titleId} className="truncate text-center text-headline text-foreground">{title}</h2>
       <span aria-hidden="true" className="h-11 w-11" />
     </div>
   );
@@ -582,6 +582,8 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
 
   // Metronome / click panel
   const [showMetronome, setShowMetronome] = useState(false);
+  // Painel lateral do metrônomo (telas largas) não é diálogo: região nomeada pelo título visível.
+  const metronomePanelTitleId = useId();
   // When armed, the click track starts/stops together with the song's audio.
   const [clickArmed, setClickArmed] = useState(false);
   // Measured height of the (absolute) top bar, so content can clear it.
@@ -2507,9 +2509,10 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
         {/* Metronome Panel — desktop sidebar */}
         {showMetronome && !isMobile && countdown === null && (
           <div className={`${inspectorShell} w-[320px] overflow-hidden`} style={belowTopBar} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-            <div className={inspectorCard}>
-              <DrawerTitle className="sr-only">Metrônomo</DrawerTitle>
-            <PanelBar title="Metrônomo" onClose={() => setShowMetronome(false)} closeLabel="Fechar metrônomo" />
+            {/* Sem DrawerTitle aqui: fora de um Drawer/Dialog o Radix lança
+                "`DialogTitle` must be used within `Dialog`" (tela de erro ao abrir o TAP em telas largas). */}
+            <div className={inspectorCard} role="region" aria-labelledby={metronomePanelTitleId}>
+            <PanelBar title="Metrônomo" titleId={metronomePanelTitleId} onClose={() => setShowMetronome(false)} closeLabel="Fechar metrônomo" />
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-2">{metronomeBody}</div>
             </div>
           </div>
