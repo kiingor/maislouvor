@@ -213,7 +213,7 @@ export function LoopEditor({ initialValue, currentTime, duration, isPlaying, isP
             onChange={(event) => setNotes(event.target.value)} aria-describedby={`${id}-notes-hint`}
             placeholder="Ex.: entrar junto com a bateria, respirar antes do refrão…" />
           <p id={`${id}-notes-hint`} className="loop-editor__notes-hint">
-            <span>Aparece no loop em uma linha. Em loops públicos, a equipe também vê.</span>
+            <span>Aparece no loop em uma linha. Quem vê seus loops públicos também vê a observação.</span>
             {notes.length >= LOOP_NOTES_MAX - 200 && <span className="loop-editor__notes-count">{notes.length}/{LOOP_NOTES_MAX}</span>}
           </p>
         </fieldset>

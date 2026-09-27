@@ -13,8 +13,8 @@ Sintoma, literal: «Algo deu errado nesta tela. A tela não pôde ser exibida. R
 
 ## 2. Observações por loop
 
-- **Banco**: `supabase/migrations/20260927120000_song_loop_notes.sql` adiciona `song_loop_points.notes text NULL`, com CHECK de pelo menos 1 caractere visível e no máximo 1000. É idempotente, não reescreve linhas e aproveita o RLS existente: quem lê o loop lê a observação (loops públicos ficam visíveis à equipe) e só o dono altera.
-- **Editor** (`LoopEditor`): campo "Observações (opcional)" com várias linhas, 17 pt (sem zoom no iOS), cresce até cerca de 8 linhas. Tem "Limpar" (alvo de 44 pt), contagem a partir de 800 caracteres e descrição acessível avisando que loops públicos são vistos pela equipe. Vazio ou só espaços viram `null`; as quebras de linha internas são preservadas.
+- **Banco**: `supabase/migrations/20260927120000_song_loop_notes.sql` adiciona `song_loop_points.notes text NULL`, com CHECK de pelo menos 1 caractere visível e no máximo 1000. É idempotente, não reescreve linhas e aproveita o RLS existente: quem lê o loop lê a observação (loops públicos: a equipe e quem recebeu a música compartilhada) e só o dono altera.
+- **Editor** (`LoopEditor`): campo "Observações (opcional)" com várias linhas, 17 pt (sem zoom no iOS), cresce até cerca de 8 linhas. Tem "Limpar" (alvo de 44 pt), contagem a partir de 800 caracteres e descrição acessível avisando que quem vê os loops públicos também vê a observação. Vazio ou só espaços viram `null`; as quebras de linha internas são preservadas.
 - **Card** (`LoopNote`, em Meus loops e em Perfis):
   - recolhida em uma linha com reticências;
   - o disclosure na coluna do círculo de ordem expande o texto inteiro (`pre-wrap`) e recolhe;

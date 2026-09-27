@@ -132,7 +132,7 @@ describe("LoopEditor", () => {
     const notes = screen.getByRole("textbox", { name: /Observações/ });
     expect(notes.tagName).toBe("TEXTAREA");
     expect(notes).toHaveAttribute("maxLength", "1000");
-    expect(notes).toHaveAccessibleDescription(/Em loops públicos, a equipe também vê/);
+    expect(notes).toHaveAccessibleDescription(/Quem vê seus loops públicos também vê a observação/);
     fireEvent.change(notes, { target: { value: "  Respirar antes do refrão.\n\nEntrar com a bateria.  \n" } });
     fireEvent.click(screen.getByRole("button", { name: "Criar loop" }));
     expect(props.onSave).toHaveBeenCalledWith({
