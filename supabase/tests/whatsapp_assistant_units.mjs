@@ -2,7 +2,7 @@
 // detecção de menção, comandos, formatação e o loop de ferramentas da OpenAI.
 //   node supabase/tests/whatsapp_assistant_units.mjs
 import assert from 'node:assert/strict';
-import { normalizeJid, parseGroupInfo, parseMessages, parseParticipantsUpdate, readEvent } from '../functions/whatsapp-assistant/evolution.ts';
+import { createEvolutionClient, normalizeJid, parseGroupInfo, parseMessages, parseParticipantsUpdate, readEvent } from '../functions/whatsapp-assistant/evolution.ts';
 import { addressedVia, cleanText, findLinkCode, parseCommand, wantsAction } from '../functions/whatsapp-assistant/triggers.ts';
 import { todayInBrazil, toWhatsApp, upcomingDays } from '../functions/whatsapp-assistant/format.ts';
 import { AiError, createOpenAi } from '../functions/whatsapp-assistant/openai.ts';
@@ -87,6 +87,18 @@ check(parseParticipantsUpdate({ id: GROUP, action: 'remove', participants: ['880
   { groupJid: GROUP, action: 'remove', ids: [BOT_LID, '10002@lid', '552199990000@s.whatsapp.net'] });
 check(parseGroupInfo({ subject: 'Louvor 🎸', participants: [{ id: '88001@lid', phoneNumber: '5511955554444@s.whatsapp.net', admin: null }, { id: '10002@lid' }] }),
   { subject: 'Louvor 🎸', participants: [{ ids: [BOT_LID, BOT_PN] }, { ids: ['10002@lid'] }] });
+
+// ---- Cliente da Evolution ---------------------------------------------------------
+const evoCalls = [];
+const evoFetch = async (url, init) => { evoCalls.push({ url, init }); return new Response('{}', { status: 201 }); };
+await createEvolutionClient({ baseUrl: 'http://evo:8080/', instance: 'maislouvor', apiKey: 'tok', origin: 'https://talitha.example' }, evoFetch)
+  .sendText(GROUP, 'oi', msg);
+const sentBody = JSON.parse(evoCalls[0].init.body);
+check([evoCalls[0].url, evoCalls[0].init.headers.apikey, evoCalls[0].init.headers.Origin],
+  ['http://evo:8080/message/sendText/maislouvor', 'tok', 'https://talitha.example'], 'origem do CORS da Evolution');
+check([sentBody.number, sentBody.quoted.key.id, 'mentionsEveryOne' in sentBody], [GROUP, msg.id, false], 'cita a mensagem e nunca marca todos');
+await createEvolutionClient({ baseUrl: 'http://evo:8080', instance: 'maislouvor', apiKey: 'tok' }, evoFetch).sendPresence(GROUP, 1000);
+check('Origin' in evoCalls[1].init.headers, false, 'sem origem configurada, sem cabeçalho');
 
 // ---- Comandos --------------------------------------------------------------------
 check(parseCommand('ativar k7q2pd'), { type: 'activate', code: 'K7Q2PD' });

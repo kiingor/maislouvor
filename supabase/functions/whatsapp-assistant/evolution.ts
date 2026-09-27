@@ -220,6 +220,8 @@ export interface EvolutionConfig {
   instance: string;
   /** Token da instância (não a chave global da Evolution). */
   apiKey: string;
+  /** Origem aceita pelo CORS_ORIGIN da Evolution (a da VPS exige, até entre servidores). */
+  origin?: string;
   timeoutMs?: number;
 }
 
@@ -239,6 +241,7 @@ export function createEvolutionClient(config: EvolutionConfig, fetchImpl: typeof
       headers: {
         apikey: config.apiKey,
         Accept: "application/json",
+        ...(config.origin ? { Origin: config.origin } : {}),
         ...(body ? { "Content-Type": "application/json" } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,

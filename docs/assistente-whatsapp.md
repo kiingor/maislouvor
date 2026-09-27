@@ -131,7 +131,10 @@ scripts/whatsapp-assistant/evolution-instance.sh configure   # grupos ligados, r
       WHATSAPP_EVOLUTION_URL: ${WHATSAPP_EVOLUTION_URL:-http://talitha-cume-evolution-1:8080}
       WHATSAPP_EVOLUTION_INSTANCE: ${WHATSAPP_EVOLUTION_INSTANCE:-maislouvor}
       WHATSAPP_EVOLUTION_APIKEY: ${WHATSAPP_EVOLUTION_APIKEY:-}
+      WHATSAPP_EVOLUTION_ORIGIN: ${WHATSAPP_EVOLUTION_ORIGIN:-}
 ```
+
+`WHATSAPP_EVOLUTION_ORIGIN` é o `CORS_ORIGIN` da Evolution do Talitha (`docker exec talitha-cume-evolution-1 printenv CORS_ORIGIN`): ela recusa com "Not allowed by CORS" quem não manda essa origem, mesmo entre servidores.
 
 Os valores vão em `/opt/supabase/.env`: o token e o segredo saem dos arquivos do passo 3. A `OPENAI_API_KEY` que já existe nesse `.env` (a do Studio) **não** é usada. Depois, `docker compose up -d functions`: as funções ficam indisponíveis por alguns segundos. Para conferir, mande o segredo no cabeçalho, e não no caminho, para ele não ir parar no log do Caddy:
 

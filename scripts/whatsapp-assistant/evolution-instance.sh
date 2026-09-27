@@ -29,7 +29,8 @@ WEBHOOK_BASE="${WEBHOOK_BASE:-http://$FUNCTIONS_CONTAINER:9000/whatsapp-assistan
 EVOLUTION_LOCAL_URL="${EVOLUTION_LOCAL_URL:-http://127.0.0.1:8080}"
 
 # evo MÉTODO CAMINHO [JSON] -> resposta JSON na saída padrão.
-# O corpo vai pela entrada padrão, nunca como argumento de processo.
+# O corpo vai pela entrada padrão, nunca como argumento de processo. A Evolution
+# da VPS recusa (CORS) quem não manda a origem de CORS_ORIGIN, até entre servidores.
 evo() {
   local method="$1" path="$2" body="${3:-}"
   printf '%s' "$body" | docker exec -i "$CONTAINER" node -e '
@@ -37,7 +38,12 @@ evo() {
     const body = require("fs").readFileSync(0, "utf8").trim();
     fetch(base + path, {
       method,
-      headers: { apikey: process.env.AUTHENTICATION_API_KEY, "Content-Type": "application/json" },
+      headers: {
+        apikey: process.env.AUTHENTICATION_API_KEY,
+        "Content-Type": "application/json",
+        ...(process.env.CORS_ORIGIN && process.env.CORS_ORIGIN !== "*"
+          ? { Origin: process.env.CORS_ORIGIN.split(",")[0].trim() } : {}),
+      },
       body: body || undefined,
     }).then(async (response) => {
       const text = await response.text();

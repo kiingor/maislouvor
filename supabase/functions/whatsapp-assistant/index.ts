@@ -13,6 +13,7 @@
 //   WHATSAPP_EVOLUTION_URL          ex.: http://talitha-cume-evolution-1:8080
 //   WHATSAPP_EVOLUTION_INSTANCE     ex.: maislouvor
 //   WHATSAPP_EVOLUTION_APIKEY       token da instância (não a chave global)
+//   WHATSAPP_EVOLUTION_ORIGIN       origem do CORS_ORIGIN da Evolution (a da VPS exige)
 //   WHATSAPP_BOT_NUMBER             opcional; número do assistente (só dígitos)
 //
 // Responde 202 na hora e processa em segundo plano (EdgeRuntime.waitUntil),
@@ -44,6 +45,7 @@ const handle = createHandler({
     baseUrl: env("WHATSAPP_EVOLUTION_URL"),
     instance: INSTANCE,
     apiKey: env("WHATSAPP_EVOLUTION_APIKEY"),
+    origin: env("WHATSAPP_EVOLUTION_ORIGIN") || undefined,
   }),
   // Modelo e esforço de raciocínio vêm de assistant_config a cada pergunta.
   ask: createOpenAi({
