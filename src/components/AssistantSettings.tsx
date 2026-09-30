@@ -2,13 +2,15 @@ import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Capacitor } from "@capacitor/core";
 import { format, parseISO } from "date-fns";
-import { Bot, Check, ChevronRight, Copy, KeyRound, Link2, Loader2, MessageCircle, ShieldCheck, TriangleAlert, Unlink, Users } from "lucide-react";
+import { BookOpen, Bot, Check, ChevronRight, Copy, KeyRound, Link2, Loader2, MessageCircle, ShieldCheck, TriangleAlert, Unlink, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
+import { AssistantMissions } from "@/components/AssistantMissions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,6 +25,8 @@ import {
 import { cn } from "@/lib/utils";
 import {
   ASSISTANT_CAPABILITIES,
+  NOTIFICATION_OPTIONS,
+  type NotificationSettings,
   activationMessage,
   DEFAULT_INSTRUCTIONS_MAX,
   formatWhatsAppNumber,
@@ -110,6 +114,122 @@ async function openExternal(url: string) {
 const shortDate = (iso: string) => format(parseISO(iso), "dd/MM");
 const dateTime = (iso: string) => format(parseISO(iso), "dd/MM 'às' HH:mm");
 
+/** Guia junto da ativação, com exemplos copiáveis e os mesmos comandos do assistente. */
+function AssistantUsageGuide({ name, initiallyOpen }: { name: string; initiallyOpen: boolean }) {
+  const weeklyMission = "toda sexta às 17h avisa que tem ensaio às 19h";
+  const missionExamples = [
+    { title: "Aviso diário", example: "todos os dias às 9h avisa que o repertório está no app" },
+    { title: "Aviso uma vez", example: "agende para amanhã às 15h: tragam os cabos para o ensaio" },
+    { title: "Consultar missões", example: "quais missões estão ativas?" },
+    { title: "Alterar o horário", example: "mude a missão ABCD1234 para às 18h" },
+    { title: "Pausar uma missão", example: "pause a missão ABCD1234" },
+    { title: "Retomar uma missão", example: "retome a missão ABCD1234" },
+    { title: "Cancelar uma missão", example: "cancele a missão ABCD1234" },
+  ];
+
+  const exampleRow = ({ title, example, description }: { title: string; example: string; description?: string }) => {
+    const message = "@" + name + " " + example;
+    return (
+      <li key={title} className="flex items-start gap-3 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-subhead font-semibold">{title}</p>
+          {description && <p className="mt-0.5 text-footnote text-muted-foreground">{description}</p>}
+          <p className="mt-1 break-words text-subhead leading-relaxed">{message}</p>
+        </div>
+        <CopyButton value={message} label={"Copiar exemplo: " + title} />
+      </li>
+    );
+  };
+
+  return (
+    <section aria-labelledby="assistant-guide-title">
+      <h3 id="assistant-guide-title" className={GROUP_LABEL}>3. Como usar no grupo</h3>
+      <details open={initiallyOpen} className={cn(GROUP, "group/assistant-guide")}>
+        <summary className="flex min-h-[64px] cursor-pointer list-none items-center gap-3 px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+          <IconTile icon={BookOpen} />
+          <span className="min-w-0 flex-1">
+            <span className="block text-body">Guia do {name}</span>
+            <span className="block text-footnote text-muted-foreground">Como funciona e exemplos para copiar</span>
+          </span>
+          <ChevronRight className="h-[18px] w-[18px] shrink-0 text-label-tertiary transition-transform group-open/assistant-guide:rotate-90" aria-hidden="true" />
+        </summary>
+        <div className="space-y-6 border-t border-separator px-4 py-4">
+          <section aria-labelledby="assistant-guide-chat">
+            <h4 id="assistant-guide-chat" className="text-callout font-semibold">Converse com o {name}</h4>
+            <p className="mt-2 text-subhead leading-relaxed text-muted-foreground">
+              Depois de ativar, marque o contato @{name} no grupo ou responda a uma mensagem dele.
+              Ele consulta os dados desta equipe no +Louvor: cultos, escalas, músicas, tons e disponibilidade.
+              Cada integrante também pode confirmar ou recusar a própria escala.
+            </p>
+            <p className="mt-2 text-footnote leading-relaxed text-muted-foreground">
+              Para reconhecer cada pessoa, ele usa o telefone do cadastro ou o vínculo do WhatsApp em Ajustes › Meu usuário.
+            </p>
+            <details className="group/assistant-examples mt-3 overflow-hidden rounded-xl border border-separator">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-subhead font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                Exemplos de perguntas e respostas
+                <ChevronRight className="h-4 w-4 shrink-0 text-label-tertiary transition-transform group-open/assistant-examples:rotate-90" aria-hidden="true" />
+              </summary>
+              <ul className="divide-y divide-separator border-t border-separator">
+                {ASSISTANT_CAPABILITIES.filter((capability) => capability.title !== "Missões do líder").map(exampleRow)}
+              </ul>
+            </details>
+          </section>
+
+          <section aria-labelledby="assistant-guide-notices">
+            <h4 id="assistant-guide-notices" className="text-callout font-semibold">Receba os avisos do app</h4>
+            <p className="mt-2 text-subhead leading-relaxed text-muted-foreground">
+              Nos grupos conectados, o {name} avisa sobre novos cultos, mudanças de data e escala, atualizações do repertório
+              e avisos enviados pelo líder no app. Quem foi escalado pode receber uma menção, conforme o WhatsApp vinculado ao cadastro.
+            </p>
+            <p className="mt-2 text-subhead leading-relaxed text-muted-foreground">
+              O lembrete da véspera sai a partir das 18h, no horário de Brasília, para os cultos do dia seguinte.
+              Os avisos chegam mesmo com o app fechado.
+            </p>
+            <blockquote className="mt-3 rounded-xl bg-fill-quaternary px-3 py-2.5 text-subhead leading-relaxed">
+              <span className="mb-1 block text-caption1 font-medium text-muted-foreground">Exemplo de aviso de escala</span>
+              @Filipe, eiii! Tu foi escalado para o Culto de Domingo. 🎶
+            </blockquote>
+            <p className="mt-3 text-footnote leading-relaxed text-muted-foreground">
+              Escolha as categorias em Avisos automáticos, abaixo. Esses envios não gastam o limite de perguntas.
+            </p>
+          </section>
+
+          <section aria-labelledby="assistant-guide-missions">
+            <h4 id="assistant-guide-missions" className="text-callout font-semibold">Agende uma missão · somente líderes</h4>
+            <p className="mt-2 text-subhead leading-relaxed text-muted-foreground">
+              No grupo que deve receber o aviso, diga a mensagem e quando enviá-la. Pode ser uma única vez,
+              todos os dias ou em dias da semana. Os horários são de Brasília.
+            </p>
+            <ul className="mt-3 overflow-hidden rounded-xl border border-separator">
+              {exampleRow({ title: "Lembrar do ensaio toda sexta", example: weeklyMission })}
+            </ul>
+            <p className="mt-2 text-footnote leading-relaxed text-muted-foreground">
+              Nesse exemplo, o aviso chega às 17h e o ensaio começa às 19h. Se faltar o horário do envio,
+              o {name} pergunta antes de agendar. Confira o código e o próximo envio na resposta dele.
+            </p>
+            <details className="group/assistant-mission-examples mt-3 overflow-hidden rounded-xl border border-separator">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-subhead font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                Mais exemplos de missões
+                <ChevronRight className="h-4 w-4 shrink-0 text-label-tertiary transition-transform group-open/assistant-mission-examples:rotate-90" aria-hidden="true" />
+              </summary>
+              <ul className="divide-y divide-separator border-t border-separator">
+                {missionExamples.map(exampleRow)}
+              </ul>
+              <p className="border-t border-separator px-4 py-3 text-footnote leading-relaxed text-muted-foreground">
+                ABCD1234 é um código de exemplo. Troque pelo código que o {name} informou ao criar a missão.
+              </p>
+            </details>
+            <p className="mt-3 text-footnote leading-relaxed text-muted-foreground">
+              Acompanhe, pause, retome ou cancele em Missões agendadas, abaixo. Para receber os envios,
+              mantenha Avisos do líder ligado. A missão envia a mensagem que ficou salva para aquele grupo.
+            </p>
+          </section>
+        </div>
+      </details>
+    </section>
+  );
+}
+
 /**
  * Ajustes > Equipe: liga o assistente aos grupos do ministério, mostra o uso do
  * dia e guarda as instruções que o líder passa para ele. Só líderes veem.
@@ -154,7 +274,7 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
   const handleDisconnect = async (groupId: string) => {
     try {
       await callRpc("assistant_deactivate_group", { p_group_id: groupId });
-      toast({ title: "Grupo desconectado", description: `O ${name} não responde mais nesse grupo.` });
+      toast({ title: "Grupo desconectado", description: `O ${name} não responde nem envia avisos nesse grupo.` });
       await refresh();
     } catch (error) {
       toast({ title: "Não foi possível desconectar", description: errorMessage(error), variant: "destructive" });
@@ -192,7 +312,8 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
         </div>
         <p className="mt-1 max-w-xl text-subhead text-muted-foreground">
           O {name} entra no grupo do ministério e responde quando alguém marca @{name}: escalas, repertório, tons,
-          disponibilidade e os avisos que você escrever aqui.
+          disponibilidade e os combinados do ministério.
+          Também leva os avisos do app ao grupo e cumpre as missões agendadas pelo líder.
         </p>
       </div>
 
@@ -279,6 +400,8 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
             </p>
           </section>
 
+          <AssistantUsageGuide name={name} initiallyOpen={data.groups.length === 0 || Boolean(data.pending_code)} />
+
           {/* Grupos conectados */}
           <section aria-labelledby="assistant-groups-title">
             <h3 id="assistant-groups-title" className={GROUP_LABEL}>Grupos conectados</h3>
@@ -310,7 +433,7 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
                         <AlertDialogHeader>
                           <AlertDialogTitle>Desconectar este grupo?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            O {name} para de responder em “{group.name || "Grupo sem nome"}”. Para voltar, gere um novo código.
+                            O {name} para de responder e enviar avisos em “{group.name || "Grupo sem nome"}”. Para voltar, gere um novo código.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -384,34 +507,62 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
           <p className={GROUP_FOOTER}>
             Horário e local do ensaio, combinados, roupa… O {name} usa este texto para responder a equipe. Qualquer pessoa
             do grupo pode perguntar: não coloque senhas nem dados pessoais.
+            Para enviar um aviso em horário marcado, crie uma missão no grupo; salvar este texto orienta as respostas.
           </p>
         </section>
       )}
 
-      {/* O que ele faz */}
-      <section aria-labelledby="assistant-capabilities-title">
-        <h3 id="assistant-capabilities-title" className={GROUP_LABEL}>O que o {name} faz</h3>
-        <ul className={GROUP}>
-          {ASSISTANT_CAPABILITIES.map((capability) => (
-            <li key={capability.title} className="group/row flex items-center gap-3 pl-4">
-              <span
-                className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] bg-fill-tertiary text-[17px] leading-none"
-                aria-hidden="true"
-              >
-                {capability.emoji}
-              </span>
-              <span className={cn(ROW_BODY, "py-2.5")}>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-body">{capability.title}</span>
-                  <span className="block text-footnote text-muted-foreground">
-                    {capability.description} · “@{name} {capability.example}”
-                  </span>
-                </span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </section>
+      {data?.platform_enabled && <AutomaticNoticeSettings key={teamId} teamId={teamId} disabled={!data.team_enabled} />}
+      {data?.platform_enabled && <AssistantMissions key={`missions-${teamId}`} teamId={teamId} name={name} disabled={!data.team_enabled} />}
+
+    </section>
+  );
+}
+
+function AutomaticNoticeSettings({ teamId, disabled }: { teamId: string; disabled: boolean }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const queryKey = ["assistant-notifications", teamId];
+  const [saving, setSaving] = useState<string | null>(null);
+  const { data } = useQuery({
+    queryKey,
+    queryFn: () => callRpc<NotificationSettings>("assistant_notification_settings", { p_team_id: teamId }),
+    retry: false,
+  });
+  // Compatível com backend anterior durante a publicação.
+  if (!data) return null;
+  const save = async (key: keyof NotificationSettings, enabled: boolean) => {
+    setSaving(key);
+    try {
+      const updated = await callRpc<NotificationSettings>("assistant_set_notification", {
+        p_team_id: teamId, p_kind: key, p_enabled: enabled,
+      });
+      qc.setQueryData(queryKey, updated);
+      toast({ title: enabled ? "Aviso automático ativado" : "Aviso automático desativado" });
+    } catch (error) {
+      toast({ title: "Não foi possível salvar", description: errorMessage(error), variant: "destructive" });
+    } finally { setSaving(null); }
+  };
+  return (
+    <section aria-labelledby="assistant-notifications-title">
+      <h3 id="assistant-notifications-title" className={GROUP_LABEL}>Avisos automáticos</h3>
+      <div className={GROUP}>
+        {NOTIFICATION_OPTIONS.map((option) => (
+          <Row key={option.key} leading={<IconTile icon={MessageCircle} />}>
+            <span className="min-w-0 flex-1">
+              <span className="block text-body" id={`notice-${option.key}`}>{option.title}</span>
+              <span className="block text-footnote text-muted-foreground" id={`notice-${option.key}-description`}>{option.description}</span>
+            </span>
+            <Switch checked={data[option.key]} disabled={disabled || saving !== null}
+              aria-labelledby={`notice-${option.key}`} aria-describedby={`notice-${option.key}-description`}
+              onCheckedChange={(enabled) => save(option.key, enabled)} />
+          </Row>
+        ))}
+      </div>
+      <p className={GROUP_FOOTER}>
+        Vale para os grupos conectados desta equipe. As mudanças são agrupadas por alguns instantes antes do envio.
+        As menções usam o WhatsApp vinculado ao cadastro. Os avisos não gastam o limite de perguntas.
+      </p>
     </section>
   );
 }

@@ -36,6 +36,10 @@ import {
 import { addressedVia, cleanText, type Command, findLinkCode, parseCommand, wantsAction } from "./triggers.ts";
 import { ACTION_TOOL_NAMES, ASSISTANT_TOOLS, READ_ONLY_TOOLS, type Rpc, runTool } from "./tools.ts";
 import { todayInBrazil, toWhatsApp, upcomingDays } from "./format.ts";
+import {
+  MISSION_ACTION_NAMES, MISSION_READ_TOOLS, MISSION_TOOL_NAMES, MISSION_WRITE_TOOLS,
+  missionWriteIntent, runMissionTool,
+} from "./missions.ts";
 
 export interface RuntimeConfig {
   enabled: boolean;
@@ -261,6 +265,13 @@ export function createHandler(deps: HandlerDeps) {
         p_minutes: config.history_minutes,
       })) ?? [];
       const today = todayInBrazil(now());
+      const missionIntent = sender.role === "admin" ? missionWriteIntent(text, history) : null;
+      const tools = [
+        ...(wantsAction(text, history) ? ASSISTANT_TOOLS : READ_ONLY_TOOLS),
+        ...(sender.role === "admin" ? MISSION_READ_TOOLS : []),
+        ...MISSION_WRITE_TOOLS.filter(t => t.name === missionIntent),
+      ];
+      const allowedTools = new Set(tools.map(t => t.name));
       result = await deps.ask({
         model: config.model,
         reasoningEffort: config.reasoning_effort,
@@ -269,6 +280,7 @@ export function createHandler(deps: HandlerDeps) {
           teamName: group.team_name,
           todayLabel: today.label,
           todayIso: today.iso,
+          currentTime: now().toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }),
           days: upcomingDays(now(), 15),
           person: { fullName: sender.full_name, role: sender.role, instruments: sender.instruments },
           instructions: group.instructions,
@@ -276,10 +288,14 @@ export function createHandler(deps: HandlerDeps) {
         history,
         message: question,
         // Ações só quando a própria pessoa pede (não por texto citado ou dado de outra pessoa).
-        tools: wantsAction(text, history) ? ASSISTANT_TOOLS : READ_ONLY_TOOLS,
+        tools,
         runTool: async (toolName, args) => {
-          const output = await runTool(rpc, group.team_id, sender.member_id, toolName, args);
-          if (ACTION_TOOL_NAMES.has(toolName) && /"ok"\s*:\s*true/.test(output)) actionsDone++;
+          if (!allowedTools.has(toolName)) return JSON.stringify({ erro: "acao_nao_autorizada_nesta_mensagem" });
+          const output = MISSION_TOOL_NAMES.has(toolName)
+            ? await runMissionTool(rpc, { teamId: group.team_id, groupId: group.group_id,
+              memberId: sender.member_id, requestId: `whatsapp:${msg.id}`, text, history }, toolName, args)
+            : await runTool(rpc, group.team_id, sender.member_id, toolName, args);
+          if ((ACTION_TOOL_NAMES.has(toolName) || MISSION_ACTION_NAMES.has(toolName)) && /"ok"\s*:\s*true/.test(output)) actionsDone++;
           return output;
         },
         safetyIdentifier: await hashId(sender.profile_id),

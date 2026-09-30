@@ -47,6 +47,40 @@ describe("whatsappAssistant helpers", () => {
 });
 
 describe("TeamAssistantSettings", () => {
+  it("saves one automatic notice option without changing the others", async () => {
+    const prefs = { cultos: true, escala: true, repertorio: true, avisos: true, lembretes: true };
+    mocks.rpc.mockImplementation(async (fn: string, args: Record<string, unknown>) => {
+      if (fn === "assistant_team_overview") return { data: overview(), error: null };
+      if (fn === "assistant_notification_settings") return { data: prefs, error: null };
+      if (fn === "assistant_set_notification") return { data: { ...prefs, [args.p_kind as string]: args.p_enabled }, error: null };
+      return { data: null, error: null };
+    });
+    renderWithQuery(<TeamAssistantSettings teamId="team-1" />);
+    const option = await screen.findByRole("switch", { name: "Escalas" });
+    expect(option).toBeChecked();
+    fireEvent.click(option);
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith("assistant_set_notification", {
+      p_team_id: "team-1", p_kind: "escala", p_enabled: false,
+    }));
+    await waitFor(() => expect(option).not.toBeChecked());
+    expect(screen.getByRole("switch", { name: "Repertório" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "Lembrete na véspera" })).toBeChecked();
+  });
+
+  it("keeps the saved setting visible when changing it fails", async () => {
+    mocks.rpc.mockImplementation(async (fn: string) => {
+      if (fn === "assistant_team_overview") return { data: overview(), error: null };
+      if (fn === "assistant_notification_settings") return { data: { cultos:true,escala:true,repertorio:true,avisos:true,lembretes:true }, error: null };
+      return { data: null, error: { message: "offline" } };
+    });
+    renderWithQuery(<TeamAssistantSettings teamId="team-1" />);
+    const option = await screen.findByRole("switch", { name: "Lembrete na véspera" });
+    fireEvent.click(option);
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Não foi possível salvar" })));
+    expect(option).toBeChecked();
+    expect(option).toBeEnabled();
+  });
+
   it("shows the number, usage and connected groups, and generates an activation code", async () => {
     let current = overview();
     mocks.rpc.mockImplementation(async (fn: string) => {

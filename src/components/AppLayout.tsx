@@ -4,7 +4,8 @@ import { useNavigate, Outlet, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { syncPushSubscription, registerNativePush } from "@/lib/push";
 import { useTeam } from "@/contexts/TeamContext";
-import { Home, Music, LogOut, UserRound, CalendarDays, CalendarCheck, MessageCircle, Megaphone, BarChart3 } from "lucide-react";
+import { Home, Music, LogOut, UserRound, CalendarDays, CalendarCheck, MessageCircle, Megaphone, BarChart3, MessageSquareText, ShieldCheck } from "lucide-react";
+import { usePlatformAccess } from "@/contexts/PlatformAccessContext";
 import { NavLink } from "@/components/NavLink";
 import { TeamProvider } from "@/contexts/TeamContext";
 import { ShellProvider, useShell } from "@/contexts/ShellContext";
@@ -24,6 +25,7 @@ function AppLayoutInner() {
   const [notifModalOpen, setNotifModalOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const { can } = useTeam();
+  const { isPlatformAdmin } = usePlatformAccess();
 
   // Push: web (sync da assinatura) + nativo Android (registro FCM).
   useEffect(() => {
@@ -63,6 +65,8 @@ function AppLayoutInner() {
     // OCULTO até a gamificação ser liberada:
     // { title: "Jornada", href: "/app/gamificacao", icon: Sparkles },
     { title: "Usuário", href: "/app/settings", icon: UserRound },
+    { title: "Sugestões e suporte", href: "/app/sugestoes", icon: MessageSquareText },
+    ...(isPlatformAdmin ? [{ title: "Gerenciador", href: "/admin", icon: ShieldCheck }] : []),
   ].filter((item) => !item.resource || can(item.resource, (item as any).action ?? "ver"));
 
   const handleLogout = async () => {

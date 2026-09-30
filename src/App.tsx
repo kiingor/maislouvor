@@ -10,6 +10,8 @@ import { AuthGuard } from "./components/AuthGuard";
 import { AppLayout } from "./components/AppLayout";
 import { ResourceGuard } from "./components/ResourceGuard";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { PlatformAccessProvider } from "./contexts/PlatformAccessProvider";
+import { PlatformAdminGuard } from "./components/admin/PlatformAdminGuard";
 
 // Login e NotFound continuam estáticos: Login é a primeira tela em quase todo
 // acesso, e carregá-la sob demanda só adicionaria uma ida ao servidor.
@@ -42,6 +44,16 @@ const Relatorios = lazy(loadRelatorios);
 const AcceptInvite = lazy(() => import("./pages/AcceptInvite"));
 const PublicPlaylist = lazy(() => import("./pages/PublicPlaylist"));
 const PublicCulto = lazy(() => import("./pages/PublicCulto"));
+const AdminLayout = lazy(() => import("./components/admin/AdminLayout"));
+const AdminOverview = lazy(() => import("./pages/admin/AdminOverview"));
+const AdminAccounts = lazy(() => import("./pages/admin/AdminAccounts"));
+const AdminAccountDetail = lazy(() => import("./pages/admin/AdminAccountDetail"));
+const AdminMembers = lazy(() => import("./pages/admin/AdminMembers"));
+const AdminSubscriptions = lazy(() => import("./pages/admin/AdminSubscriptions"));
+const AdminTickets = lazy(() => import("./pages/admin/AdminTickets"));
+const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
+const Suggestions = lazy(() => import("./pages/Suggestions"));
+const SupportTicketDetail = lazy(() => import("./pages/SupportTicketDetail"));
 // Rota ainda desativada (ver abaixo); sob demanda, mantém o three.js fora do bundle inicial.
 const Gamificacao = lazy(() => import("./pages/Gamificacao"));
 
@@ -119,6 +131,7 @@ const App = () => {
 
   return (
   <QueryClientProvider client={queryClient}>
+    <PlatformAccessProvider>
     <TooltipProvider>
       <Toaster />
       <Sonner />
@@ -136,6 +149,16 @@ const App = () => {
           <Route path="/invite/:token" element={<AcceptInvite />} />
           <Route path="/playlist/:token" element={<PublicPlaylist />} />
           <Route path="/culto/:token" element={<PublicCulto />} />
+          <Route path="/admin" element={<PlatformAdminGuard><AdminLayout /></PlatformAdminGuard>}>
+            <Route index element={<AdminOverview />} />
+            <Route path="contas" element={<AdminAccounts />} />
+            <Route path="contas/:id" element={<AdminAccountDetail />} />
+            <Route path="membros" element={<AdminMembers />} />
+            <Route path="assinaturas" element={<AdminSubscriptions />} />
+            <Route path="tickets" element={<AdminTickets />} />
+            <Route path="tickets/:id" element={<SupportTicketDetail admin />} />
+            <Route path="configuracoes" element={<AdminSettings />} />
+          </Route>
           <Route
             path="/app/cultos/:id/present"
             element={
@@ -177,6 +200,8 @@ const App = () => {
             {/* <Route path="gamificacao" element={<Gamificacao />} /> */}
             <Route path="chat" element={<ResourceGuard resource="chat"><Chat /></ResourceGuard>} />
             <Route path="settings" element={<TeamSettings />} />
+            <Route path="sugestoes" element={<Suggestions />} />
+            <Route path="sugestoes/:id" element={<SupportTicketDetail />} />
             <Route path="change-password" element={<ChangePassword />} />
           </Route>
           <Route path="*" element={<NotFound />} />
@@ -184,6 +209,7 @@ const App = () => {
         </Suspense>
       </BrowserRouter>
     </TooltipProvider>
+    </PlatformAccessProvider>
   </QueryClientProvider>
   );
 };

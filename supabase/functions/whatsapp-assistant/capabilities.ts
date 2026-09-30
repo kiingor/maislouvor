@@ -25,4 +25,5 @@ export const ASSISTANT_CAPABILITIES: readonly AssistantCapability[] = [
   { emoji: "✅", title: "Confirmar ou recusar", description: "responder à sua escala", example: "confirmo a escala de domingo" },
   { emoji: "🚫", title: "Avisar indisponibilidade", description: "marcar ou desmarcar um dia seu", example: "não posso dia 20" },
   { emoji: "📌", title: "Avisos do ministério", description: "ensaio, local e o que o líder cadastrar", example: "que horas é o ensaio?" },
+  { emoji: "⏰", title: "Missões do líder", description: "agendar, consultar, alterar, pausar e cancelar avisos neste grupo", example: "toda sexta às 17h avisa que tem ensaio às 19h" },
 ];

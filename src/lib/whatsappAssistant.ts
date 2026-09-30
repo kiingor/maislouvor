@@ -3,6 +3,7 @@
 // A lista do que o assistente faz vem do próprio código da edge function, para
 // a tela e as mensagens no grupo nunca divergirem.
 export { ASSISTANT_CAPABILITIES, type AssistantCapability } from "../../supabase/functions/whatsapp-assistant/capabilities.ts";
+export { NOTIFICATION_OPTIONS, type NotificationSettings } from "../../supabase/functions/whatsapp-assistant/notification-options.ts";
 
 export const DEFAULT_INSTRUCTIONS_MAX = 2000;
 
