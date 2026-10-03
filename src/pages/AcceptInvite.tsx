@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, Loader2, TicketX } from "lucide-react";
 import { AuthAppIcon, AuthScreen, ProminentButton } from "./Login";
+import { LegalConsentNotice } from "@/components/legal/LegalConsent";
 
 export default function AcceptInvite() {
   const { token } = useParams<{ token: string }>();
@@ -71,6 +72,7 @@ export default function AcceptInvite() {
                   Criar conta
                 </ProminentButton>
               </div>
+              <LegalConsentNotice className="mt-4" />
             </div>
           ) : (
             <div className="flex flex-col items-center">

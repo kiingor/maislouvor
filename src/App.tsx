@@ -12,6 +12,7 @@ import { ResourceGuard } from "./components/ResourceGuard";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PlatformAccessProvider } from "./contexts/PlatformAccessProvider";
 import { PlatformAdminGuard } from "./components/admin/PlatformAdminGuard";
+import { TermsGate } from "./components/legal/TermsGate";
 
 // Login e NotFound continuam estáticos: Login é a primeira tela em quase todo
 // acesso, e carregá-la sob demanda só adicionaria uma ida ao servidor.
@@ -29,6 +30,10 @@ const AuthCallback = lazy(() => import("./pages/AuthCallback"));
 const Download = lazy(() => import("./pages/Download"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const SignUp = lazy(() => import("./pages/SignUp"));
+// Documentos públicos (lojas/LGPD): abrem sem login, também dentro do app nativo.
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const TermsOfUse = lazy(() => import("./pages/TermsOfUse"));
+const Support = lazy(() => import("./pages/Support"));
 const Repertorios = lazy(loadRepertorios);
 const RepertorioDetail = lazy(loadRepertorioDetail);
 const Cultos = lazy(loadCultos);
@@ -138,12 +143,17 @@ const App = () => {
       {/* v7_startTransition: a tela atual fica visível até a próxima estar pronta (sem piscar o shell). */}
       <BrowserRouter future={{ v7_startTransition: true }}>
         <NativeAuthHandler />
+        {/* Pede o aceite dos Termos/Privacidade em /app e /admin (nunca nas rotas públicas). */}
+        <TermsGate />
         <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<Navigate to={defaultRedirect} replace />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<SignUp />} />
           <Route path="/baixar" element={<Download />} />
+          <Route path="/privacidade" element={<PrivacyPolicy />} />
+          <Route path="/termos" element={<TermsOfUse />} />
+          <Route path="/suporte" element={<Support />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/invite/:token" element={<AcceptInvite />} />
