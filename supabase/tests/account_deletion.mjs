@@ -8,6 +8,7 @@
 // trocar aquela função, e a transferência daqui é a de produção.
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
+import { sqlCodeMentions } from './helpers/sql_code.mjs';
 
 const { PGlite } = await import(process.env.PGLITE_MODULE || '@electric-sql/pglite');
 const db = new PGlite();
@@ -136,7 +137,11 @@ try {
     (await one(`SELECT pg_get_functiondef('public.transfer_team_ownership(uuid,uuid)'::regprocedure) AS def`)).def;
   const productionTransfer = await transferDef();
   ok(productionTransfer.includes('app.transfer_team_ownership'), 'a função de produção usa a configuração do guarda');
-  ok(!/FUNCTION\s+public\.transfer_team_ownership/i.test(MIGRATION), `${MIGRATION_NAME} não cria nem troca transfer_team_ownership`);
+  // Nem no texto: nenhuma linha de código (fora de comentários) cita os objetos da 120000
+  // (CREATE/DROP, GRANT/REVOKE em lista, com ou sem schema).
+  for (const object of ['transfer_team_ownership', 'guard_team_member_privileges', 'guard_team_owner_change']) {
+    check(sqlCodeMentions(MIGRATION, object), [], `${MIGRATION_NAME} não cita ${object} fora de comentários`);
+  }
 
   // Antes da migração: apagar o autor de uma música falha e apagar o dono apaga a equipe.
   check(await fkAction('public.songs', 'created_by'), 'a', 'songs.created_by sem ação antes');
@@ -321,6 +326,9 @@ try {
   const xavier = await preview(user.xavier);
   check([xavier.can_delete, xavier.teams[0].action, xavier.teams[0].is_owner, xavier.teams[0].role],
     [false, 'transfer_required', true, 'viewer'], 'dono rebaixado ainda precisa transferir');
+  // Ele não é líder: a RPC de produção promove o novo dono com o JWT dele, e o guarda só
+  // deixa um líder promover. Só os líderes (a Lia) aparecem; a Vera (editora), não.
+  check(xavier.teams[0].candidates.map((c) => [c.full_name, c.role]), [['Lia', 'admin']], 'dono rebaixado só passa para um líder');
   check((await preview(user.vera)).teams.map((t) => t.action), ['leave']);
   check(await preview(user.semperfil), { has_profile: false, can_delete: true, teams: [],
     personal: { chat_messages: 0, support_tickets: 0, draft_songs: 0 } }, 'sem perfil');
@@ -391,6 +399,17 @@ try {
   // ----- bloqueios -----
   await fails(service('SELECT public.delete_account_data($1) AS r', [user.lia]), '55000', 'único líder bloqueado');
   await fails(service('SELECT public.delete_account_data($1) AS r', [user.xavier]), '55000', 'dono bloqueado');
+  // Escolher quem não é líder (prévia velha, app antigo): o guarda recusa dentro da RPC (o app
+  // traduz o 42501 e recarrega a prévia) e nada muda.
+  await assert.rejects(transfer(user.xavier, team.b, prof.vera), (error) => {
+    assert.equal(error.code, '42501', error.message);
+    assert.match(error.message, /Só um líder pode promover/);
+    return true;
+  });
+  checks++;
+  check(await one(`SELECT t.owner_id, m.role FROM public.teams t JOIN public.team_members m ON m.team_id = t.id
+    AND m.profile_id = $2 WHERE t.id = $1`, [team.b, prof.vera]), { owner_id: prof.xavier, role: 'editor' }, 'recusa não muda nada');
+  check((await ownershipAudit()).length, 1, 'recusa do guarda não registra');
   check(await count('SELECT count(*) AS n FROM public.profiles WHERE id IN ($1, $2)', [prof.lia, prof.xavier]), 2, 'nada apagado');
   check(await count('SELECT count(*) AS n FROM public.account_deletion_storage_queue'), 0, 'nenhum arquivo na fila');
   // A FK sozinha também protege a equipe: apagar o usuário dono direto no auth falha.
@@ -511,8 +530,20 @@ try {
   check((await service('SELECT public.delete_account_data($1) AS r', [user.lia])).left_team_count, 1);
   // Olga, depois de transferir, sai e a equipe A continua com o Mario.
   check((await service('SELECT public.delete_account_data($1) AS r', [user.olga])).deleted_team_ids, []);
-  await db.query('DELETE FROM auth.users WHERE id IN ($1, $2)', [user.lia, user.olga]);
+  // Xavier (dono rebaixado) passa a equipe B para a Vera, que agora é líder: o guarda
+  // não tem o que recusar (ninguém é promovido) e a troca de dono vale.
+  check((await preview(user.xavier)).teams.map((t) => [t.action, t.candidates.map((c) => c.full_name)]),
+    [['transfer_required', ['Vera']]], 'Xavier: só a Vera (líder) pode assumir');
+  check(await transfer(user.xavier, team.b, prof.vera), { ok: true }, 'dono rebaixado transfere para uma líder');
+  check((await ownershipAudit()).slice(1), [{ actor_user_id: user.xavier, entity_id: team.b,
+    details: { from_profile_id: prof.xavier, to_profile_id: prof.vera, by_platform: false } }], 'um registro, do Xavier');
+  check((await ownershipNotices()).slice(1).map((n) => [n.profile_id, n.sender_profile_id, n.body]), [[prof.vera, prof.xavier,
+    'A propriedade de Louvor Jovem foi transferida para você, que agora também é líder.']], 'um aviso, para a Vera');
+  check((await preview(user.xavier)).teams.map((t) => t.action), ['leave'], 'Xavier já pode sair');
+  check((await service('SELECT public.delete_account_data($1) AS r', [user.xavier])).left_team_count, 1);
+  await db.query('DELETE FROM auth.users WHERE id IN ($1, $2, $3)', [user.lia, user.olga, user.xavier]);
   check(await one('SELECT owner_id FROM public.teams WHERE id = $1', [team.a]), { owner_id: prof.mario });
+  check(await one('SELECT owner_id FROM public.teams WHERE id = $1', [team.b]), { owner_id: prof.vera });
   check((await one('SELECT created_by FROM public.songs WHERE id = $1', [song.aByOlga])).created_by, null);
   check(await count('SELECT count(*) AS n FROM public.teams'), 2, 'equipes A e B continuam');
 
@@ -579,6 +610,61 @@ try {
   check(await blocking(), [], `nenhuma FK trava a exclusão depois de ${later.length ? later.join(', ') : 'esta migração'}`);
   check(await transferDef(), productionTransfer, 'depois de todas as migrações, transfer_team_ownership continua a de produção');
 
+  // ----- dono que deixou de ser líder antes do guarda (dados antigos de produção) -----
+  // Dani é dona da equipe D, mas foi rebaixada a membro; Rui é dono da equipe R, mas foi
+  // tirado de team_members. Nenhuma das duas equipes tem outro líder. (Escritas como
+  // superusuário: hoje o guarda de 20261003120000 não deixaria.)
+  const legacyOwner = {
+    dani: { user: id(1, 70), prof: id(2, 70) }, fabi: { user: id(1, 71), prof: id(2, 71) },
+    rui: { user: id(1, 72), prof: id(2, 72) }, gabi: { user: id(1, 73), prof: id(2, 73) },
+    ivo: { user: id(1, 74), prof: id(2, 74) }, gil: { user: id(1, 75), prof: id(2, 75) },
+  };
+  const L = legacyOwner;
+  const teamD = id(3, 70);
+  const teamR = id(3, 71);
+  await db.exec(`
+    INSERT INTO auth.users(id, email) VALUES ${Object.entries(L).map(([n, p]) => `('${p.user}', '${n}@example.test')`).join(', ')};
+    INSERT INTO public.profiles(id, user_id, full_name) VALUES
+      ${Object.entries(L).map(([n, p]) => `('${p.prof}', '${p.user}', '${n[0].toUpperCase()}${n.slice(1)}')`).join(', ')};
+    INSERT INTO public.teams(id, name, owner_id) VALUES ('${teamD}', 'Banda D', '${L.dani.prof}'), ('${teamR}', 'Coral R', '${L.rui.prof}');
+    INSERT INTO public.team_members(team_id, profile_id, role) VALUES
+      ('${teamD}', '${L.dani.prof}', 'admin'), ('${teamD}', '${L.fabi.prof}', 'viewer'), ('${teamR}', '${L.gabi.prof}', 'viewer');
+    UPDATE public.team_members SET role = 'viewer' WHERE team_id = '${teamD}' AND profile_id = '${L.dani.prof}';
+    INSERT INTO public.platform_admins(user_id) VALUES ('${L.gil.user}');
+  `);
+  const legacyRows = async (uid) => (await preview(uid)).teams.map((t) => [t.team_name, t.role, t.action, t.candidates.length]);
+  check([await legacyRows(L.dani.user), await legacyRows(L.rui.user)],
+    [[['Banda D', 'viewer', 'support_required', 0]], [['Coral R', null, 'support_required', 0]]],
+    'dono sem liderança, sem outro líder: só o suporte resolve (sem candidatos que o guarda recusaria)');
+  check((await preview(L.dani.user)).can_delete, false);
+  await fails(transfer(L.dani.user, teamD, L.fabi.prof), '42501', 'Dani não promove a Fabi (o guarda recusa)');
+  await fails(service('SELECT public.delete_account_data($1) AS r', [L.dani.user]), '55000', 'Dani bloqueada');
+  await fails(service('SELECT public.delete_account_data($1) AS r', [L.rui.user]), '55000', 'Rui bloqueado');
+
+  // Com um líder na equipe R, o Rui passa a equipe para ele (só ele aparece) e sai.
+  await db.exec(`INSERT INTO public.team_members(team_id, profile_id, role) VALUES ('${teamR}', '${L.ivo.prof}', 'admin')`);
+  check((await preview(L.rui.user)).teams.map((t) => [t.action, t.candidates.map((c) => [c.full_name, c.role])]),
+    [['transfer_required', [['Ivo', 'admin']]]], 'Rui: só o líder pode assumir');
+  check(await transfer(L.rui.user, teamR, L.ivo.prof), { ok: true }, 'dono fora de team_members transfere para um líder');
+  check((await preview(L.rui.user)).teams, [], 'Rui não tem mais equipe');
+  check((await service('SELECT public.delete_account_data($1) AS r', [L.rui.user])).deleted, true);
+
+  // A equipe D sai pelo suporte: "Tornar responsável" (edge function, service_role, com o
+  // administrador da plataforma como ator). Um registro e um aviso, da plataforma.
+  const fabiMember = (await one('SELECT id FROM public.team_members WHERE team_id = $1 AND profile_id = $2', [teamD, L.fabi.prof])).id;
+  const auditsBefore = (await ownershipAudit()).length;
+  check(await service('SELECT public.platform_transfer_team_ownership($1, $2, $3) AS r', [L.gil.user, teamD, fabiMember]),
+    { team_id: teamD, owner_profile_id: L.fabi.prof }, 'o suporte passa a equipe D para a Fabi');
+  check((await ownershipAudit()).slice(auditsBefore), [{ actor_user_id: L.gil.user, entity_id: teamD,
+    details: { from_profile_id: L.dani.prof, to_profile_id: L.fabi.prof, by_platform: true } }], 'um registro, da plataforma');
+  check((await ownershipNotices()).filter((n) => n.team_id === teamD).map((n) => [n.profile_id, n.sender_profile_id, n.body]),
+    [[L.fabi.prof, null, 'A equipe de suporte do +Louvor transferiu a propriedade de Banda D para você, que agora também é líder.']],
+    'um aviso, para a Fabi');
+  check(await legacyRows(L.dani.user), [['Banda D', 'viewer', 'leave', 0]], 'Dani já pode sair');
+  check((await service('SELECT public.delete_account_data($1) AS r', [L.dani.user])).left_team_count, 1);
+  check(await rows(`SELECT id, owner_id FROM public.teams WHERE id IN ($1, $2) ORDER BY name`, [teamD, teamR]),
+    [{ id: teamD, owner_id: L.fabi.prof }, { id: teamR, owner_id: L.ivo.prof }], 'as duas equipes continuam, com os novos donos');
+
   // Exclusão completa depois de todas as migrações: equipe só dela com Asafe, culto futuro, escala e rascunho.
   const nina = { user: id(1, 50), prof: id(2, 50), team: id(3, 50), culto: id(5, 50), song: id(4, 50) };
   await db.exec(`
@@ -602,7 +688,7 @@ try {
     'rascunho e equipe da Nina saíram');
 
   console.log(`${checks} PostgreSQL checks passed: FKs, falha da migração, NOT VALID, idempotência, prévia, transferência pela RPC de produção `
-    + '(com o guarda de 20261003120000, registro e aviso uma vez), bloqueios, '
+    + '(com o guarda de 20261003120000, registro e aviso uma vez), dono que deixou de ser líder (só líderes ou o suporte), bloqueios, '
     + 'arquivos depois do banco, Asafe ativo, rascunhos (e os já usados pela equipe), caminhos forjados, último membro que não é dono, '
     + 'exclusão atômica, retry, migrações posteriores e permissões.');
 } finally {

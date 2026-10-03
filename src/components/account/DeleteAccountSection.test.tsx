@@ -185,6 +185,52 @@ describe("DeleteAccountSection", () => {
     expect(within(dialog).getByLabelText(/Para confirmar, digite/)).toBeDisabled();
   });
 
+  it("offers only leaders to an owner who is no longer a leader and explains the guard refusal", async () => {
+    let previews = 0;
+    const leaders = [{ profile_id: "p-lia", full_name: "Lia", role: "admin" }];
+    mocks.rpc.mockImplementation(async (fn: string) => {
+      // Prévia velha (oferecia a Mel, que não é líder): o guarda de 20261003120000 recusa com 42501.
+      if (fn === "transfer_team_ownership") {
+        return { data: null, error: { code: "42501", message: "Só um líder pode promover, rebaixar ou editar um líder." } };
+      }
+      previews++;
+      return { data: preview([team({ role: "viewer", is_owner: true, action: "transfer_required",
+        candidates: previews === 1 ? [...leaders, candidates[1]] : leaders })], false), error: null };
+    });
+    renderSection();
+    const dialog = await open();
+
+    const row = (await within(dialog).findByText("Louvor Sede")).closest("li")!;
+    expect(row).toHaveTextContent("Você é dono(a) desta equipe, mas não é mais líder dela: escolha um dos líderes para assumir.");
+    fireEvent.change(within(dialog).getByLabelText("Novo dono(a)"), { target: { value: "p-mel" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Transferir" }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Não foi possível transferir",
+      description: expect.stringMatching(/^Você não é mais líder desta equipe, então só pode passá-la para alguém que já é líder/),
+      variant: "destructive",
+    })));
+    await waitFor(() => expect(previews).toBe(2));
+    await waitFor(() => expect(within(within(dialog).getByLabelText("Novo dono(a)")).getAllByRole("option").map((o) => o.textContent))
+      .toEqual(["Escolha alguém", "Lia · Líder"]));
+    expect(within(dialog).getByLabelText(/Para confirmar, digite/)).toBeDisabled();
+  });
+
+  it("sends an owner without leadership and without other leaders to support", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: preview([team({ role: "viewer", is_owner: true, action: "support_required" })], false), error: null,
+    });
+    renderSection();
+    const dialog = await open();
+
+    const row = (await within(dialog).findByText("Louvor Sede")).closest("li")!;
+    expect(row).toHaveTextContent("Fale com o suporte");
+    expect(row).toHaveTextContent("a equipe não tem outro líder para assumir");
+    expect(within(row).getByRole("link", { name: "Falar com o suporte" })).toHaveAttribute("href", "/app/sugestoes");
+    expect(within(row).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(dialog).getByText(/Resolva a equipe indicada acima/)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/Para confirmar, digite/)).toBeDisabled();
+  });
+
   it("lets the only leader promote someone through the members update", async () => {
     let previews = 0;
     mocks.rpc.mockImplementation(async () => {

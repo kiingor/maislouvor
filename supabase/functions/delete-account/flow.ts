@@ -14,7 +14,17 @@ export const DELETE_CONFIRMATION = "EXCLUIR";
 /** Remoções por chamada à Storage API. */
 export const STORAGE_BATCH_SIZE = 100;
 
-export type DeletionTeamAction = "delete_team" | "leave" | "transfer_required" | "promote_required";
+/**
+ * O que acontece com cada equipe. transfer_required / promote_required: a pessoa
+ * resolve no app (transfere a propriedade ou promove um líder). support_required:
+ * dono que não é mais líder, numa equipe sem outro líder — o guarda de
+ * 20261003120000 não o deixa promover ninguém, então só a plataforma passa a equipe.
+ */
+export type DeletionTeamAction = "delete_team" | "leave" | "transfer_required" | "promote_required" | "support_required";
+
+/** Ações que impedem a exclusão até serem resolvidas. */
+export const BLOCKING_ACTIONS: readonly DeletionTeamAction[] = ["transfer_required", "promote_required", "support_required"];
+export const isBlockingAction = (action: DeletionTeamAction) => BLOCKING_ACTIONS.includes(action);
 
 export interface DeletionCandidate {
   profile_id: string;
@@ -70,7 +80,7 @@ export interface DeletionOutcome {
 }
 
 export const BLOCKED_MESSAGE =
-  "Antes de excluir a conta, transfira a propriedade ou passe a liderança das equipes indicadas.";
+  "Antes de excluir a conta, resolva as equipes indicadas: transfira a propriedade, passe a liderança ou fale com o suporte.";
 
 /** Confirmação vinda do corpo da requisição: { confirmation: "EXCLUIR" } (sem diferenciar maiúsculas). */
 export function isDeletionConfirmed(body: unknown): boolean {
@@ -149,7 +159,7 @@ export function isBlockedError(error: unknown): boolean {
 
 const blockingTeams = (preview: DeletionPreview | null) =>
   (preview?.teams ?? [])
-    .filter((team) => team.action === "transfer_required" || team.action === "promote_required")
+    .filter((team) => isBlockingAction(team.action))
     .map(({ team_id, team_name, action }) => ({ team_id, team_name, action }));
 
 const failure = (status: number, error: string, message: string, extra: Record<string, unknown> = {}): DeletionOutcome => ({

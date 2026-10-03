@@ -109,6 +109,17 @@ transferência). Sem JWT de usuário (service_role) os guardas não se aplicam.
   da equipe, e só outro líder da equipe pode removê-lo. Para afastar a pessoa, suspenda a
   conta."), `list_chat_reports` devolve `reported_is_leader` e o painel não oferece
   "Remover da equipe" nesse caso (ver [Limitações](#limitações-conhecidas)).
+- **Dono que deixou de ser líder antes do guarda** (média): em produção pode haver dono
+  rebaixado a membro, ou tirado de `team_members`, de antes da `0`. Para ele a
+  `transfer_team_ownership` de produção falha ao promover o novo dono (o guarda só deixa
+  um líder promover; vem como erro `42501`, não como `{ok:false}`). Agora a prévia da
+  exclusão só oferece **líderes** para esse dono assumir (para um líder a transferência
+  passa: ninguém é promovido) e, quando a equipe não tem outro líder, mostra **Fale com o
+  suporte** (`support_required`, também bloqueia `delete_account_data`), com o link para
+  Sugestões e suporte; a plataforma resolve com "Tornar responsável". O app traduz o
+  `42501` do guarda ("Você não é mais líder desta equipe…") e recarrega a prévia. A
+  migração **não** devolve a liderança a esses donos (seria dar acesso de líder em
+  produção sem ninguém pedir).
 - Conferido contra os guardas e sem mudança: promover o novo líder na exclusão de conta
   (quem promove é o único líder), remover um membro comum pela denúncia (liderança ou
   plataforma), consentimento do Asafe e termos (não mexem em `team_members`/`teams`),
@@ -122,7 +133,7 @@ Aplicar **nesta ordem**, cada uma numa transação, com o papel dono do schema `
 | # | Arquivo | O que faz | Antes / depois |
 | --- | --- | --- | --- |
 | 0 | `supabase/migrations/20261003120000_team_member_privilege_guard.sql` | **Já aplicada em produção** (outra sessão; integrada aqui em `8b71a62`). **Não reaplicar nem alterar.** Traz `transfer_team_ownership` e os guardas de líder e dono. | Antes da 1: `SELECT pg_get_functiondef('public.transfer_team_ownership(uuid,uuid)'::regprocedure) LIKE '%app.transfer_team_ownership%';` deve dar `true` (repetir depois de todas). |
-| 1 | `20261003130000_account_deletion.sql` | FKs para a exclusão (`teams.owner_id` vira RESTRICT; `created_by` & cia. viram SET NULL), fila de arquivos, prévia, `delete_account_data` e o gatilho `teams_owner_change_effects` (histórico + aviso ao novo dono em toda troca de dono). **Não toca em `transfer_team_ownership`** (nem a função, nem as permissões: são da 0). **Falha de propósito** se achar uma FK de produção que não sabe decidir. Usa `lock_timeout = 3s` (se der timeout, rodar de novo). | Antes: rodar `supabase/setup/account-deletion-preflight.sql` (só leitura) e decidir o que aparecer como "FAZ A MIGRAÇÃO FALHAR" (ex.: `stem_jobs`, `yt_import_jobs`). Ler os NOTICE/WARNING. Se uma versão anterior desta migração rodou em algum banco de teste, reaplique a 0 nele (aquela versão trocava a função). |
+| 1 | `20261003130000_account_deletion.sql` | FKs para a exclusão (`teams.owner_id` vira RESTRICT; `created_by` & cia. viram SET NULL), fila de arquivos, prévia (dono que não é líder: só líderes assumem, ou `support_required`), `delete_account_data` e o gatilho `teams_owner_change_effects` (histórico + aviso ao novo dono em toda troca de dono). **Não toca em `transfer_team_ownership`** (nem a função, nem as permissões: são da 0). **Falha de propósito** se achar uma FK de produção que não sabe decidir. Usa `lock_timeout = 3s` (se der timeout, rodar de novo). | Antes: rodar `supabase/setup/account-deletion-preflight.sql` (só leitura) e decidir o que aparecer como "FAZ A MIGRAÇÃO FALHAR" (ex.: `stem_jobs`, `yt_import_jobs`). Ler os NOTICE/WARNING. Se uma versão anterior desta migração rodou em algum banco de teste, reaplique a 0 nele (aquela versão trocava a função). |
 | 2 | `20261003131000_terms_acceptance.sql` | `profiles.terms_accepted_at/terms_version/privacy_version`, `accept_terms()`, `legal_current_versions()` e o gatilho que impede forjar o aceite. | — |
 | 3 | `20261003132000_chat_moderation.sql` | Termos bloqueados, `chat_reports`, `user_blocks`, RPCs, gatilhos do filtro (mensagens e avisos), da prova e do caminho do anexo, schema `private` com as funções das 5 policies em `storage.objects` (bucket `chat`), push para a plataforma, suspensão de contas (`platform_account_suspensions`) e transferência pela plataforma (`platform_transfer_team_ownership(p_actor_user_id, p_team_id, p_new_owner_member_id)`, só service_role, pela edge function). `moderate_chat_report` recusa, com mensagem, a plataforma remover um líder (o guarda da 0 recusaria). Usa `lock_timeout = 3s`. | Depende de `20260930010000_platform_admin_and_support.sql` (já no ar), da 0 e da 1 (o gatilho registra e avisa a transferência pela plataforma). Conferir que `private` **não** está em `PGRST_DB_SCHEMAS` do PostgREST (padrão: `public,storage,graphql_public`). |
 | 4 | `20261003133000_assistant_ai_consent.sql` | `assistant_ai_consents`, `assistant_ai_legacy_members` (foto única de quem já usava), `assistant_ai_opt_outs`, prazo das tolerâncias (30 dias), `assistant_groups.ai_disclosure_version`, RPCs de consentimento e as funções do Asafe com o opt-in (escala sem o nome de quem não permite). Usa `lock_timeout = 3s`: se der timeout, rodar de novo. | Logo depois: `SELECT assistant_team_consent_state(team_id) FROM assistant_groups WHERE active;` deve dar `pending` nas equipes que já usam. **Obrigatório:** ajustar o prazo (abaixo). |
@@ -325,6 +336,7 @@ Celular (Android e navegador estreito), claro e escuro, com contas de teste:
 - [ ] Dono com membros: "Transfira a propriedade" → escolher, Transferir → liberado; a pessoa vira dona e líder e recebe notificação (uma só); o painel mostra "Propriedade de equipe transferida" uma vez.
 - [ ] Transferir para alguém que saiu da equipe enquanto a folha estava aberta: aviso "A pessoa escolhida não faz mais parte da equipe…" e o resumo recarrega.
 - [ ] Único líder (não dono): "Escolha um novo líder" → Promover.
+- [ ] Dono rebaixado a membro (preparar com SQL sem JWT) numa equipe com outro líder: a lista "Novo dono(a)" só tem líderes; Transferir → liberado. Sem outro líder: "Fale com o suporte" com o link para Sugestões e suporte, confirmação travada; depois de "Tornar responsável" no painel, a pessoa só sai.
 - [ ] `/excluir-conta` → "Entrar e excluir minha conta" → login → cai na seção de exclusão (também para quem ainda não aceitou os termos).
 - [ ] Mensagem com foto denunciada e conta do autor excluída: a denúncia continua com a cópia e o anexo; ao resolver, o anexo some.
 - [ ] Pedido de aceite → **Excluir minha conta** (e `/excluir-conta` → Entrar) abre a folha de exclusão direto; ao fechar, a seção fica à vista.
@@ -416,16 +428,20 @@ Como ficou (`src/lib/storeBuild.ts`, decidido **na compilação**):
 Rodado em `/Users/filipecardone/Projetos/Cofre/MaisLouvor-lojas` depois da integração com
 a trava de líder e dono (`20261003120000`):
 
-- `npx vitest run`: 34 arquivos, 308 testes, todos passando (base: 20/165).
+- `npx vitest run`: 34 arquivos, 310 testes, todos passando (base: 20/165).
 - `npx tsc --noEmit -p tsconfig.app.json`: 9 erros, os mesmos 9 de antes.
 - PGlite (`PGLITE_MODULE=…/pglite/dist/index.js node supabase/tests/<arquivo>.mjs`): todas
   as suítes passam, com a `20261003120000` aplicada **antes** da `130000`, como na
-  produção — `account_deletion` 146 (transferência pela RPC de produção, um registro e um
-  aviso, a função de produção intacta depois de todas as migrações), `chat_moderation` 239
-  (transferência pela plataforma só com a service_role e um administrador, guardas
-  recusando o caminho antigo, líder que só a equipe remove), `lojas_all_migrations` 112
-  (todas as migrações de 03/10 juntas, em ordem, duas vezes, sobre o recorte de
-  produção), `review_demo_seed` 89, `team_member_privileges` 73, `assistant_ai_consent`
+  produção — `account_deletion` 174 (transferência pela RPC de produção, um registro e um
+  aviso, a função de produção intacta depois de todas as migrações, dono que deixou de ser
+  líder: só líderes assumem, `42501` do guarda, `support_required` resolvido pela
+  plataforma), `chat_moderation` 239 (transferência pela plataforma só com a service_role e
+  um administrador, guardas recusando o caminho antigo, líder que só a equipe remove),
+  `lojas_all_migrations` 124 (todas as migrações de 03/10 juntas, em ordem, duas vezes,
+  sobre o recorte de produção; foto do que a `0` deixa — definição, dono, permissões e
+  configuração de `transfer_team_ownership`, dos guardas e de `has_team_role`, e os dois
+  gatilhos — igual depois de cada rodada; nenhuma linha de código das migrações da
+  conformidade cita os objetos da `0`, nem em GRANT/REVOKE em lista), `review_demo_seed` 89, `team_member_privileges` 73, `assistant_ai_consent`
   185 e as demais como antes. `whatsapp_notifications_schema.mjs` só roda com um dump de
   produção (como antes).
 - `node --test scripts/review-demo/seed.test.mjs`: 22 testes passando.
@@ -468,3 +484,15 @@ a trava de líder e dono (`20261003120000`):
   set_config('app.ownership_change_actor', '<auth.users.id>', true);`.
 - O antigo dono continua líder depois de qualquer transferência (regra da
   `transfer_team_ownership` de produção, seguida também pela plataforma).
+- **Dono que não é mais líder, numa equipe sem outro líder, não exclui a conta sozinho.**
+  São dados de antes do guarda de `20261003120000` (alguém rebaixou o dono ou o tirou de
+  `team_members`). A `transfer_team_ownership` de produção promove o novo dono com o JWT
+  de quem transfere, e o guarda só deixa um líder promover; a migração 1 não devolve a
+  liderança a ninguém. A folha de exclusão mostra **Fale com o suporte** (com o link para
+  Sugestões e suporte) e trava a confirmação. Caminho: o suporte abre a conta da equipe
+  no painel (Contas › equipe › Membros) e usa **Tornar responsável** com a pessoa que a
+  equipe indicar; depois disso a pessoa só sai da equipe e exclui a conta pelo app. Para
+  achar esses casos antes:
+  `SELECT t.id, t.name FROM public.teams t LEFT JOIN public.team_members m ON m.team_id = t.id
+  AND m.profile_id = t.owner_id WHERE m.role IS DISTINCT FROM 'admin';`
+  (com outro líder na equipe, o dono resolve sozinho: só líderes aparecem para assumir).

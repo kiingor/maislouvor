@@ -66,7 +66,12 @@
 --         membro a líder antes (o app usa o mesmo update de papel da aba Membros);
 --       * dono e único membro -> a equipe é excluída junto com a conta;
 --       * último membro sem ser o dono (o dono saiu de team_members) -> só sai:
---         a equipe fica, vazia, com o dono, que decide o que fazer com ela.
+--         a equipe fica, vazia, com o dono, que decide o que fazer com ela;
+--       * dono que já não é líder (rebaixado ou tirado de team_members antes do
+--         guarda de 20261003120000) -> passa só para quem já é líder (a
+--         transferência promove o novo dono com o JWT de quem chama, e o guarda
+--         só deixa um líder promover); sem outro líder, só o suporte resolve
+--         (support_required: a plataforma usa "Tornar responsável").
 --
 -- FKs que travariam a exclusão: a migração FALHA (em vez de só avisar) quando
 -- encontra uma que não sabe decidir sozinha. Depois de TODAS as migrações,
@@ -261,7 +266,8 @@ GRANT SELECT, DELETE ON public.account_deletion_storage_queue TO service_role;
 -- ----------------------------------------------------------------------------
 -- 2) Prévia: o que acontece com cada equipe da pessoa.
 --    action: delete_team (dona e único membro) | leave | transfer_required (dono
---    com outros membros) | promote_required (único líder, sem ser dono).
+--    com outros membros) | promote_required (único líder, sem ser dono) |
+--    support_required (dono que não é líder, numa equipe sem outro líder).
 -- ----------------------------------------------------------------------------
 
 -- Rascunhos de música da pessoa. is_draft vem do cadastro de músicas
@@ -309,9 +315,13 @@ BEGIN
   ), classified AS (
     -- Só o dono apaga a equipe junto. Último membro que não é o dono (um líder
     -- tirou o dono de team_members) só sai: a equipe continua de quem é dona.
+    -- Dono que já não é líder: transfer_team_ownership (20261003120000) promove o
+    -- novo dono com o JWT dele, e o guarda só deixa um líder promover. Ele passa a
+    -- equipe só para quem já é líder; sem outro líder, só o suporte resolve.
     SELECT m.*, s.others, CASE
         WHEN s.others = 0 AND m.is_owner THEN 'delete_team'
         WHEN s.others = 0 THEN 'leave'
+        WHEN m.is_owner AND m.my_role IS DISTINCT FROM 'admin' AND s.other_admins = 0 THEN 'support_required'
         WHEN m.is_owner THEN 'transfer_required'
         WHEN m.my_role = 'admin' AND s.other_admins = 0 THEN 'promote_required'
         ELSE 'leave' END AS action
@@ -325,19 +335,21 @@ BEGIN
       'team_id', c.id, 'team_name', c.name, 'role', c.my_role, 'is_owner', c.is_owner,
       'member_count', c.others + CASE WHEN c.my_role IS NULL THEN 0 ELSE 1 END,
       'action', c.action,
-      -- Quem pode assumir: líderes primeiro. Só para as equipes que bloqueiam.
+      -- Quem pode assumir: líderes primeiro. Só para as equipes que bloqueiam e
+      -- que a própria pessoa resolve; o dono que não é líder só vê os líderes.
       'candidates', CASE WHEN c.action IN ('transfer_required', 'promote_required') THEN COALESCE((
         SELECT jsonb_agg(jsonb_build_object('profile_id', o.profile_id, 'full_name', p.full_name, 'role', o.role)
           ORDER BY CASE o.role WHEN 'admin' THEN 0 WHEN 'editor' THEN 1 ELSE 2 END, lower(COALESCE(p.full_name, '')), o.profile_id)
         FROM public.team_members o JOIN public.profiles p ON p.id = o.profile_id
-        WHERE o.team_id = c.id AND o.profile_id <> v_profile), '[]'::jsonb) ELSE '[]'::jsonb END
-    ) ORDER BY (c.action IN ('transfer_required', 'promote_required')) DESC, lower(c.name), c.id), '[]'::jsonb)
+        WHERE o.team_id = c.id AND o.profile_id <> v_profile
+          AND (o.role = 'admin' OR NOT c.is_owner OR c.my_role = 'admin')), '[]'::jsonb) ELSE '[]'::jsonb END
+    ) ORDER BY (c.action IN ('transfer_required', 'promote_required', 'support_required')) DESC, lower(c.name), c.id), '[]'::jsonb)
   INTO v_teams FROM classified c;
 
   RETURN jsonb_build_object(
     'has_profile', true,
     'can_delete', NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_teams) e
-      WHERE e->>'action' IN ('transfer_required', 'promote_required')),
+      WHERE e->>'action' IN ('transfer_required', 'promote_required', 'support_required')),
     'teams', v_teams,
     'personal', jsonb_build_object(
       'chat_messages', (SELECT count(*) FROM public.messages WHERE sender_profile_id = v_profile),

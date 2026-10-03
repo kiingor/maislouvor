@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Loader2, Trash2, UserRoundCheck, LogOut, Crown } from "lucide-react";
+import { AlertTriangle, Loader2, Trash2, UserRoundCheck, LogOut, Crown, LifeBuoy } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
@@ -16,6 +16,7 @@ import {
   DELETE_CONFIRMATION,
   clearLocalAccountData,
   fetchDeletionPreview,
+  isBlockingAction,
   isConfirmationTyped,
   promoteTeamLeader,
   requestAccountDeletion,
@@ -31,6 +32,9 @@ const GROUP_FOOTER = "mx-4 mt-1.5 text-footnote text-muted-foreground";
 
 export const DELETION_PREVIEW_KEY = ["account-deletion-preview"];
 
+/** Sugestões e suporte (tickets): a plataforma passa a equipe quando a pessoa não consegue. */
+const SUPPORT_TICKETS_PATH = "/app/sugestoes";
+
 const ROLE_LABELS = { admin: "Líder", editor: "Editor", viewer: "Membro" } as const;
 
 const STATUS: Record<DeletionTeam["action"], { label: string; icon: LucideIcon; tone: string }> = {
@@ -38,6 +42,7 @@ const STATUS: Record<DeletionTeam["action"], { label: string; icon: LucideIcon; 
   leave: { label: "Você sai da equipe", icon: LogOut, tone: "text-muted-foreground" },
   transfer_required: { label: "Transfira a propriedade", icon: Crown, tone: "text-ios-orange" },
   promote_required: { label: "Escolha um novo líder", icon: UserRoundCheck, tone: "text-ios-orange" },
+  support_required: { label: "Fale com o suporte", icon: LifeBuoy, tone: "text-ios-orange" },
 };
 
 const HELP: Record<DeletionTeam["action"], string> = {
@@ -45,7 +50,15 @@ const HELP: Record<DeletionTeam["action"], string> = {
   leave: "O que você criou continua com a equipe, sem o seu nome.",
   transfer_required: "Você é dono(a) desta equipe. Escolha quem assume; a pessoa também vira líder.",
   promote_required: "Você é o único líder. Promova alguém para a equipe não ficar sem liderança.",
+  support_required:
+    "Você é dono(a) desta equipe, mas não é mais líder dela, e a equipe não tem outro líder para assumir. Peça ao suporte para passar a equipe a outra pessoa; depois, volte aqui.",
 };
+
+/** Dono que já não é líder só passa a equipe para um líder (o banco não o deixa promover ninguém). */
+const helpFor = (team: DeletionTeam) =>
+  team.action === "transfer_required" && team.role !== "admin"
+    ? "Você é dono(a) desta equipe, mas não é mais líder dela: escolha um dos líderes para assumir."
+    : HELP[team.action];
 
 /** Equipe que bloqueia a exclusão: escolher quem assume e resolver aqui mesmo. */
 function ResolveTeam({ team, onResolved }: { team: DeletionTeam; onResolved: () => Promise<void> }) {
@@ -73,7 +86,7 @@ function ResolveTeam({ team, onResolved }: { team: DeletionTeam; onResolved: () 
         description: error instanceof Error ? error.message : String(error),
         variant: "destructive",
       });
-      // Recusa do banco (outro dono, pessoa fora da equipe): a prévia está velha.
+      // Recusa do banco (outro dono, pessoa fora da equipe, sem liderança): a prévia está velha.
       if (error instanceof TeamOwnershipTransferRefused) void onResolved().catch(() => undefined);
     } finally {
       setSaving(false);
@@ -145,7 +158,7 @@ function DeleteAccountDialog({ open, onOpenChange, returnFocusRef }: {
   const data = preview.data;
   const canDelete = !!data?.can_delete;
   const confirmed = isConfirmationTyped(typed);
-  const blocking = data?.teams.filter((t) => t.action === "transfer_required" || t.action === "promote_required") ?? [];
+  const blocking = data?.teams.filter((t) => isBlockingAction(t.action)) ?? [];
 
   const handleDelete = async () => {
     if (!canDelete || !confirmed || deleting) return;
@@ -213,9 +226,14 @@ function DeleteAccountDialog({ open, onOpenChange, returnFocusRef }: {
                             {status.label}
                           </span>
                         </div>
-                        <p className="mt-0.5 text-footnote text-muted-foreground">{HELP[team.action]}</p>
+                        <p className="mt-0.5 text-footnote text-muted-foreground">{helpFor(team)}</p>
                         {(team.action === "transfer_required" || team.action === "promote_required") && (
                           <ResolveTeam team={team} onResolved={refreshAfterResolve} />
+                        )}
+                        {team.action === "support_required" && (
+                          <Link to={SUPPORT_TICKETS_PATH} className="mt-2 inline-block text-subhead font-medium text-primary">
+                            Falar com o suporte
+                          </Link>
                         )}
                       </li>
                     );

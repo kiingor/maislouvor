@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  BLOCKED_MESSAGE,
   isCallerAlreadyDeleted,
   isDeletionConfirmed,
   isMissingUserError,
@@ -16,6 +17,7 @@ import {
   requestAccountDeletion,
   TeamOwnershipTransferRefused,
   transferTeamOwnership,
+  TRANSFER_NOT_LEADER_MESSAGE,
   TRANSFER_OWNERSHIP_ERRORS,
 } from "./accountDeletion";
 import { safeAppRedirect } from "./authRedirect";
@@ -107,15 +109,21 @@ describe("delete-account flow", () => {
         teams: [
           { team_id: "a", team_name: "Louvor Sede", role: "admin", is_owner: true, member_count: 3, action: "transfer_required", candidates: [] },
           { team_id: "c", team_name: "Solo", role: "admin", is_owner: true, member_count: 1, action: "delete_team", candidates: [] },
+          // Dono rebaixado antes do guarda, sem outro líder: só o suporte resolve.
+          { team_id: "j", team_name: "Jovens", role: "viewer", is_owner: true, member_count: 2, action: "support_required", candidates: [] },
         ],
       })),
     });
     const outcome = await runAccountDeletion("user-1", d);
     expect(outcome.status).toBe(409);
     expect(outcome.body).toMatchObject({
-      ok: false, error: "blocked",
-      teams: [{ team_id: "a", team_name: "Louvor Sede", action: "transfer_required" }],
+      ok: false, error: "blocked", message: BLOCKED_MESSAGE,
+      teams: [
+        { team_id: "a", team_name: "Louvor Sede", action: "transfer_required" },
+        { team_id: "j", team_name: "Jovens", action: "support_required" },
+      ],
     });
+    expect(BLOCKED_MESSAGE).toMatch(/fale com o suporte/);
     expect(calls).toEqual([]);
     expect(d.deleteData).not.toHaveBeenCalled();
     expect(d.removeStorage).not.toHaveBeenCalled();
@@ -235,6 +243,8 @@ describe("accountDeletion client helpers", () => {
     expect(parsed.personal).toEqual({ chat_messages: 4, support_tickets: 0, draft_songs: 0 });
     expect(parseDeletionPreview({ personal: { draft_songs: 2 } }).personal.draft_songs).toBe(2);
     expect(parseDeletionPreview(null)).toMatchObject({ has_profile: true, can_delete: false, teams: [] });
+    const support = parseDeletionPreview({ can_delete: true, teams: [{ team_id: "j", action: "support_required", is_owner: true, role: "viewer" }] });
+    expect([support.can_delete, support.teams[0].action], "support_required também bloqueia").toEqual([false, "support_required"]);
   });
 
   it("sends only the confirmation to the edge function", async () => {
@@ -280,12 +290,23 @@ describe("accountDeletion client helpers", () => {
       });
     }
 
-    // Falha de transporte continua como antes: a mensagem do cliente, sem virar recusa.
-    mocks.rpc.mockResolvedValue({ data: null, error: { message: "Failed to fetch" } });
-    const failed = await transferTeamOwnership("team-a", "p-mario").catch((e) => e);
-    expect(failed).toBeInstanceOf(Error);
-    expect(failed).not.toBeInstanceOf(TeamOwnershipTransferRefused);
-    expect(failed.message).toBe("Failed to fetch");
+    // Dono que já não é líder escolheu quem também não é: o guarda de líderes (42501) recusa
+    // a promoção dentro da RPC. Vira recusa (a folha recarrega a prévia, que só oferece líderes).
+    mocks.rpc.mockResolvedValue({ data: null, error: { code: "42501", message: "Só um líder pode promover, rebaixar ou editar um líder." } });
+    const guarded = await transferTeamOwnership("team-a", "p-mel").catch((e) => e);
+    expect(guarded).toBeInstanceOf(TeamOwnershipTransferRefused);
+    expect(guarded).toMatchObject({ code: "not_leader", message: TRANSFER_NOT_LEADER_MESSAGE });
+    expect(TRANSFER_NOT_LEADER_MESSAGE).toMatch(/fale com o suporte/);
+
+    // Falha de transporte continua como antes: a mensagem do cliente, sem virar recusa
+    // (também a falta de permissão na função, que tem o mesmo código).
+    for (const error of [{ message: "Failed to fetch" }, { code: "42501", message: "permission denied for function transfer_team_ownership" }]) {
+      mocks.rpc.mockResolvedValue({ data: null, error });
+      const failed = await transferTeamOwnership("team-a", "p-mario").catch((e) => e);
+      expect(failed).toBeInstanceOf(Error);
+      expect(failed).not.toBeInstanceOf(TeamOwnershipTransferRefused);
+      expect(failed.message).toBe(error.message);
+    }
   });
 
   it("only follows internal app paths after login", () => {

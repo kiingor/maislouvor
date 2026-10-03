@@ -4,6 +4,7 @@ import type { TransferTeamOwnershipError } from "@/integrations/supabase/account
 import { DELETE_ACCOUNT_ANCHOR, DELETE_ACCOUNT_SETTINGS_PATH } from "@/lib/legal";
 import {
   DELETE_CONFIRMATION,
+  isBlockingAction,
   isDeletionConfirmed,
   type DeletionCandidate,
   type DeletionPreview,
@@ -11,7 +12,7 @@ import {
   type DeletionTeamAction,
 } from "../../supabase/functions/delete-account/flow.ts";
 
-export { DELETE_CONFIRMATION, type DeletionCandidate, type DeletionPreview, type DeletionTeam, type DeletionTeamAction };
+export { DELETE_CONFIRMATION, isBlockingAction, type DeletionCandidate, type DeletionPreview, type DeletionTeam, type DeletionTeamAction };
 
 /* O e-mail para pedidos, os prazos (backups, resposta por e-mail) e os caminhos
    (/excluir-conta e a seção em Usuário › Meu usuário) ficam em src/lib/legal.ts,
@@ -20,7 +21,7 @@ export { DELETE_ACCOUNT_ANCHOR, DELETE_ACCOUNT_SETTINGS_PATH };
 
 export const isConfirmationTyped = (text: string) => isDeletionConfirmed({ confirmation: text });
 
-const ACTIONS: DeletionTeamAction[] = ["delete_team", "leave", "transfer_required", "promote_required"];
+const ACTIONS: DeletionTeamAction[] = ["delete_team", "leave", "transfer_required", "promote_required", "support_required"];
 const ROLES = ["admin", "editor", "viewer"] as const;
 const asRole = (value: unknown) => (ROLES as readonly unknown[]).includes(value) ? (value as DeletionCandidate["role"]) : null;
 
@@ -48,7 +49,7 @@ export function parseDeletionPreview(value: unknown): DeletionPreview {
       }),
     };
   });
-  const blocked = teams.some((t) => t.action === "transfer_required" || t.action === "promote_required");
+  const blocked = teams.some((t) => isBlockingAction(t.action));
   return {
     has_profile: raw.has_profile !== false,
     can_delete: raw.can_delete === true && !blocked,
@@ -73,25 +74,46 @@ export const TRANSFER_OWNERSHIP_ERRORS: Record<TransferTeamOwnershipError, strin
   not_member: "A pessoa escolhida não faz mais parte da equipe. Atualize a tela e escolha outra pessoa.",
 };
 
+/**
+ * O guarda de 20261003120000 recusou promover o novo dono (42501): quem transfere
+ * não é mais líder da equipe (rebaixado ou removido antes do guarda) e a pessoa
+ * escolhida também não é. A prévia, recarregada, só oferece líderes ou o suporte.
+ */
+export const TRANSFER_NOT_LEADER_MESSAGE =
+  "Você não é mais líder desta equipe, então só pode passá-la para alguém que já é líder. Escolha um líder ou, se não houver, fale com o suporte.";
+
+type TransferRefusalCode = TransferTeamOwnershipError | "not_leader" | "unknown";
+
 /** O banco recusou a transferência: a equipe mudou desde a prévia (vale recarregá-la). */
 export class TeamOwnershipTransferRefused extends Error {
-  constructor(readonly code: TransferTeamOwnershipError | "unknown") {
-    super(code === "unknown" ? "Não foi possível transferir a equipe agora. Tente novamente." : TRANSFER_OWNERSHIP_ERRORS[code]);
+  constructor(readonly code: TransferRefusalCode) {
+    super(
+      code === "unknown" ? "Não foi possível transferir a equipe agora. Tente novamente."
+        : code === "not_leader" ? TRANSFER_NOT_LEADER_MESSAGE
+        : TRANSFER_OWNERSHIP_ERRORS[code],
+    );
     this.name = "TeamOwnershipTransferRefused";
   }
 }
+
+/** Erro do PostgREST que é a recusa do guarda de líderes (e não falta de permissão na função). */
+const isLeaderGuardRefusal = (error: { code?: unknown; message?: unknown }) =>
+  error.code === "42501" && typeof error.message === "string" && /l[ií]der/i.test(error.message);
 
 /**
  * Dono passa a equipe para outro membro, que vira líder; o dono atual continua
  * líder. RPC transfer_team_ownership de 20261003120000 (já em produção): responde
  * { ok: true } ou { ok: false, error: "forbidden" | "not_member" } em vez de erro.
- * Falha de rede ou do PostgREST continua sendo Error com a mensagem do cliente.
+ * A exceção é o guarda de líderes (42501), quando o dono já não é líder e a pessoa
+ * escolhida também não: vira recusa "not_leader". Falha de rede ou do PostgREST
+ * continua sendo Error com a mensagem do cliente.
  */
 export async function transferTeamOwnership(teamId: string, newOwnerProfileId: string) {
   const { data, error } = await accountDeletionSupabase.rpc("transfer_team_ownership", {
     p_team_id: teamId,
     p_new_owner_profile_id: newOwnerProfileId,
   });
+  if (error && isLeaderGuardRefusal(error)) throw new TeamOwnershipTransferRefused("not_leader");
   if (error) throw new Error(error.message);
   const result = (data ?? {}) as { ok?: unknown; error?: unknown };
   if (result.ok === true) return;

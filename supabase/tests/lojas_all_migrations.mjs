@@ -8,6 +8,7 @@
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { createAssistantDb, serviceRpc, withRole } from './helpers/assistant_db.mjs';
+import { sqlCodeMentions } from './helpers/sql_code.mjs';
 import { activationErrorMessage } from '../functions/whatsapp-assistant/persona.ts';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
@@ -15,6 +16,8 @@ const migration = (name) => read(`../migrations/${name}`);
 
 /** Já em produção (outra frente): trava de líder e dono, com transfer_team_ownership. Vem antes. */
 const GUARD_MIGRATION = '20261003120000_team_member_privilege_guard.sql';
+/** O que é da 0 e nenhuma migração da conformidade pode criar, trocar, apagar ou mudar permissão. */
+const GUARD_OBJECTS = ['transfer_team_ownership', 'guard_team_member_privileges', 'guard_team_owner_change'];
 /** As migrações da conformidade (20261003...) na ordem do nome, como o deploy aplica. */
 const STORE_MIGRATIONS = [
   '20261003130000_account_deletion.sql',
@@ -150,22 +153,53 @@ try {
   check(later[0], GUARD_MIGRATION, 'a trava de produção (20261003120000) vem antes das da conformidade');
   // A demo não precisou de migração (scripts/review-demo marca as contas em app_metadata).
   ok(!later.some((name) => name.startsWith('20261003134000')), 'sem migração da demo');
+
+  // O que a 0 deixa em produção: definição, dono, permissões, SECURITY DEFINER e
+  // search_path das funções (também has_team_role, que os guardas usam) e os gatilhos.
+  const guardSnapshot = async () => ({
+    functions: await rows(`SELECT p.oid::regprocedure::text AS fn, pg_get_functiondef(p.oid) AS def, p.proacl::text AS acl,
+        p.prosecdef, p.proconfig, pg_get_userbyid(p.proowner) AS owner
+      FROM pg_proc p WHERE p.oid IN ('public.transfer_team_ownership(uuid,uuid)'::regprocedure,
+        'public.guard_team_member_privileges()'::regprocedure, 'public.guard_team_owner_change()'::regprocedure,
+        'public.has_team_role(uuid,uuid,public.team_role)'::regprocedure) ORDER BY 1`),
+    grants: await rows(`SELECT r.rolname AS role, has_function_privilege(r.rolname, 'public.transfer_team_ownership(uuid,uuid)', 'EXECUTE') AS can
+      FROM pg_roles r WHERE r.rolname IN ('anon', 'authenticated', 'service_role') ORDER BY 1`),
+    triggers: await rows(`SELECT tgname, tgrelid::regclass::text AS tbl, tgenabled, pg_get_triggerdef(oid) AS def FROM pg_trigger
+      WHERE NOT tgisinternal AND tgname IN ('guard_team_member_privileges', 'guard_team_owner_change') ORDER BY 1`),
+  });
+  let productionGuard = null;
   for (const name of later) {
     try {
       await db.exec(await migration(name));
     } catch (error) {
       throw new Error(`${name} não aplicou depois das anteriores: ${error.message}`);
     }
+    if (name === GUARD_MIGRATION) productionGuard = await guardSnapshot();
   }
-  // Reaplicar tudo, na mesma ordem (deploy repetido), não quebra nada.
-  for (const name of later) await db.exec(await migration(name));
+  check([productionGuard.functions.length, productionGuard.triggers.length], [4, 2], 'foto da 0: quatro funções e dois gatilhos');
+  check(productionGuard.grants, [{ role: 'anon', can: false }, { role: 'authenticated', can: true }, { role: 'service_role', can: true }],
+    'transferência do dono: permissões de produção');
+  check(await guardSnapshot(), productionGuard, 'depois da conformidade, tudo da 0 igual (definição, dono, permissões, gatilhos)');
+  // Deploy repetido: as da conformidade de novo, na mesma ordem (a 0, já em produção, não é reaplicada).
+  for (const name of later.filter((n) => n !== GUARD_MIGRATION)) await db.exec(await migration(name));
+  check(await guardSnapshot(), productionGuard, 'reaplicar a conformidade também não mexe na 0');
   check(await rows(`SELECT count(*)::int AS n FROM public.assistant_ai_legacy_members`), [{ n: 3 }],
     'tolerância do Asafe: foto única dos membros da equipe T');
-  // Nenhuma migração da conformidade troca a transferência de produção (a do guarda).
   const transferDef = (await one(`SELECT pg_get_functiondef('public.transfer_team_ownership(uuid,uuid)'::regprocedure) AS def`)).def;
   ok(transferDef.includes('app.transfer_team_ownership'), 'transfer_team_ownership continua a de 20261003120000');
+  // E no texto: nenhuma linha de código (fora de comentários) das migrações da conformidade
+  // cita os objetos da 0 — nem CREATE/DROP, nem GRANT/REVOKE em lista, nem sem schema.
+  // A busca pega o que a versão antiga da 130000 fazia (GRANT/REVOKE em lista):
+  check([
+    sqlCodeMentions('REVOKE ALL ON FUNCTION public.get_account_deletion_preview(), public.transfer_team_ownership(uuid, uuid)\n'
+      + '  FROM PUBLIC;', 'transfer_team_ownership').length,
+    sqlCodeMentions('DROP FUNCTION IF EXISTS "transfer_team_ownership"(uuid, uuid);', 'transfer_team_ownership').length,
+    sqlCodeMentions('-- transfer_team_ownership é da 0\n/* GRANT ... transfer_team_ownership */ SELECT 1;', 'transfer_team_ownership').length,
+    sqlCodeMentions('SELECT public.platform_transfer_team_ownership($1, $2, $3);', 'transfer_team_ownership').length,
+  ], [1, 1, 0, 0], 'a busca acha GRANT/REVOKE em lista e nomes sem schema, e ignora comentários e platform_*');
   for (const name of STORE_MIGRATIONS) {
-    ok(!/FUNCTION\s+public\.transfer_team_ownership\b/i.test(await migration(name)), `${name} não cria nem troca transfer_team_ownership`);
+    const sql = await migration(name);
+    for (const object of GUARD_OBJECTS) check(sqlCodeMentions(sql, object), [], `${name} não cita ${object} fora de comentários`);
   }
   check((await one(`SELECT count(*)::int AS n FROM pg_trigger WHERE tgrelid = 'public.teams'::regclass AND NOT tgisinternal
     AND tgname IN ('guard_team_owner_change', 'teams_owner_change_effects')`)).n, 2, 'guarda e efeitos da troca de dono, uma vez cada');
@@ -205,8 +239,6 @@ try {
     check(await can('anon', fn), false, `anon não executa ${fn}`);
   }
   check(await can('authenticated', 'delete_account_data(uuid)'), false, 'só o servidor apaga contas');
-  check([await can('authenticated', 'transfer_team_ownership(uuid,uuid)'), await can('anon', 'transfer_team_ownership(uuid,uuid)')],
-    [true, false], 'transferência do dono: permissões de produção');
   check([await can('authenticated', 'platform_transfer_team_ownership(uuid,uuid,uuid)'),
     await can('service_role', 'platform_transfer_team_ownership(uuid,uuid,uuid)')], [false, true],
     'transferência pela plataforma: só a edge function (service_role)');
