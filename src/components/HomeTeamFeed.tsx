@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useTeam } from "@/contexts/TeamContext";
+import { useBlockedIds } from "@/components/chat/useBlockedUsers";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Church, Music, MessageCircle, Activity } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -25,13 +27,32 @@ const ICONS: Record<FeedKind, { icon: any }> = {
   message: { icon: MessageCircle },
 };
 
+const FEED_SIZE = 6;
+// Mensagens a mais: as de quem eu bloqueei saem do feed e o resto completa a lista.
+const MESSAGES_FETCHED = 12;
+
+interface FeedRows {
+  cultos: { id: string; name: string; created_at: string | null }[];
+  songs: { id: string; title: string; created_at: string | null }[];
+  messages: {
+    id: string;
+    content: string | null;
+    created_at: string | null;
+    sender_profile_id: string;
+    profiles: { full_name: string | null } | null;
+  }[];
+}
+
 /**
  * Compact, read-only activity feed for the current team. Merges the latest
  * cultos, songs and messages by created_at and shows the ~6 most recent.
+ * Messages from people I blocked in the chat never show up here.
  */
 export function HomeTeamFeed({ teamId }: HomeTeamFeedProps) {
+  const { profileId } = useTeam();
+  const blocked = useBlockedIds(profileId);
   const [loading, setLoading] = useState(true);
-  const [items, setItems] = useState<FeedItem[]>([]);
+  const [rows, setRows] = useState<FeedRows>({ cultos: [], songs: [], messages: [] });
 
   useEffect(() => {
     let active = true;
@@ -55,34 +76,53 @@ export function HomeTeamFeed({ teamId }: HomeTeamFeedProps) {
           .select("id, content, created_at, sender_profile_id, profiles:sender_profile_id(full_name)")
           .eq("team_id", teamId)
           .order("created_at", { ascending: false })
-          .limit(6),
+          .limit(MESSAGES_FETCHED),
       ]);
 
-      const merged: FeedItem[] = [];
-
-      (cultosRes.data || []).forEach((c: any) => {
-        if (!c.created_at) return;
-        merged.push({
-          id: `culto-${c.id}`,
-          kind: "culto",
-          text: `Culto "${c.name}" foi criado`,
-          date: c.created_at,
+      if (active) {
+        setRows({
+          cultos: cultosRes.data || [],
+          songs: songsRes.data || [],
+          messages: (messagesRes.data || []) as unknown as FeedRows["messages"],
         });
-      });
+        setLoading(false);
+      }
+    };
+    fetchFeed();
+    return () => {
+      active = false;
+    };
+  }, [teamId]);
 
-      (songsRes.data || []).forEach((s: any) => {
-        if (!s.created_at) return;
-        merged.push({
-          id: `song-${s.id}`,
-          kind: "song",
-          text: `Música "${s.title}" adicionada ao repertório`,
-          date: s.created_at,
-        });
-      });
+  const items = useMemo(() => {
+    const merged: FeedItem[] = [];
 
-      (messagesRes.data || []).forEach((m: any) => {
+    rows.cultos.forEach((c) => {
+      if (!c.created_at) return;
+      merged.push({
+        id: `culto-${c.id}`,
+        kind: "culto",
+        text: `Culto "${c.name}" foi criado`,
+        date: c.created_at,
+      });
+    });
+
+    rows.songs.forEach((s) => {
+      if (!s.created_at) return;
+      merged.push({
+        id: `song-${s.id}`,
+        kind: "song",
+        text: `Música "${s.title}" adicionada ao repertório`,
+        date: s.created_at,
+      });
+    });
+
+    rows.messages
+      .filter((m) => !blocked.ids.has(m.sender_profile_id))
+      .slice(0, FEED_SIZE)
+      .forEach((m) => {
         if (!m.created_at) return;
-        const sender = (m.profiles as any)?.full_name?.split(" ")[0] ?? "Alguém";
+        const sender = m.profiles?.full_name?.split(" ")[0] ?? "Alguém";
         const snippet = (m.content ?? "").trim();
         const short = snippet.length > 60 ? snippet.slice(0, 60) + "…" : snippet;
         merged.push({
@@ -93,17 +133,12 @@ export function HomeTeamFeed({ teamId }: HomeTeamFeedProps) {
         });
       });
 
-      merged.sort((a, b) => b.date.localeCompare(a.date));
-      if (active) {
-        setItems(merged.slice(0, 6));
-        setLoading(false);
-      }
-    };
-    fetchFeed();
-    return () => {
-      active = false;
-    };
-  }, [teamId]);
+    merged.sort((a, b) => b.date.localeCompare(a.date));
+    return merged.slice(0, FEED_SIZE);
+  }, [rows, blocked.ids]);
+
+  // Espera a lista de bloqueados para não mostrar, nem por um instante, quem foi bloqueado.
+  const showSkeleton = loading || blocked.loading;
 
   return (
     <section aria-labelledby="home-feed-title">
@@ -111,7 +146,7 @@ export function HomeTeamFeed({ teamId }: HomeTeamFeedProps) {
         Atividade da equipe
       </h2>
       <div className="rounded-card bg-card overflow-hidden">
-        {loading ? (
+        {showSkeleton ? (
           <div aria-busy="true">
             {[0, 1, 2].map((i) => (
               <div key={i} className="relative flex items-center gap-3 min-h-[52px] px-4 py-2.5">

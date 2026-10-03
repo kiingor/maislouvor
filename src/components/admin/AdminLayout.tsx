@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, Building2, CreditCard, LayoutDashboard, LogOut, Menu, MessageSquareText, RefreshCw, Settings2, ShieldCheck, UsersRound } from "lucide-react";
+import { ArrowUpRight, Building2, CreditCard, Flag, LayoutDashboard, LogOut, Menu, MessageSquareText, RefreshCw, Settings2, ShieldCheck, UsersRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
@@ -15,6 +15,7 @@ const navigation = [
   { to: "/admin/membros", label: "Membros", icon: UsersRound },
   { to: "/admin/assinaturas", label: "Assinaturas", icon: CreditCard },
   { to: "/admin/tickets", label: "Sugestões e bugs", icon: MessageSquareText },
+  { to: "/admin/denuncias", label: "Denúncias", icon: Flag },
   { to: "/admin/configuracoes", label: "Configurações", icon: Settings2 },
 ];
 

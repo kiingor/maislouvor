@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
@@ -15,6 +15,8 @@ import { TeamAvailabilitySettings } from "@/components/TeamAvailabilitySettings"
 import { MyAssistantSettings, TeamAssistantSettings } from "@/components/AssistantSettings";
 import { SettingsAboutGroup } from "@/components/legal/SettingsAboutGroup";
 import { DeleteAccountSection } from "@/components/account/DeleteAccountSection";
+import { BlockedUsersSettings } from "@/components/BlockedUsersSettings";
+import { TeamChatReports } from "@/components/TeamChatReports";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AppearanceSegmented } from "@/components/AppearanceControl";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -97,6 +99,25 @@ export default function TeamSettings() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const qc = useQueryClient();
+  // Aviso de denúncia no chat abre direto na aba Membros (?aba=membros), na
+  // equipe da denúncia (&equipe=<id>) para quem lidera mais de uma.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get("aba") === "membros" ? "members" : "profile";
+  const linkedTeamId = searchParams.get("equipe");
+  const { switchTeam } = useTeam();
+  useEffect(() => {
+    if (!linkedTeamId || !teams.some((t) => t.id === linkedTeamId)) return;
+    if (currentTeam?.id !== linkedTeamId) switchTeam(linkedTeamId);
+    // Usado uma vez: trocar de equipe à mão depois não volta para esta.
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("equipe");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [linkedTeamId, teams, currentTeam?.id, switchTeam, setSearchParams]);
 
   // Current user email
   const [userEmail, setUserEmail] = useState("");
@@ -324,7 +345,7 @@ export default function TeamSettings() {
   };
 
   return (
-    <Tabs defaultValue="profile" className="w-full">
+    <Tabs key={initialTab} defaultValue={initialTab} className="w-full">
       <PageHeader title="Usuário">
         <TabsList className="flex w-full lg:w-[440px]">
           <TabsTrigger value="profile" className="flex-1">Meu usuário</TabsTrigger>
@@ -517,6 +538,9 @@ export default function TeamSettings() {
             {/* Minhas estatísticas */}
             <UserStatsCard teamMemberId={myMember?.id ?? null} loading={isLoading} />
 
+            {/* Bloqueios do chat (denunciar/bloquear fica no toque longo da mensagem) */}
+            <BlockedUsersSettings />
+
             {/* Sobre: Termos, Privacidade, Suporte, Excluir conta e versão do app */}
             <SettingsAboutGroup />
 
@@ -629,6 +653,9 @@ export default function TeamSettings() {
               </div>
             </section>
           )}
+
+          {/* Denúncias do chat (somente líder) */}
+          {isAdmin && currentTeam && <TeamChatReports key={currentTeam.id} teamId={currentTeam.id} />}
 
           {/* Lista de membros */}
           <section aria-labelledby="settings-members">

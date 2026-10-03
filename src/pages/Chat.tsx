@@ -26,6 +26,9 @@ import { ChatEmojiPicker } from "@/components/ChatEmojiPicker";
 import { ChatChannelsModal, CustomChannel } from "@/components/ChatChannelsModal";
 import { ChatAudioRecorder } from "@/components/ChatAudioRecorder";
 import { ChatMessageBubble } from "@/components/ChatMessageBubble";
+import { ModeratedMessage } from "@/components/chat/ModeratedMessage";
+import { useChatModeration } from "@/components/chat/useChatModeration";
+import { CHAT_MESSAGE_MAX } from "@/lib/chatModeration";
 
 interface Message {
   id: string;
@@ -104,7 +107,7 @@ function useSoftKeyboard(enabled: boolean) {
 }
 
 export default function Chat() {
-  const { currentTeam, profileId, can, loading: teamLoading } = useTeam();
+  const { currentTeam, profileId, can, isAdmin, loading: teamLoading } = useTeam();
   const canEdit = can("chat", "editar");
   const { toast } = useToast();
   const shell = useShell();
@@ -122,6 +125,14 @@ export default function Chat() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const nearBottomRef = useRef(true);
   const jumpRef = useRef(true);
+
+  // Denunciar, bloquear e apagar mensagens (moderação do chat).
+  const moderation = useChatModeration({
+    teamId: currentTeam?.id ?? null,
+    profileId,
+    isTeamAdmin: isAdmin,
+    onDeleted: (id) => setMessages((prev) => prev.filter((m) => m.id !== id)),
+  });
 
   // Com o teclado aberto no celular, a barra de abas sai e o compositor desce (como no Mensagens).
   const keyboard = useSoftKeyboard(!isDesktop);
@@ -250,6 +261,12 @@ export default function Chat() {
           });
         }
       )
+      // Mensagem apagada (autor, liderança ou plataforma). DELETE não aceita filtro
+      // no Realtime e só traz o id; basta tirar da lista se estiver aqui.
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, (payload) => {
+        const removedId = (payload.old as { id?: string } | null)?.id;
+        if (removedId) setMessages((prev) => prev.filter((m) => m.id !== removedId));
+      })
       .subscribe();
 
     return () => {
@@ -637,13 +654,15 @@ export default function Chat() {
                           )}
                           <div className={cn("flex max-w-full items-end gap-1.5", isMe && "flex-row-reverse")}>
                             <div className="min-w-0">
-                              <ChatMessageBubble
-                                type={msg.message_type ?? "text"}
-                                content={msg.content}
-                                attachmentPath={msg.attachment_path}
-                                isMe={isMe}
-                                tail={!sameAsNext}
-                              />
+                              <ModeratedMessage {...moderation.messageProps(msg, isMe, profile?.full_name)}>
+                                <ChatMessageBubble
+                                  type={msg.message_type ?? "text"}
+                                  content={msg.content}
+                                  attachmentPath={msg.attachment_path}
+                                  isMe={isMe}
+                                  tail={!sameAsNext}
+                                />
+                              </ModeratedMessage>
                             </div>
                             <time
                               dateTime={msg.created_at}
@@ -698,6 +717,7 @@ export default function Chat() {
                       type="text"
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
+                      maxLength={CHAT_MESSAGE_MAX}
                       onKeyDown={handleKeyDown}
                       enterKeyHint="send"
                       aria-label={`Mensagem em ${activeChannelName}`}
@@ -735,6 +755,8 @@ export default function Chat() {
           </div>
         </section>
       </div>
+
+      {moderation.dialogs}
 
       <ChatChannelsModal
         open={channelsModalOpen}
