@@ -34,14 +34,17 @@ Teste: `supabase/tests/chat_moderation.mjs` (PGlite).
   momento da denúncia: `chat_reports.platform_only`) ficam **só com a plataforma**:
   nenhum líder vê, é avisado ou fecha — líderes não julgam uns aos outros.
 - Ações: *Em análise*, *Resolver* (anotação interna e, opcionalmente, remover o autor
-  da equipe — nunca o responsável pela equipe), *Descartar* e *Apagar mensagem*.
+  da equipe — nunca o responsável pela equipe; e um líder só sai pela mão de outro líder
+  da própria equipe, pelo guarda de `20261003120000`: a plataforma não o remove por
+  aqui, suspende), *Descartar* e *Apagar mensagem*.
 - Só a plataforma: **Suspender conta** / *Reativar conta* (na denúncia e em
   Contas › equipe › Membros), pela edge function `platform-suspend-account`: banimento
   no GoTrue (não entra nem renova a sessão; o token aberto vale até 1 hora), registro
   em `platform_account_suspensions` e no histórico (`account_suspend`,
   `account_reactivate`). Para afastar um **responsável** que abusa: suspender e, em
-  Contas › equipe › Membros, **Tornar responsável** outro membro
-  (`platform_transfer_team_ownership`); depois a moderação pode removê-lo da equipe.
+  Contas › equipe › Membros, **Tornar responsável** outro membro (mesma edge function,
+  ação `transfer_ownership`, que chama `platform_transfer_team_ownership` com a
+  service_role). Quem era dono continua líder: a nova liderança o remove pela aba Membros.
 - Push para a plataforma: o app manda `chat_report_id` ao `send-push`, que pergunta ao
   banco (`chat_report_platform_push_targets`: só a denúncia de quem chama, recente e
   uma vez) quem administra. O app não sabe quem são os administradores.
@@ -50,7 +53,8 @@ Teste: `supabase/tests/chat_moderation.mjs` (PGlite).
   e a cópia da mensagem só saem por `list_chat_reports`, para quem modera.
 - Ações da plataforma ficam em `platform_audit_log`
   (`chat_report_update`, `chat_message_delete`, `account_suspend`, `account_reactivate`,
-  `team_ownership_transfer` com `by_platform`).
+  `team_ownership_transfer` com `by_platform` — este registrado pelo gatilho
+  `teams_owner_change_effects` em toda troca de dono, também a feita pelo próprio dono).
 - Denúncias abertas há mais de 24 horas aparecem como **Prazo vencido**.
 
 ## Provas

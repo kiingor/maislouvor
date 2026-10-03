@@ -10,7 +10,14 @@ import {
   type DeletionDeps,
   type DeletionPreview,
 } from "../../supabase/functions/delete-account/flow";
-import { AccountDeletionError, parseDeletionPreview, requestAccountDeletion } from "./accountDeletion";
+import {
+  AccountDeletionError,
+  parseDeletionPreview,
+  requestAccountDeletion,
+  TeamOwnershipTransferRefused,
+  transferTeamOwnership,
+  TRANSFER_OWNERSHIP_ERRORS,
+} from "./accountDeletion";
 import { safeAppRedirect } from "./authRedirect";
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), rpc: vi.fn() }));
@@ -249,6 +256,36 @@ describe("accountDeletion client helpers", () => {
 
     mocks.invoke.mockResolvedValue({ data: null, error: new Error("Failed to fetch") });
     await expect(requestAccountDeletion("EXCLUIR")).rejects.toMatchObject({ code: "unknown" });
+  });
+
+  it("follows the production transfer_team_ownership contract ({ ok } instead of exceptions)", async () => {
+    mocks.rpc.mockResolvedValue({ data: { ok: true }, error: null });
+    await expect(transferTeamOwnership("team-a", "p-mario")).resolves.toBeUndefined();
+    expect(mocks.rpc).toHaveBeenCalledWith("transfer_team_ownership", { p_team_id: "team-a", p_new_owner_profile_id: "p-mario" });
+
+    for (const code of ["forbidden", "not_member"] as const) {
+      mocks.rpc.mockResolvedValue({ data: { ok: false, error: code }, error: null });
+      const refused = await transferTeamOwnership("team-a", "p-mario").catch((e) => e);
+      expect(refused).toBeInstanceOf(TeamOwnershipTransferRefused);
+      expect(refused).toMatchObject({ code, message: TRANSFER_OWNERSHIP_ERRORS[code] });
+    }
+    expect(TRANSFER_OWNERSHIP_ERRORS.forbidden).toMatch(/Só o dono/);
+    expect(TRANSFER_OWNERSHIP_ERRORS.not_member).toMatch(/não faz mais parte da equipe/);
+
+    // Resposta inesperada: recusa genérica (nunca "sucesso" calado).
+    for (const data of [{ ok: false, error: "toString" }, { ok: "true" }, null]) {
+      mocks.rpc.mockResolvedValue({ data, error: null });
+      await expect(transferTeamOwnership("team-a", "p-mario")).rejects.toMatchObject({
+        code: "unknown", message: "Não foi possível transferir a equipe agora. Tente novamente.",
+      });
+    }
+
+    // Falha de transporte continua como antes: a mensagem do cliente, sem virar recusa.
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: "Failed to fetch" } });
+    const failed = await transferTeamOwnership("team-a", "p-mario").catch((e) => e);
+    expect(failed).toBeInstanceOf(Error);
+    expect(failed).not.toBeInstanceOf(TeamOwnershipTransferRefused);
+    expect(failed.message).toBe("Failed to fetch");
   });
 
   it("only follows internal app paths after login", () => {

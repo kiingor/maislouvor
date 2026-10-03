@@ -1,14 +1,20 @@
-// Suspender ou reativar uma conta (só administradores da plataforma, pelo painel).
+// Suspender ou reativar uma conta e passar a propriedade de uma equipe (só
+// administradores da plataforma, pelo painel).
 //
 // Corpo: { "profile_id": "<uuid>", "action": "suspend" | "reactivate",
-//          "reason"?: "<até 500>", "report_id"?: "<uuid da denúncia>" }.
+//          "reason"?: "<até 500>", "report_id"?: "<uuid da denúncia>" }
+//     ou { "action": "transfer_ownership", "team_id": "<uuid>",
+//          "new_owner_member_id": "<uuid de team_members>" }.
 // Quem chama é sempre o usuário do JWT, conferido como administrador da
 // plataforma aqui e de novo no banco. Passos e respostas: ver flow.ts.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  parseSuspensionRequest,
+  invalidRequestMessage,
+  parsePlatformAccountRequest,
+  runOwnershipTransfer,
   runSuspension,
   SUSPENSION_BAN_DURATION,
+  type OwnershipTransferResult,
   type SuspensionRecord,
   type SuspensionTarget,
 } from "./flow.ts";
@@ -21,6 +27,10 @@ const cors = {
 };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
+
+// Sem dados pessoais no log: só o passo e a mensagem técnica.
+const log = (step: string, error: unknown) =>
+  console.error(`platform-suspend-account: ${step} failed`, (error as Error)?.message ?? error);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -36,6 +46,8 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: authorization } },
       auth: { persistSession: false, autoRefreshToken: false },
     });
+    // Só a service_role, sem o JWT de quem chama: auth.uid() fica vazio no banco,
+    // e quem agiu vai em p_actor_user_id (conferido de novo lá).
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
@@ -51,12 +63,26 @@ Deno.serve(async (req) => {
 
     let body: unknown = null;
     try { body = await req.json(); } catch { /* corpo vazio ou inválido */ }
-    const request = parseSuspensionRequest(body);
-    if (!request) {
-      return json({ ok: false, error: "invalid", message: "Pedido inválido: informe a conta e a ação (suspender ou reativar)." }, 400);
+    const parsed = parsePlatformAccountRequest(body);
+    if (!parsed) return json({ ok: false, error: "invalid", message: invalidRequestMessage(body) }, 400);
+
+    if (parsed.kind === "transfer") {
+      const outcome = await runOwnershipTransfer(user.id, parsed.request, {
+        transfer: async (actorUserId, r) => {
+          const { data, error } = await admin.rpc("platform_transfer_team_ownership", {
+            p_actor_user_id: actorUserId,
+            p_team_id: r.teamId,
+            p_new_owner_member_id: r.newOwnerMemberId,
+          });
+          if (error) throw error;
+          return data as OwnershipTransferResult;
+        },
+        log,
+      });
+      return json(outcome.body, outcome.status);
     }
 
-    const outcome = await runSuspension(user.id, request, {
+    const outcome = await runSuspension(user.id, parsed.request, {
       target: async (actorUserId, profileId) => {
         const { data, error } = await admin.rpc("platform_account_suspension_target", {
           p_actor_user_id: actorUserId,
@@ -82,8 +108,7 @@ Deno.serve(async (req) => {
         if (error) throw error;
         return data as SuspensionRecord;
       },
-      // Sem dados pessoais no log: só o passo e a mensagem técnica.
-      log: (step, error) => console.error(`platform-suspend-account: ${step} failed`, (error as Error)?.message ?? error),
+      log,
     });
     return json(outcome.body, outcome.status);
   } catch (error) {

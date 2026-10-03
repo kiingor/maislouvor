@@ -13,6 +13,8 @@ import { activationErrorMessage } from '../functions/whatsapp-assistant/persona.
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const migration = (name) => read(`../migrations/${name}`);
 
+/** Já em produção (outra frente): trava de líder e dono, com transfer_team_ownership. Vem antes. */
+const GUARD_MIGRATION = '20261003120000_team_member_privilege_guard.sql';
 /** As migrações da conformidade (20261003...) na ordem do nome, como o deploy aplica. */
 const STORE_MIGRATIONS = [
   '20261003130000_account_deletion.sql',
@@ -44,7 +46,8 @@ const fkAction = async (table, column) => (await one(`
   WHERE c.contype = 'f' AND c.conrelid = $1::regclass AND a.attname = $2`, [table, column]))?.action;
 
 const id = (prefix, n) => `${prefix}0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const names = ['olga', 'bia', 'caio', 'dani', 'enzo'];
+// Fabi: membro da equipe S que a plataforma torna dona. Gil: administrador da plataforma.
+const names = ['olga', 'bia', 'caio', 'dani', 'enzo', 'fabi', 'gil'];
 const U = Object.fromEntries(names.map((n, i) => [n, id(1, i + 1)]));
 const P = Object.fromEntries(names.map((n, i) => [n, id(2, i + 1)]));
 // T: equipe da Olga com Bia e Caio. D: equipe só da Dani. S: equipe do Enzo com o Asafe suspenso.
@@ -144,6 +147,7 @@ try {
   const later = (await readdir(new URL('../migrations/', import.meta.url)))
     .filter((name) => name.endsWith('.sql') && name >= '20261003').sort();
   for (const name of STORE_MIGRATIONS) ok(later.includes(name), `${name} está em supabase/migrations`);
+  check(later[0], GUARD_MIGRATION, 'a trava de produção (20261003120000) vem antes das da conformidade');
   // A demo não precisou de migração (scripts/review-demo marca as contas em app_metadata).
   ok(!later.some((name) => name.startsWith('20261003134000')), 'sem migração da demo');
   for (const name of later) {
@@ -157,6 +161,14 @@ try {
   for (const name of later) await db.exec(await migration(name));
   check(await rows(`SELECT count(*)::int AS n FROM public.assistant_ai_legacy_members`), [{ n: 3 }],
     'tolerância do Asafe: foto única dos membros da equipe T');
+  // Nenhuma migração da conformidade troca a transferência de produção (a do guarda).
+  const transferDef = (await one(`SELECT pg_get_functiondef('public.transfer_team_ownership(uuid,uuid)'::regprocedure) AS def`)).def;
+  ok(transferDef.includes('app.transfer_team_ownership'), 'transfer_team_ownership continua a de 20261003120000');
+  for (const name of STORE_MIGRATIONS) {
+    ok(!/FUNCTION\s+public\.transfer_team_ownership\b/i.test(await migration(name)), `${name} não cria nem troca transfer_team_ownership`);
+  }
+  check((await one(`SELECT count(*)::int AS n FROM pg_trigger WHERE tgrelid = 'public.teams'::regclass AND NOT tgisinternal
+    AND tgname IN ('guard_team_owner_change', 'teams_owner_change_effects')`)).n, 2, 'guarda e efeitos da troca de dono, uma vez cada');
 
   // ------------------------------------------------------- objetos principais
   const fns = [
@@ -166,7 +178,7 @@ try {
     'accept_terms(text,text)', 'legal_current_versions()',
     'report_chat_message(uuid,text,text)', 'list_chat_reports(uuid,text,text,integer,integer)',
     'moderate_chat_report(uuid,text,text,boolean)', 'delete_chat_message(uuid)', 'block_user(uuid)', 'unblock_user(uuid)',
-    'list_blocked_users()', 'chat_report_platform_push_targets(uuid,uuid)', 'platform_transfer_team_ownership(uuid,uuid)',
+    'list_blocked_users()', 'chat_report_platform_push_targets(uuid,uuid)', 'platform_transfer_team_ownership(uuid,uuid,uuid)',
     'platform_account_suspension_target(uuid,uuid)', 'platform_record_account_suspension(uuid,uuid,boolean,text,uuid)',
     'give_assistant_consent(text,uuid,text)', 'revoke_assistant_consent(text,uuid)', 'assistant_consent_prompts()',
     'assistant_member_ai_allowed(uuid,uuid)', 'assistant_ai_consent_version()', 'assistant_claim_ai_disclosure(text)',
@@ -193,6 +205,11 @@ try {
     check(await can('anon', fn), false, `anon não executa ${fn}`);
   }
   check(await can('authenticated', 'delete_account_data(uuid)'), false, 'só o servidor apaga contas');
+  check([await can('authenticated', 'transfer_team_ownership(uuid,uuid)'), await can('anon', 'transfer_team_ownership(uuid,uuid)')],
+    [true, false], 'transferência do dono: permissões de produção');
+  check([await can('authenticated', 'platform_transfer_team_ownership(uuid,uuid,uuid)'),
+    await can('service_role', 'platform_transfer_team_ownership(uuid,uuid,uuid)')], [false, true],
+    'transferência pela plataforma: só a edge function (service_role)');
   check(await can('authenticated', 'account_deletion_storage_objects(uuid)'), false);
   check(await can('anon', 'legal_current_versions()'), true, 'versões dos documentos são públicas');
 
@@ -287,7 +304,25 @@ try {
   // ------------------------- Olga (dona da T, com Caio) precisa transferir antes
   check((await rpc('account_deletion_preview_for', { p_user_id: U.olga })).teams.map((t) => t.action), ['transfer_required']);
   await fails(rpc('delete_account_data', { p_user_id: U.olga }), '55000', 'dona com membros não exclui sem transferir');
-  await asUser(U.olga, 'SELECT public.transfer_team_ownership($1, $2) AS r', [team.t, P.caio]);
+  const ownershipAudit = () => rows(`SELECT actor_user_id, entity_id, details FROM public.platform_audit_log
+    WHERE action = 'team_ownership_transfer' ORDER BY created_at, id`);
+  const ownershipNotices = () => rows(`SELECT profile_id, team_id, body, sender_profile_id FROM public.notifications
+    WHERE type = 'team_ownership' ORDER BY created_at, id`);
+  // Caio é membro comum: com o JWT dele, o guarda não deixa se promover nem virar dono.
+  await fails(asUser(U.caio, `UPDATE public.team_members SET role = 'admin' WHERE team_id = $1 AND profile_id = $2 RETURNING 1 AS r`,
+    [team.t, P.caio]), '42501', 'membro não se promove');
+  await fails(asUser(U.olga, 'UPDATE public.teams SET owner_id = $1 WHERE id = $2 RETURNING 1 AS r', [P.caio, team.t]),
+    '42501', 'nem a dona troca owner_id por fora da transferência');
+  check(await asUser(U.caio, 'SELECT public.transfer_team_ownership($1, $2) AS r', [team.t, P.caio]), { ok: false, error: 'forbidden' });
+  check(await asUser(U.olga, 'SELECT public.transfer_team_ownership($1, $2) AS r', [team.t, P.bia]), { ok: false, error: 'not_member' },
+    'Bia (excluída) não é mais membro');
+  check(await asUser(U.olga, 'SELECT public.transfer_team_ownership($1, $2) AS r', [team.t, P.caio]), { ok: true },
+    'a RPC de produção transfere');
+  check((await one('SELECT role FROM public.team_members WHERE team_id = $1 AND profile_id = $2', [team.t, P.caio])).role, 'admin');
+  check(await ownershipAudit(), [{ actor_user_id: U.olga, entity_id: team.t,
+    details: { from_profile_id: P.olga, to_profile_id: P.caio, by_platform: false } }], 'um registro da transferência');
+  check(await ownershipNotices(), [{ profile_id: P.caio, team_id: team.t, sender_profile_id: P.olga,
+    body: 'A propriedade de Louvor Sede foi transferida para você, que agora também é líder.' }], 'um aviso, para o novo dono');
   check((await rpc('delete_account_data', { p_user_id: U.olga })).deleted, true);
   check((await one('SELECT owner_id FROM public.teams WHERE id = $1', [team.t])).owner_id, P.caio);
   check(await rows('SELECT * FROM public.account_deletion_blocking_references()'), [], 'nada trava depois das exclusões');
@@ -302,9 +337,32 @@ try {
   check((await one(`SELECT count(*)::int AS n FROM public.assistant_groups WHERE team_id = $1`, [team.s])).n, 0);
   ok(activationErrorMessage('Asafe', 'team_suspended').includes('suspenso'), 'o bot explica a suspensão');
 
+  // ------------- a plataforma passa a equipe S (do Enzo) para a Fabi, que não é líder
+  // Pelo navegador não dá (função só da service_role, e os guardas recusariam o JWT do Gil,
+  // que não é líder da equipe); pela edge function platform-suspend-account, com o Gil como ator.
+  await db.exec(`INSERT INTO public.team_members(team_id, profile_id, role, permissions) VALUES
+      ('${team.s}', '${P.fabi}', 'viewer', '{"membros":{"editar":true}}');
+    INSERT INTO public.platform_admins(user_id) VALUES ('${U.gil}');`);
+  const fabiMember = (await one('SELECT id FROM public.team_members WHERE team_id = $1 AND profile_id = $2', [team.s, P.fabi])).id;
+  await fails(asUser(U.gil, 'SELECT public.platform_transfer_team_ownership($1, $2, $3) AS r', [U.gil, team.s, fabiMember]),
+    '42501', 'o navegador não chama a transferência da plataforma');
+  await fails(asUser(U.gil, `UPDATE public.team_members SET role = 'admin' WHERE id = $1 RETURNING 1 AS r`, [fabiMember]),
+    '42501', 'nem promove pelo JWT da plataforma');
+  await fails(rpc('platform_transfer_team_ownership', { p_actor_user_id: U.enzo, p_team_id: team.s, p_new_owner_member_id: fabiMember }),
+    '42501', 'ator que não administra a plataforma');
+  check(await rpc('platform_transfer_team_ownership', { p_actor_user_id: U.gil, p_team_id: team.s, p_new_owner_member_id: fabiMember }),
+    { team_id: team.s, owner_profile_id: P.fabi }, 'a plataforma transfere pela service_role');
+  check(await one('SELECT t.owner_id, m.role, m.permissions FROM public.teams t JOIN public.team_members m ON m.team_id = t.id AND m.profile_id = t.owner_id WHERE t.id = $1',
+    [team.s]), { owner_id: P.fabi, role: 'admin', permissions: {} }, 'Fabi vira dona e líder, sem exceções');
+  check((await ownershipAudit()).slice(1), [{ actor_user_id: U.gil, entity_id: team.s,
+    details: { from_profile_id: P.enzo, to_profile_id: P.fabi, by_platform: true } }], 'um registro, da plataforma');
+  check((await ownershipNotices()).slice(1), [{ profile_id: P.fabi, team_id: team.s, sender_profile_id: null,
+    body: 'A equipe de suporte do +Louvor transferiu a propriedade de Louvor Revisão para você, que agora também é líder.' }],
+    'um aviso, da equipe de suporte');
+
   console.log(`${checks} checks passed: as migrações da conformidade juntas e em ordem (duas vezes), objetos e permissões, `
     + 'versões banco = app, exclusão com denúncias/bloqueios/aceites, prova de denúncia, equipe só da pessoa, '
-    + 'transferência e Asafe suspenso.');
+    + 'transferência (RPC de produção e pela plataforma, sob os guardas de 20261003120000) e Asafe suspenso.');
 } finally {
   await db.close();
 }

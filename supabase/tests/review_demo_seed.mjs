@@ -120,8 +120,11 @@ await assert.rejects(preflightSchema({ store: pgliteStore() }), new RegExp(`song
 eq((await sql(`SELECT count(*)::int AS n FROM auth.users`))[0].n, 0, 'nada gravado pelo preflight');
 await db.exec(await migration(catalog));
 // E as migrações da conformidade com as lojas (20261003*), na ordem do deploy: a demo
-// roda sobre o schema que vai para a produção junto com ela.
-for (const name of (await readdir(new URL('../migrations/', import.meta.url))).filter((n) => n >= '20261003' && n.endsWith('.sql')).sort()) {
+// roda sobre o schema que vai para a produção junto com ela. A primeira é a trava de
+// líder e dono (20261003120000), que já está em produção.
+const storeMigrations = (await readdir(new URL('../migrations/', import.meta.url))).filter((n) => n >= '20261003' && n.endsWith('.sql')).sort();
+eq(storeMigrations[0], '20261003120000_team_member_privilege_guard.sql', 'a trava de produção vem antes das da conformidade');
+for (const name of storeMigrations) {
   await db.exec(await migration(name));
 }
 
@@ -290,7 +293,13 @@ try {
   // para a Ana (transfer_team_ownership) e exclui (delete_account_data + GoTrue). A
   // equipe continua com a Ana, a conta de revisão fica pela metade e o reset limpa.
   const [anaProfile] = await sql('SELECT id::text FROM public.profiles WHERE user_id = $1', [anaUser.id]);
-  await withRole(db, 'authenticated', leaderUser.id, (tx) => tx.query('SELECT public.transfer_team_ownership($1, $2)', [team, anaProfile.id]));
+  const transferred = await withRole(db, 'authenticated', leaderUser.id, async (tx) =>
+    (await tx.query('SELECT public.transfer_team_ownership(p_team_id => $1, p_new_owner_profile_id => $2) AS r', [team, anaProfile.id])).rows[0].r);
+  eq(transferred, { ok: true }, 'a RPC de produção (20261003120000) passa a equipe para a Ana');
+  eq((await sql(`SELECT role::text FROM public.team_members WHERE team_id = $1 AND profile_id = $2`, [team, anaProfile.id]))[0].role, 'admin',
+    'a Ana vira líder');
+  eq((await sql(`SELECT count(*)::int AS n FROM public.platform_audit_log WHERE action = 'team_ownership_transfer' AND entity_id = $1`, [team]))[0].n, 1,
+    'um registro da transferência');
   const removed = await withRole(db, 'service_role', null, async (tx) =>
     (await tx.query('SELECT public.delete_account_data($1) AS r', [leaderUser.id])).rows[0].r);
   eq([removed.deleted, removed.left_team_count], [true, 1], 'exclusão pelo app: sai da equipe');

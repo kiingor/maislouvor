@@ -3,6 +3,9 @@
 //   PGLITE_MODULE=/caminho/@electric-sql/pglite/dist/index.js node supabase/tests/account_deletion.mjs
 // No fim aplica também as migrações com data posterior a esta (as das outras
 // frentes, depois da integração) e confere que nenhuma voltou a travar a exclusão.
+// Como na produção, 20261003120000_team_member_privilege_guard.sql (trava de líder e
+// dono, com transfer_team_ownership) já está aplicada antes desta: a 130000 não pode
+// trocar aquela função, e a transferência daqui é a de produção.
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 
@@ -11,6 +14,7 @@ const db = new PGlite();
 const file = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const MIGRATION_NAME = '20261003130000_account_deletion.sql';
 const MIGRATION = await file(`../migrations/${MIGRATION_NAME}`);
+const GUARD_NAME = '20261003120000_team_member_privilege_guard.sql';
 
 const id = (prefix, n) => `${prefix}0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 // Pessoas: dono da equipe A (Olga), líder sem ser dono da equipe B (Lia), dono rebaixado
@@ -124,9 +128,15 @@ try {
       reviewer uuid REFERENCES public.profiles(id), reviewer_user uuid REFERENCES auth.users(id));
   `);
   for (const name of ['20260928120000_whatsapp_assistant.sql', '20260929120000_assistant_notifications.sql',
-    '20260930010000_platform_admin_and_support.sql', '20260930120000_assistant_missions.sql']) {
+    '20260930010000_platform_admin_and_support.sql', '20260930120000_assistant_missions.sql', GUARD_NAME]) {
     await db.exec(await file(`../migrations/${name}`));
   }
+  // transfer_team_ownership de produção (20261003120000): a 130000 não pode criá-la nem trocá-la.
+  const transferDef = async () =>
+    (await one(`SELECT pg_get_functiondef('public.transfer_team_ownership(uuid,uuid)'::regprocedure) AS def`)).def;
+  const productionTransfer = await transferDef();
+  ok(productionTransfer.includes('app.transfer_team_ownership'), 'a função de produção usa a configuração do guarda');
+  ok(!/FUNCTION\s+public\.transfer_team_ownership/i.test(MIGRATION), `${MIGRATION_NAME} não cria nem troca transfer_team_ownership`);
 
   // Antes da migração: apagar o autor de uma música falha e apagar o dono apaga a equipe.
   check(await fkAction('public.songs', 'created_by'), 'a', 'songs.created_by sem ação antes');
@@ -160,6 +170,13 @@ try {
   `);
   await db.exec(MIGRATION);
   await db.exec(MIGRATION); // idempotente, mesmo com a FK NOT VALID
+  check(await transferDef(), productionTransfer, 'transfer_team_ownership continua a de produção');
+  check(await rows(`SELECT r.rolname AS role, has_function_privilege(r.rolname, 'public.transfer_team_ownership(uuid,uuid)', 'EXECUTE') AS can
+    FROM pg_roles r WHERE r.rolname IN ('anon', 'authenticated', 'service_role') ORDER BY 1`),
+    [{ role: 'anon', can: false }, { role: 'authenticated', can: true }, { role: 'service_role', can: true }],
+    'permissões de transfer_team_ownership são as de produção');
+  check(await count(`SELECT count(*) AS n FROM pg_trigger WHERE tgrelid = 'public.teams'::regclass
+    AND tgname = 'teams_owner_change_effects' AND NOT tgisinternal`), 1, 'um gatilho só, mesmo aplicando duas vezes');
   check(await one(`SELECT convalidated FROM pg_constraint WHERE conname = 'channels_created_by_fkey'`), { convalidated: false },
     'FK criada sobre dados órfãos fica NOT VALID');
   await db.exec(preflight); checks++;
@@ -309,27 +326,67 @@ try {
     personal: { chat_messages: 0, support_tickets: 0, draft_songs: 0 } }, 'sem perfil');
   check((await preview(user.ulisses)).teams, [], 'sem equipe');
 
-  // ----- transferência de propriedade -----
+  // ----- transferência de propriedade: a RPC de produção (20261003120000) -----
+  // Recusa não é erro: { ok: false, error: 'forbidden' | 'not_member' }. Argumentos
+  // nomeados, como o supabase.rpc() do app manda.
   const transfer = (uid, teamId, target) => call('authenticated', uid,
-    'SELECT public.transfer_team_ownership($1, $2) AS r', [teamId, target]);
-  await fails(transfer(user.mario, team.a, prof.mario), '42501', 'quem não é dono não transfere');
-  await fails(transfer(user.lia, team.b, prof.vera), '42501', 'líder que não é dono não transfere');
-  await fails(transfer(user.olga, team.a, prof.ulisses), '22023', 'destino fora da equipe');
-  await fails(transfer(user.olga, team.a, prof.olga), '22023', 'para si mesma');
-  await fails(transfer(user.olga, id(3, 9), prof.mel), '42501', 'equipe inexistente');
-  await fails(transfer(user.semperfil, team.a, prof.mel), '42501', 'sem perfil');
-  check(await transfer(user.olga, team.a, prof.mario), { team_id: team.a, owner_profile_id: prof.mario });
+    'SELECT public.transfer_team_ownership(p_team_id => $1, p_new_owner_profile_id => $2) AS r', [teamId, target]);
+  const ownershipAudit = () => rows(`SELECT actor_user_id, entity_id, details FROM public.platform_audit_log
+    WHERE action = 'team_ownership_transfer' ORDER BY created_at, id`);
+  const ownershipNotices = () => rows(`SELECT profile_id, team_id, title, body, link, sender_profile_id
+    FROM public.notifications WHERE type = 'team_ownership' ORDER BY created_at, id`);
+  check(await transfer(user.mario, team.a, prof.mario), { ok: false, error: 'forbidden' }, 'quem não é dono não transfere');
+  check(await transfer(user.lia, team.b, prof.vera), { ok: false, error: 'forbidden' }, 'líder que não é dono não transfere');
+  check(await transfer(user.olga, team.a, prof.ulisses), { ok: false, error: 'not_member' }, 'destino fora da equipe');
+  check(await transfer(user.olga, id(3, 9), prof.mel), { ok: false, error: 'forbidden' }, 'equipe inexistente');
+  check(await transfer(user.semperfil, team.a, prof.mel), { ok: false, error: 'forbidden' }, 'sem perfil');
+  check(await transfer(user.olga, team.a, prof.olga), { ok: true }, 'para si mesma: nada muda');
+  check([await ownershipAudit(), await ownershipNotices()], [[], []], 'recusas (e para si mesma) não registram nem avisam');
+  // Os guardas continuam valendo com esta migração: Mario (só "Membros: editar") não se
+  // promove, e nem a dona troca teams.owner_id por UPDATE direto.
+  await fails(call('authenticated', user.mario, `UPDATE public.team_members SET role = 'admin' WHERE team_id = $1 AND profile_id = $2`,
+    [team.a, prof.mario]), '42501', 'Mario não se promove');
+  await fails(call('authenticated', user.olga, 'UPDATE public.teams SET owner_id = $1 WHERE id = $2', [prof.mario, team.a]),
+    '42501', 'owner_id só pela transferência');
+
+  check(await transfer(user.olga, team.a, prof.mario), { ok: true });
   check(await one(`SELECT t.owner_id, m.role, m.permissions FROM public.teams t
     JOIN public.team_members m ON m.team_id = t.id AND m.profile_id = t.owner_id WHERE t.id = $1`, [team.a]),
     { owner_id: prof.mario, role: 'admin', permissions: {} }, 'novo dono é líder, sem exceções');
   check((await one(`SELECT role FROM public.team_members WHERE team_id = $1 AND profile_id = $2`, [team.a, prof.olga])).role,
     'admin', 'antigo dono continua líder');
-  check(await one(`SELECT actor_user_id, action, entity_id, details FROM public.platform_audit_log WHERE action = 'team_ownership_transfer'`),
-    { actor_user_id: user.olga, action: 'team_ownership_transfer', entity_id: team.a,
-      details: { from_profile_id: prof.olga, to_profile_id: prof.mario, previous_role: 'editor' } });
-  check(await count(`SELECT count(*) AS n FROM public.notifications WHERE profile_id = $1 AND type = 'team_ownership'`, [prof.mario]), 1);
-  await fails(transfer(user.olga, team.a, prof.mel), '42501', 'quem transferiu deixa de ser dono');
+  // Registro e aviso vêm do gatilho da 130000: exatamente um de cada.
+  check(await ownershipAudit(), [{ actor_user_id: user.olga, entity_id: team.a,
+    details: { from_profile_id: prof.olga, to_profile_id: prof.mario, by_platform: false } }], 'um registro, de quem transferiu');
+  check(await ownershipNotices(), [{ profile_id: prof.mario, team_id: team.a, title: 'Você agora é dono(a) da equipe',
+    body: 'A propriedade de Louvor Sede foi transferida para você, que agora também é líder.', link: '/app/settings',
+    sender_profile_id: prof.olga }], 'um aviso, para o novo dono, em nome de quem transferiu');
+  check(await transfer(user.olga, team.a, prof.mel), { ok: false, error: 'forbidden' }, 'quem transferiu deixa de ser dono');
+  check((await ownershipAudit()).length, 1, 'a recusa depois não registra');
   check((await preview(user.olga)).teams.map((t) => t.action), ['leave'], 'Olga já pode sair');
+
+  // O gatilho vale para toda troca de dono, uma vez por troca, e nunca a trava (tudo desfeito no fim).
+  check(await tryAndUndo(async (tx) => {
+    const audits = async () => Number((await tx.query(
+      `SELECT count(*) AS n FROM public.platform_audit_log WHERE action = 'team_ownership_transfer'`)).rows[0].n);
+    const before = await audits();
+    // O app salva a equipe inteira, repetindo o dono: nada.
+    await tx.query('UPDATE public.teams SET owner_id = owner_id, name = name WHERE id = $1', [team.a]);
+    const repeated = (await audits()) - before;
+    // Suporte à mão (sem JWT e sem dizer a origem): registro sem autor, aviso neutro e sem remetente
+    // (a Mel não é líder: o texto não diz que ela virou).
+    await tx.query('UPDATE public.teams SET owner_id = $1 WHERE id = $2', [prof.mel, team.a]);
+    const manual = (await tx.query(`SELECT a.actor_user_id, a.details, n.body, n.sender_profile_id FROM public.platform_audit_log a
+      JOIN public.notifications n ON n.type = 'team_ownership' AND n.profile_id = $1 AND n.team_id::text = a.entity_id
+      WHERE a.action = 'team_ownership_transfer' AND a.details->>'to_profile_id' = $1::text`, [prof.mel])).rows;
+    // Novo dono sem perfil (FK desligada só aqui): registra e não avisa ninguém, sem erro.
+    await tx.exec('ALTER TABLE public.teams DROP CONSTRAINT teams_owner_id_fkey');
+    await tx.query('UPDATE public.teams SET owner_id = $1 WHERE id = $2', [id(2, 98), team.a]);
+    const ghost = Number((await tx.query(`SELECT count(*) AS n FROM public.notifications WHERE profile_id = $1`, [id(2, 98)])).rows[0].n);
+    return [repeated, manual, ghost, (await audits()) - before];
+  }), [0, [{ actor_user_id: null, details: { from_profile_id: prof.mario, to_profile_id: prof.mel, by_platform: false },
+    body: 'A propriedade de Louvor Sede foi transferida para você.', sender_profile_id: null }], 0, 2],
+  'repetir o dono não registra; suporte à mão registra sem autor; dono sem perfil não trava');
 
   // ----- bloqueios -----
   await fails(service('SELECT public.delete_account_data($1) AS r', [user.lia]), '55000', 'único líder bloqueado');
@@ -445,8 +502,11 @@ try {
   check(await service('SELECT public.account_deletion_storage_objects($1) AS r', [user.sara]), []);
 
   // ----- quem estava bloqueado resolve e exclui -----
-  // Lia promove a Vera a líder (mesmo update da aba Membros, pela RLS do app) e já pode sair.
-  await db.query(`UPDATE public.team_members SET role = 'admin', permissions = '{}' WHERE team_id = $1 AND profile_id = $2`, [team.b, prof.vera]);
+  // Lia promove a Vera a líder (mesmo update da aba Membros, com o JWT dela: o guarda
+  // deixa, porque ela é líder) e já pode sair.
+  await call('authenticated', user.lia, `UPDATE public.team_members SET role = 'admin', permissions = '{}' WHERE team_id = $1 AND profile_id = $2`,
+    [team.b, prof.vera]);
+  check((await one('SELECT role FROM public.team_members WHERE team_id = $1 AND profile_id = $2', [team.b, prof.vera])).role, 'admin');
   check((await preview(user.lia)).teams.map((t) => t.action), ['leave']);
   check((await service('SELECT public.delete_account_data($1) AS r', [user.lia])).left_team_count, 1);
   // Olga, depois de transferir, sai e a equipe A continua com o Mario.
@@ -517,6 +577,7 @@ try {
     }
   }
   check(await blocking(), [], `nenhuma FK trava a exclusão depois de ${later.length ? later.join(', ') : 'esta migração'}`);
+  check(await transferDef(), productionTransfer, 'depois de todas as migrações, transfer_team_ownership continua a de produção');
 
   // Exclusão completa depois de todas as migrações: equipe só dela com Asafe, culto futuro, escala e rascunho.
   const nina = { user: id(1, 50), prof: id(2, 50), team: id(3, 50), culto: id(5, 50), song: id(4, 50) };
@@ -540,7 +601,8 @@ try {
   check(await count(`SELECT count(*) AS n FROM public.songs WHERE created_by IS NOT DISTINCT FROM $1 OR team_id = $2`, [nina.prof, nina.team]), 0,
     'rascunho e equipe da Nina saíram');
 
-  console.log(`${checks} PostgreSQL checks passed: FKs, falha da migração, NOT VALID, idempotência, prévia, transferência, bloqueios, `
+  console.log(`${checks} PostgreSQL checks passed: FKs, falha da migração, NOT VALID, idempotência, prévia, transferência pela RPC de produção `
+    + '(com o guarda de 20261003120000, registro e aviso uma vez), bloqueios, '
     + 'arquivos depois do banco, Asafe ativo, rascunhos (e os já usados pela equipe), caminhos forjados, último membro que não é dono, '
     + 'exclusão atômica, retry, migrações posteriores e permissões.');
 } finally {

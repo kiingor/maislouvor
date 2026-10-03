@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { TeamChatReports } from "@/components/TeamChatReports";
 import { BlockedUsersSettings } from "@/components/BlockedUsersSettings";
+import { ResolveReportDialog } from "@/components/chat/ResolveReportDialog";
 import type { ChatReport } from "@/lib/chatModeration";
 
 const mocks = vi.hoisted(() => ({ rpc: vi.fn(), remove: vi.fn(), toast: vi.fn() }));
@@ -104,6 +105,23 @@ describe("TeamChatReports", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Resolver" }));
     expect(await screen.findByText(/é o responsável pela equipe e não pode ser removido/)).toBeInTheDocument();
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+
+  it("lets the team leadership remove a co-leader, but not the platform (only a team leader can)", async () => {
+    const onConfirm = vi.fn();
+    const leader = report({ reported_is_leader: true });
+    const { rerender } = render(<ResolveReportDialog report={leader} onOpenChange={vi.fn()} onConfirm={onConfirm} pending={false} />);
+    expect(screen.getByRole("switch", { name: /Remover Ana da equipe/ })).toBeInTheDocument();
+
+    rerender(<ResolveReportDialog report={leader} onOpenChange={vi.fn()} onConfirm={onConfirm} pending={false} platform />);
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(screen.getByText(/é líder da equipe, e só outro líder da equipe pode removê-lo. Para afastar a pessoa, suspenda a conta./))
+      .toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Resolver" }));
+    expect(onConfirm).toHaveBeenCalledWith("", false);
+
+    rerender(<ResolveReportDialog report={report({ id: "rep-9" })} onOpenChange={vi.fn()} onConfirm={onConfirm} pending={false} platform />);
+    expect(screen.getByRole("switch", { name: /Remover Ana da equipe/ })).toBeInTheDocument();
   });
 
   it("pluralizes the overdue count", async () => {

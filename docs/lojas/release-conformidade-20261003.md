@@ -79,6 +79,41 @@ foi publicado**: este documento é o roteiro de deploy. Todos os testes passam
   legal do art. 11 é um valor a preencher) e dica no motivo da indisponibilidade.
 - `/excluir-conta` com **Voltar**; `/app/settings#excluir-conta` abre a exclusão direto.
 
+### Integração com a trava de líder e dono (`20261003120000`, já em produção)
+
+A migração `20261003120000_team_member_privilege_guard.sql` (outra sessão, integrada em
+`8b71a62`) **já está aplicada em produção** e não muda nesta branch. Ela traz
+`transfer_team_ownership(p_team_id, p_new_owner_profile_id)` (só o dono atual; devolve
+`{ok:true}` ou `{ok:false, error:'forbidden'|'not_member'}`; o novo dono vira líder e o
+antigo continua líder) e os guardas `guard_team_member_privileges` (com JWT de usuário, só
+um líder da equipe promove, rebaixa ou mexe em líderes e permissões; o dono não é
+rebaixado nem removido) e `guard_team_owner_change` (`teams.owner_id` só muda dentro da
+transferência). Sem JWT de usuário (service_role) os guardas não se aplicam.
+
+- **A exclusão de conta não redefine mais `transfer_team_ownership`** (crítica): a versão
+  anterior da `130000` trocava a função de produção por uma sem a configuração do guarda,
+  e toda transferência de dono passaria a falhar. Agora a `130000` só cria o gatilho
+  `teams_owner_change_effects` (`AFTER UPDATE OF owner_id` em `teams`), que registra
+  `team_ownership_transfer` no histórico do painel e avisa o novo dono ("Você agora é
+  dono(a) da equipe") em **toda** troca de dono, uma vez por troca. O app segue o
+  contrato de produção (`{ok}`), com mensagens para `forbidden` e `not_member` e a prévia
+  recarregada depois de uma recusa.
+- **"Tornar responsável" (plataforma) vai pela edge function** (alta): com o JWT de quem
+  administra a plataforma (sem ser líder da equipe), os guardas recusavam a promoção a
+  líder e a troca do dono. `platform-suspend-account` ganhou a ação
+  `transfer_ownership` (`team_id`, `new_owner_member_id`), e
+  `platform_transfer_team_ownership(p_actor_user_id, p_team_id, p_new_owner_member_id)`
+  ficou só para a service_role, conferindo de novo o administrador.
+- **Remover um líder pela denúncia** (média): o guarda só deixa um líder da equipe remover
+  outro líder. `moderate_chat_report` agora explica antes ("Quem enviou a mensagem é líder
+  da equipe, e só outro líder da equipe pode removê-lo. Para afastar a pessoa, suspenda a
+  conta."), `list_chat_reports` devolve `reported_is_leader` e o painel não oferece
+  "Remover da equipe" nesse caso (ver [Limitações](#limitações-conhecidas)).
+- Conferido contra os guardas e sem mudança: promover o novo líder na exclusão de conta
+  (quem promove é o único líder), remover um membro comum pela denúncia (liderança ou
+  plataforma), consentimento do Asafe e termos (não mexem em `team_members`/`teams`),
+  `delete-account` e o seed da conta de revisão (service_role).
+
 ## Migrações
 
 Aplicar **nesta ordem**, cada uma numa transação, com o papel dono do schema `public`
@@ -86,10 +121,10 @@ Aplicar **nesta ordem**, cada uma numa transação, com o papel dono do schema `
 
 | # | Arquivo | O que faz | Antes / depois |
 | --- | --- | --- | --- |
-| 0 | `supabase/migrations/20261003120000_team_member_privilege_guard.sql` | **De outra sessão, não está nesta branch.** Se for publicada, vai antes. | Conferir que ela não bloqueia `transfer_team_ownership`, a promoção a líder (update de `team_members.role` pela aba Membros) nem a remoção do autor em `moderate_chat_report`. |
-| 1 | `20261003130000_account_deletion.sql` | FKs para a exclusão (`teams.owner_id` vira RESTRICT; `created_by` & cia. viram SET NULL), fila de arquivos, prévia, transferência e `delete_account_data`. **Falha de propósito** se achar uma FK de produção que não sabe decidir. Usa `lock_timeout = 3s` (se der timeout, rodar de novo). | Antes: rodar `supabase/setup/account-deletion-preflight.sql` (só leitura) e decidir o que aparecer como "FAZ A MIGRAÇÃO FALHAR" (ex.: `stem_jobs`, `yt_import_jobs`). Ler os NOTICE/WARNING. |
+| 0 | `supabase/migrations/20261003120000_team_member_privilege_guard.sql` | **Já aplicada em produção** (outra sessão; integrada aqui em `8b71a62`). **Não reaplicar nem alterar.** Traz `transfer_team_ownership` e os guardas de líder e dono. | Antes da 1: `SELECT pg_get_functiondef('public.transfer_team_ownership(uuid,uuid)'::regprocedure) LIKE '%app.transfer_team_ownership%';` deve dar `true` (repetir depois de todas). |
+| 1 | `20261003130000_account_deletion.sql` | FKs para a exclusão (`teams.owner_id` vira RESTRICT; `created_by` & cia. viram SET NULL), fila de arquivos, prévia, `delete_account_data` e o gatilho `teams_owner_change_effects` (histórico + aviso ao novo dono em toda troca de dono). **Não toca em `transfer_team_ownership`** (nem a função, nem as permissões: são da 0). **Falha de propósito** se achar uma FK de produção que não sabe decidir. Usa `lock_timeout = 3s` (se der timeout, rodar de novo). | Antes: rodar `supabase/setup/account-deletion-preflight.sql` (só leitura) e decidir o que aparecer como "FAZ A MIGRAÇÃO FALHAR" (ex.: `stem_jobs`, `yt_import_jobs`). Ler os NOTICE/WARNING. Se uma versão anterior desta migração rodou em algum banco de teste, reaplique a 0 nele (aquela versão trocava a função). |
 | 2 | `20261003131000_terms_acceptance.sql` | `profiles.terms_accepted_at/terms_version/privacy_version`, `accept_terms()`, `legal_current_versions()` e o gatilho que impede forjar o aceite. | — |
-| 3 | `20261003132000_chat_moderation.sql` | Termos bloqueados, `chat_reports`, `user_blocks`, RPCs, gatilhos do filtro (mensagens e avisos), da prova e do caminho do anexo, schema `private` com as funções das 5 policies em `storage.objects` (bucket `chat`), push para a plataforma, suspensão de contas (`platform_account_suspensions`) e transferência pela plataforma. Usa `lock_timeout = 3s`. | Depende de `20260930010000_platform_admin_and_support.sql` (já no ar). Conferir que `private` **não** está em `PGRST_DB_SCHEMAS` do PostgREST (padrão: `public,storage,graphql_public`). |
+| 3 | `20261003132000_chat_moderation.sql` | Termos bloqueados, `chat_reports`, `user_blocks`, RPCs, gatilhos do filtro (mensagens e avisos), da prova e do caminho do anexo, schema `private` com as funções das 5 policies em `storage.objects` (bucket `chat`), push para a plataforma, suspensão de contas (`platform_account_suspensions`) e transferência pela plataforma (`platform_transfer_team_ownership(p_actor_user_id, p_team_id, p_new_owner_member_id)`, só service_role, pela edge function). `moderate_chat_report` recusa, com mensagem, a plataforma remover um líder (o guarda da 0 recusaria). Usa `lock_timeout = 3s`. | Depende de `20260930010000_platform_admin_and_support.sql` (já no ar), da 0 e da 1 (o gatilho registra e avisa a transferência pela plataforma). Conferir que `private` **não** está em `PGRST_DB_SCHEMAS` do PostgREST (padrão: `public,storage,graphql_public`). |
 | 4 | `20261003133000_assistant_ai_consent.sql` | `assistant_ai_consents`, `assistant_ai_legacy_members` (foto única de quem já usava), `assistant_ai_opt_outs`, prazo das tolerâncias (30 dias), `assistant_groups.ai_disclosure_version`, RPCs de consentimento e as funções do Asafe com o opt-in (escala sem o nome de quem não permite). Usa `lock_timeout = 3s`: se der timeout, rodar de novo. | Logo depois: `SELECT assistant_team_consent_state(team_id) FROM assistant_groups WHERE active;` deve dar `pending` nas equipes que já usam. **Obrigatório:** ajustar o prazo (abaixo). |
 | — | `…134000_review_demo.sql` | **Não existe** (a demo não precisou). | — |
 
@@ -98,6 +133,8 @@ Depois de **todas**:
 
 ```sql
 SELECT * FROM public.account_deletion_blocking_references();  -- tem de voltar vazio
+SELECT pg_get_functiondef('public.transfer_team_ownership(uuid,uuid)'::regprocedure)
+       LIKE '%app.transfer_team_ownership%';                    -- true: continua a da 0 (produção)
 SELECT public.legal_current_versions();                         -- {"terms":"2026-10-03","privacy":"2026-10-03"}
 SELECT public.assistant_ai_consent_version();                   -- 2026-10-03
 SELECT ai_consent_required_from FROM public.assistant_config;   -- ~30 dias depois da migração
@@ -117,6 +154,7 @@ Exemplo (conexão administrativa já configurada, sem credenciais no código):
 
 ```sh
 psql -X -v ON_ERROR_STOP=1 -f supabase/setup/account-deletion-preflight.sql
+# 20261003120000 já está em produção: fica fora do laço.
 for f in 20261003130000_account_deletion 20261003131000_terms_acceptance \
          20261003132000_chat_moderation 20261003133000_assistant_ai_consent; do
   psql -X -v ON_ERROR_STOP=1 --single-transaction -f "supabase/migrations/$f.sql" || break
@@ -128,7 +166,7 @@ done
 | Função | Mudança | Como publicar |
 | --- | --- | --- |
 | `delete-account` | **Nova** (`index.ts` + `flow.ts`). Usuário só pelo JWT, exige `{ "confirmation": "EXCLUIR" }`, banco primeiro (uma transação), arquivos depois, conta do GoTrue por último; repetir é inofensivo. | Copiar a pasta para `/opt/supabase/volumes/functions/delete-account/` e `docker compose up -d functions`. |
-| `platform-suspend-account` | **Nova** (`index.ts` + `flow.ts`). Só administrador da plataforma (confere `is_platform_admin` com o token e o banco confere de novo): bane/desbane no GoTrue (`ban_duration`) e grava em `platform_account_suspensions` e no histórico. | Copiar a pasta para `/opt/supabase/volumes/functions/platform-suspend-account/` e `docker compose up -d functions`. |
+| `platform-suspend-account` | **Nova** (`index.ts` + `flow.ts`). Só administrador da plataforma (confere `is_platform_admin` com o token e o banco confere de novo): bane/desbane no GoTrue (`ban_duration`) e grava em `platform_account_suspensions` e no histórico. Também a ação `{"action":"transfer_ownership","team_id","new_owner_member_id"}` ("Tornar responsável" no painel): chama `platform_transfer_team_ownership` com a service_role e o usuário do token como ator — pelo navegador, os guardas da migração 0 recusariam. | Copiar a pasta para `/opt/supabase/volumes/functions/platform-suspend-account/` e `docker compose up -d functions` **antes do site** (o painel novo transfere por ela). |
 | `send-push` | Alterada: com `chat_report_id`, avisa também os administradores da plataforma (o banco confere a denúncia de quem chama, uma vez); passa título e texto pelo filtro de palavras (`chat_mask_text`) antes de enviar. Sem a migração 3, manda como antes. | Copiar `supabase/functions/send-push/` para `/opt/supabase/volumes/functions/send-push/` e `docker compose up -d functions`. |
 | `whatsapp-assistant` | Alterada: consentimento da equipe e da pessoa, citações filtradas (`assistant_quote_author_allowed`), linha de transparência (OpenAI) no boas-vindas/ajuda e, uma vez, na primeira resposta dos grupos que já estavam ativos (`assistant_claim_ai_disclosure`), caminhos "Usuário › …", mensagens `consent_required` e `team_suspended`. **Contém a release `asafe-interacao` que está no ar** (016eed9): publicar daqui não desfaz piadas, desafios nem a conversa por respostas citadas. | Copiar `supabase/functions/whatsapp-assistant/` para `/opt/supabase/volumes/functions/whatsapp-assistant/` e `docker compose up -d functions`. Conferir com o `curl` do `docs/assistente-whatsapp.md` (`{"ok":true,…}`). |
 
@@ -200,8 +238,9 @@ Fora do script:
    jurídica de `src/content/legal/*.ts` e `node scripts/check-legal-placeholders.mjs`
    sem pendências. Sem isso o build não sai (e não deve sair).
 2. **Backup** do banco (como de costume) e o preflight da exclusão.
-3. **Migrações** 1 → 4 (e a 0, se a outra sessão publicar antes). Conferir as
-   consultas acima e **ajustar o prazo do Asafe**.
+3. **Migrações** 1 → 4 (a 0, `20261003120000`, já está em produção: não reaplicar; a 1
+   não toca em `transfer_team_ownership`). Conferir as consultas acima e **ajustar o
+   prazo do Asafe**.
 4. **Edge functions**: `delete-account` e `platform-suspend-account` (novas),
    `send-push` e `whatsapp-assistant`.
 5. **Site**: `louvor-vps/publish.sh` a partir desta branch, com o bundle de
@@ -257,7 +296,11 @@ Janela de convivência (site novo, APK 1.0.5 ainda instalado):
   no texto do push).
 - **`platform-suspend-account`**: remover a pasta; quem já foi suspenso continua banido
   no GoTrue até reativar (`auth.admin.updateUserById(id, { ban_duration: "none" })` ou
-  a função de volta).
+  a função de volta). "Tornar responsável" no painel para de funcionar junto.
+- **Gatilho da troca de dono** (`teams_owner_change_effects`): para parar o registro e o
+  aviso sem mexer na transferência, `ALTER TABLE public.teams DISABLE TRIGGER
+  teams_owner_change_effects;`. Nunca reverter com uma versão antiga da migração 1 (ela
+  trocaria `transfer_team_ownership`).
 - **Migrações**: são aditivas, exceto as FKs da migração 1. **Não** volte
   `teams.owner_id` para `ON DELETE CASCADE` (apagar um dono voltaria a apagar a equipe
   inteira). Colunas e tabelas novas podem ficar sem uso. Para apagar arquivos que
@@ -279,7 +322,8 @@ Celular (Android e navegador estreito), claro e escuro, com contas de teste:
 **Exclusão de conta**
 - [ ] Membro comum: resumo "Você sai da equipe", digitar EXCLUIR, conta excluída, volta ao login com aviso; login de novo falha.
 - [ ] Único membro de uma equipe: "Será excluída com a conta"; músicas/cultos/chat da equipe somem.
-- [ ] Dono com membros: "Transfira a propriedade" → escolher, Transferir → liberado; a pessoa vira dona e líder e recebe notificação.
+- [ ] Dono com membros: "Transfira a propriedade" → escolher, Transferir → liberado; a pessoa vira dona e líder e recebe notificação (uma só); o painel mostra "Propriedade de equipe transferida" uma vez.
+- [ ] Transferir para alguém que saiu da equipe enquanto a folha estava aberta: aviso "A pessoa escolhida não faz mais parte da equipe…" e o resumo recarrega.
 - [ ] Único líder (não dono): "Escolha um novo líder" → Promover.
 - [ ] `/excluir-conta` → "Entrar e excluir minha conta" → login → cai na seção de exclusão (também para quem ainda não aceitou os termos).
 - [ ] Mensagem com foto denunciada e conta do autor excluída: a denúncia continua com a cópia e o anexo; ao resolver, o anexo some.
@@ -294,7 +338,8 @@ Celular (Android e navegador estreito), claro e escuro, com contas de teste:
 - [ ] Palavrão vira asteriscos (e "computador", "disputa" não); mensagem acima de 4.000 caracteres é recusada.
 - [ ] Usuário › Membros › Denúncias do chat: prazo vencido em vermelho; Em análise / Resolver / Descartar / Apagar mensagem / remover autor (nunca o dono).
 - [ ] Administrador da plataforma recebe **push** a cada denúncia nova, também sobre a liderança.
-- [ ] `/admin/denuncias` › **Suspender conta** (inclusive do dono): a pessoa não entra mais (sessão aberta cai em até 1 h); Contas › equipe › Membros › **Tornar responsável** outro membro; **Reativar** volta; Histórico mostra "Conta suspensa/reativada".
+- [ ] `/admin/denuncias` › **Suspender conta** (inclusive do dono): a pessoa não entra mais (sessão aberta cai em até 1 h); Contas › equipe › Membros › **Tornar responsável** outro membro — inclusive um membro comum (não líder): vira dono e líder, recebe o aviso da equipe de suporte; **Reativar** volta; Histórico mostra "Conta suspensa/reativada" e "Propriedade de equipe transferida".
+- [ ] `/admin/denuncias` › Resolver denúncia sobre um **líder** (ex.: o antigo dono depois de "Tornar responsável"): sem "Remover da equipe", com o aviso de que só outro líder da equipe remove; a nova liderança remove pela aba Membros.
 - [ ] Aviso ao time com palavrão chega mascarado (sino e push); aviso de quem você bloqueou não aparece no sino.
 
 **Asafe**
@@ -368,15 +413,21 @@ Como ficou (`src/lib/storeBuild.ts`, decidido **na compilação**):
 
 ## Verificação
 
-Rodado em `/Users/filipecardone/Projetos/Cofre/MaisLouvor-lojas` depois da revisão final:
+Rodado em `/Users/filipecardone/Projetos/Cofre/MaisLouvor-lojas` depois da integração com
+a trava de líder e dono (`20261003120000`):
 
-- `npx vitest run`: 34 arquivos, 301 testes, todos passando (base: 20/165).
+- `npx vitest run`: 34 arquivos, 308 testes, todos passando (base: 20/165).
 - `npx tsc --noEmit -p tsconfig.app.json`: 9 erros, os mesmos 9 de antes.
 - PGlite (`PGLITE_MODULE=…/pglite/dist/index.js node supabase/tests/<arquivo>.mjs`): todas
-  as suítes passam — `account_deletion` 134, `chat_moderation` 220, `assistant_ai_consent`
-  185, `lojas_all_migrations` 88 (as quatro migrações juntas, em ordem, duas vezes, sobre
-  o recorte de produção) e as demais como antes. `whatsapp_notifications_schema.mjs` só
-  roda com um dump de produção (como antes).
+  as suítes passam, com a `20261003120000` aplicada **antes** da `130000`, como na
+  produção — `account_deletion` 146 (transferência pela RPC de produção, um registro e um
+  aviso, a função de produção intacta depois de todas as migrações), `chat_moderation` 239
+  (transferência pela plataforma só com a service_role e um administrador, guardas
+  recusando o caminho antigo, líder que só a equipe remove), `lojas_all_migrations` 112
+  (todas as migrações de 03/10 juntas, em ordem, duas vezes, sobre o recorte de
+  produção), `review_demo_seed` 89, `team_member_privileges` 73, `assistant_ai_consent`
+  185 e as demais como antes. `whatsapp_notifications_schema.mjs` só roda com um dump de
+  produção (como antes).
 - `node --test scripts/review-demo/seed.test.mjs`: 22 testes passando.
 - `npx vite build`: passa. `VITE_STORE_BUILD=1 npx vite build`: passa, sem `import-youtube`.
 - `node scripts/check-legal-placeholders.mjs`: 10 pendências (esperado até o
@@ -403,3 +454,17 @@ Rodado em `/Users/filipecardone/Projetos/Cofre/MaisLouvor-lojas` depois da revis
 - A data do aceite dos termos (`profiles.terms_*`) continua legível pela equipe, como o
   resto do perfil (não revela escolha nenhuma: todo mundo aceita para usar o app).
 - iOS: falta o projeto, e o login com Google exige "Iniciar sessão com a Apple" (4.8).
+- **A plataforma não remove um líder da equipe** pela denúncia: o guarda de
+  `20261003120000` (já em produção) só deixa um líder da própria equipe remover outro
+  líder, e `moderate_chat_report` recusa com "Quem enviou a mensagem é líder da equipe, e
+  só outro líder da equipe pode removê-lo. Para afastar a pessoa, suspenda a conta." (o
+  painel nem oferece a opção). Vale também para o antigo dono depois de "Tornar
+  responsável", que continua líder. Caminho: suspender a conta e a nova liderança remove
+  pela aba Membros. Administrador da plataforma que também é líder daquela equipe remove
+  pelo app da equipe, não pelo painel.
+- Troca de dono feita à mão pelo suporte (SQL sem JWT) entra no histórico **sem autor** e
+  avisa o novo dono com o texto neutro. Para registrar como plataforma, na mesma
+  transação: `SELECT set_config('app.ownership_change_source', 'platform', true),
+  set_config('app.ownership_change_actor', '<auth.users.id>', true);`.
+- O antigo dono continua líder depois de qualquer transferência (regra da
+  `transfer_team_ownership` de produção, seguida também pela plataforma).

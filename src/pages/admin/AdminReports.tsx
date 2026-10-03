@@ -89,7 +89,7 @@ function ReportItem({ report, actions, onSuspend }: {
       </div>
       <dl className="admin-definition">
         <div><dt>Equipe</dt><dd><Link className="text-[#111111] underline underline-offset-4" to={`/admin/contas/${report.team_id}`}>{report.team_name}</Link></dd></div>
-        <div><dt>Quem enviou</dt><dd>{report.reported_name || "Conta excluída"}{report.reported_is_owner ? " · responsável pela equipe" : !report.reported_is_member && report.reported_profile_id ? " · fora da equipe" : ""}</dd></div>
+        <div><dt>Quem enviou</dt><dd>{report.reported_name || "Conta excluída"}{report.reported_is_owner ? " · responsável pela equipe" : report.reported_is_leader ? " · líder da equipe" : !report.reported_is_member && report.reported_profile_id ? " · fora da equipe" : ""}</dd></div>
         <div><dt>Quem denunciou</dt><dd>{report.reporter_name || "Conta excluída"}</dd></div>
         {!open && <div><dt>Resultado</dt><dd>{reportStatusLabels[report.status]}{report.resolved_by_name ? ` por ${report.resolved_by_name}` : ""} em {displayDate(report.resolved_at, true)}{report.member_removed_at ? " · autor removido da equipe" : ""}{report.resolution_note ? <span className="mt-1 block text-muted-foreground">{report.resolution_note}</span> : null}</dd></div>}
       </dl>

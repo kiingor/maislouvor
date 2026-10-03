@@ -53,7 +53,13 @@ export function useAccountMemberAdmin(teamId: string | undefined, ownerProfileId
       });
     },
     onError: (error) =>
-      toast({ className: "platform-toast", title: "Não foi possível transferir", description: platformError(error), variant: "destructive" }),
+      toast({
+        className: "platform-toast",
+        title: "Não foi possível transferir",
+        // A edge function já devolve a mensagem pronta (equipe, pessoa, conta suspensa...).
+        description: error instanceof Error && error.message ? error.message : platformError(error),
+        variant: "destructive",
+      }),
   });
 
   const cell = (member: AccountMember): ReactNode => {
@@ -89,8 +95,8 @@ export function useAccountMemberAdmin(teamId: string | undefined, ownerProfileId
             <AlertDialogTitle>Passar a propriedade para {transferring?.full_name || "esta pessoa"}?</AlertDialogTitle>
             <AlertDialogDescription>
               {transferring?.full_name || "A pessoa"} passa a ser responsável e líder de {teamName || "esta equipe"} e recebe uma
-              notificação. Quem era responsável continua na equipe: para tirá-lo, resolva a denúncia com “remover da equipe”
-              ou suspenda a conta.
+              notificação. Quem era responsável continua na equipe como líder: só a liderança da equipe pode removê-lo. Para
+              afastá-lo, suspenda a conta.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

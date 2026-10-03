@@ -28,7 +28,10 @@ export function ResolveReportDialog({ report, onOpenChange, onConfirm, pending, 
   }, [report?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const name = firstName(report?.reported_name);
-  const canRemove = !!report?.reported_profile_id && report.reported_is_member && !report.reported_is_owner;
+  // Na plataforma, líder da equipe não sai por aqui: só outro líder da equipe o
+  // remove (o banco recusa); a plataforma afasta pela suspensão da conta.
+  const leaderOnlyByTeam = platform && !!report?.reported_is_leader && !report.reported_is_owner;
+  const canRemove = !!report?.reported_profile_id && report.reported_is_member && !report.reported_is_owner && !leaderOnlyByTeam;
 
   return (
     <Dialog open={!!report} onOpenChange={(open) => !pending && onOpenChange(open)}>
@@ -79,6 +82,9 @@ export function ResolveReportDialog({ report, onOpenChange, onConfirm, pending, 
 
           <div className="mx-4 space-y-1.5 text-footnote text-muted-foreground">
             {report?.reported_is_owner && <p>{name} é o responsável pela equipe e não pode ser removido por aqui.</p>}
+            {leaderOnlyByTeam && report?.reported_is_member && (
+              <p>{name} é líder da equipe, e só outro líder da equipe pode removê-lo. Para afastar a pessoa, suspenda a conta.</p>
+            )}
             {report?.message_exists && <p>A mensagem continua no chat. Use “Apagar mensagem” para tirá-la de lá.</p>}
             <p>Quem denunciou recebe um aviso de que a denúncia foi analisada, sem detalhes da decisão.</p>
           </div>

@@ -5,6 +5,8 @@
 // O recorte de produção (fixtures/core_schema_20260927.sql) não tem o chat: messages,
 // channels e o bucket 'chat' são recriados aqui como as migrations os deixaram
 // (20260224230359, 20260614140000, 20260626_member_permissions, 20260816120000).
+// Antes desta, como na produção: 20261003120000 (trava de líder e dono, já no ar) e
+// 20261003130000 (exclusão de conta, com o gatilho que registra e avisa a troca de dono).
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
@@ -80,8 +82,16 @@ try {
     CREATE TABLE public.channels (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       team_id uuid NOT NULL REFERENCES public.teams(id) ON DELETE CASCADE,
-      name text NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+      name text NOT NULL, created_by uuid REFERENCES public.profiles(id), created_at timestamptz NOT NULL DEFAULT now()
     );
+    -- Para a 20261003130000 (exclusão de conta): repertórios e convites como em produção.
+    CREATE TABLE public.repertorios (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      team_id uuid NOT NULL REFERENCES public.teams(id) ON DELETE CASCADE, name text NOT NULL,
+      created_by uuid REFERENCES public.profiles(id), created_at timestamptz NOT NULL DEFAULT now());
+    CREATE TABLE public.team_invites (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      team_id uuid NOT NULL REFERENCES public.teams(id) ON DELETE CASCADE, email text NOT NULL,
+      role public.team_role NOT NULL DEFAULT 'viewer', token uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+      accepted boolean NOT NULL DEFAULT false, created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE public.messages (
       id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
       team_id uuid NOT NULL REFERENCES public.teams(id) ON DELETE CASCADE,
@@ -140,6 +150,8 @@ try {
     INSERT INTO public.platform_admins(user_id) VALUES ('${U.platform}');
   `);
 
+  await db.exec(await read('../migrations/20261003120000_team_member_privilege_guard.sql'));
+  await db.exec(await read('../migrations/20261003130000_account_deletion.sql'));
   await db.exec(await read('../migrations/20261003132000_chat_moderation.sql'));
   // Idempotente: reaplicar não duplica termos nem quebra policies e triggers.
   await db.exec(await read('../migrations/20261003132000_chat_moderation.sql'));
@@ -166,9 +178,13 @@ try {
   await asUser(U.reporter);
   for (const fn of [`chat_report_platform_push_targets('${team}', '${U.reporter}')`,
     `platform_account_suspension_target('${U.reporter}', '${P.author}')`,
-    `platform_record_account_suspension('${U.reporter}', '${P.author}', true)`]) {
+    `platform_record_account_suspension('${U.reporter}', '${P.author}', true)`,
+    `platform_transfer_team_ownership('${U.reporter}', '${team}', '${id(9, 9)}')`]) {
     await fails(`SELECT public.${fn}`, '42501');
   }
+  await asSystem();
+  // A assinatura antiga (chamada pelo navegador) não existe mais.
+  check(await value(`SELECT to_regprocedure('public.platform_transfer_team_ownership(uuid,uuid)') IS NULL AS result`), true);
   await asAnon();
   await fails(`SELECT public.report_chat_message('${team}', 'spam')`, '42501');
   await fails('SELECT public.list_chat_reports()', '42501');
@@ -598,18 +614,46 @@ try {
   await asUser(U.leader2);
   await fails(`SELECT public.platform_team_member_suspensions('${team}')`, '42501');
 
-  // A propriedade da equipe sai do dono suspenso (só a plataforma; nunca para outra conta suspensa).
+  // A propriedade da equipe sai do dono suspenso: só pela edge function platform-suspend-account
+  // (service_role), com quem pede conferido de novo no banco; nunca para outra conta suspensa.
   await asSystem();
   const memberId = async (profile) => value(`SELECT id AS result FROM public.team_members WHERE team_id = '${team}' AND profile_id = '${profile}'`);
-  const [leaderMember, leader2Member, editorMember] = [await memberId(P.leader), await memberId(P.leader2), await memberId(P.editor)];
-  await asUser(U.leader2);
-  await fails(`SELECT public.platform_transfer_team_ownership('${team}', '${leader2Member}')`, '42501');
-  check((await record(U.platform, P.editor, true)).suspended, true);
+  const [leaderMember, leader2Member, editorMember, reporterMember] =
+    [await memberId(P.leader), await memberId(P.leader2), await memberId(P.editor), await memberId(P.reporter)];
+  const platformTransfer = (actor, teamId, member) => withService(() =>
+    value('SELECT public.platform_transfer_team_ownership($1, $2, $3) AS result', [actor, teamId, member]));
+  // Pelo navegador, nem a plataforma nem a liderança executam a função...
+  for (const uid of [U.platform, U.leader2]) {
+    await asUser(uid);
+    await fails(`SELECT public.platform_transfer_team_ownership('${U.platform}', '${team}', '${reporterMember}')`, '42501');
+  }
+  // ...e o caminho antigo, com o JWT da plataforma (que não é líder da equipe), os guardas de
+  // 20261003120000 recusam: promover a líder e trocar o dono.
   await asUser(U.platform);
-  await fails(`SELECT public.platform_transfer_team_ownership('${team}', '${editorMember}')`, '22023');
-  await fails(`SELECT public.platform_transfer_team_ownership('${team}', '${leaderMember}')`, '22023');
-  check(await value(`SELECT public.platform_transfer_team_ownership('${team}', '${leader2Member}') AS result`),
-    { team_id: team, owner_profile_id: P.leader2 });
+  await fails(`UPDATE public.team_members SET role = 'admin', permissions = '{}' WHERE id = '${reporterMember}'`, '42501');
+  await fails(`UPDATE public.teams SET owner_id = '${P.reporter}' WHERE id = '${team}'`, '42501');
+  // Service role, mas quem pede não administra a plataforma (ou não veio): recusado no banco.
+  await rejects(platformTransfer(U.leader2, team, reporterMember), '42501');
+  await rejects(platformTransfer(null, team, reporterMember), '42501');
+  check((await record(U.platform, P.editor, true)).suspended, true);
+  await rejects(platformTransfer(U.platform, team, editorMember), '22023'); // conta suspensa
+  await rejects(platformTransfer(U.platform, team, leaderMember), '22023'); // já é o dono
+  await rejects(platformTransfer(U.platform, otherTeam, reporterMember), '22023'); // de outra equipe
+  await rejects(platformTransfer(U.platform, id(3, 99), reporterMember), 'P0002');
+  await asSystem();
+  check(await value(`SELECT count(*)::int AS result FROM public.platform_audit_log WHERE action = 'team_ownership_transfer'`), 0,
+    'recusas não registram');
+  // Para quem não é líder (o que o guarda barrava pelo navegador): vira dono e líder, sem exceções.
+  check(await platformTransfer(U.platform, team, reporterMember), { team_id: team, owner_profile_id: P.reporter });
+  check(await rows(`SELECT role, permissions FROM public.team_members WHERE id = '${reporterMember}'`), [{ role: 'admin', permissions: {} }]);
+  // De novo, para a outra líder; a origem e quem agiu não vazam para o resto da transação.
+  check(await db.transaction(async (tx) => {
+    await tx.exec('SET LOCAL ROLE service_role');
+    const result = (await tx.query('SELECT public.platform_transfer_team_ownership($1, $2, $3) AS r', [U.platform, team, leader2Member])).rows[0].r;
+    const settings = (await tx.query(`SELECT current_setting('app.ownership_change_source', true) AS source,
+      current_setting('app.ownership_change_actor', true) AS actor`)).rows[0];
+    return [result, settings];
+  }), [{ team_id: team, owner_profile_id: P.leader2 }, { source: '', actor: '' }]);
   // A plataforma vê quem está suspenso na fila; a liderança, não.
   const reportItem = async (uid, reportId) => {
     await asUser(uid);
@@ -620,15 +664,40 @@ try {
   check((await reportItem(U.leader2, r9.id)).reported_suspended, false);
   await asSystem();
   check(await value(`SELECT owner_id AS result FROM public.teams WHERE id = '${team}'`), P.leader2);
-  check(await rows(`SELECT details->>'by_platform' AS by_platform, details->>'from_profile_id' AS from_profile
-    FROM public.platform_audit_log WHERE action = 'team_ownership_transfer'`), [{ by_platform: 'true', from_profile: P.leader }]);
-  check(await value(`SELECT count(*)::int AS result FROM public.notifications WHERE profile_id = '${P.leader2}' AND type = 'team_ownership'`), 1);
+  // Registro e aviso: do gatilho da 20261003130000, um por troca, em nome da plataforma.
+  check(await rows(`SELECT actor_user_id, details FROM public.platform_audit_log WHERE action = 'team_ownership_transfer'
+    ORDER BY created_at, id`), [
+    { actor_user_id: U.platform, details: { from_profile_id: P.leader, to_profile_id: P.reporter, by_platform: true } },
+    { actor_user_id: U.platform, details: { from_profile_id: P.reporter, to_profile_id: P.leader2, by_platform: true } },
+  ]);
+  check(await rows(`SELECT profile_id, team_id, body, sender_profile_id FROM public.notifications WHERE type = 'team_ownership'
+    ORDER BY created_at, id`), [P.reporter, P.leader2].map((profile) => ({ profile_id: profile, team_id: team, sender_profile_id: null,
+    body: 'A equipe de suporte do +Louvor transferiu a propriedade de Louvor Alfa para você, que agora também é líder.' })));
   // Reativar desfaz e fica no histórico.
   check((await record(U.platform, P.leader, false)).suspended, false);
   check((await record(U.platform, P.editor, false)).suspended, false);
   await asSystem();
   check(await value('SELECT count(*)::int AS result FROM public.platform_account_suspensions'), 0);
   check(await value(`SELECT count(*)::int AS result FROM public.platform_audit_log WHERE action = 'account_reactivate'`), 2);
+
+  // Quem era dono continua líder: a plataforma (sem ser líder da equipe) não o remove pela
+  // denúncia — o guarda de 20261003120000 só deixa um líder remover outro —, e o banco
+  // explica antes de mexer em qualquer coisa. A nova liderança remove pela aba Membros.
+  check((await reportItem(U.platform, r5.id)).reported_is_leader, true);
+  check((await reportItem(U.platform, r9.id)).reported_is_leader, false);
+  await asUser(U.platform);
+  await assert.rejects(db.query('SELECT public.moderate_chat_report($1, $2, $3, $4)', [r5.id, 'resolvida', null, true]),
+    (error) => error.code === '22023' && /é líder da equipe, e só outro líder da equipe pode removê-lo/.test(error.message)
+      || assert.fail(`${error.code}: ${error.message}`));
+  checks++;
+  await asSystem();
+  check(await value(`SELECT status AS result FROM public.chat_reports WHERE id = '${r5.id}'`), 'aberta', 'a recusa não muda a denúncia');
+  await asUser(U.leader2);
+  check(await rows(`DELETE FROM public.team_members WHERE team_id = '${team}' AND profile_id = '${P.leader}' RETURNING role`),
+    [{ role: 'admin' }], 'a nova dona remove o antigo dono, que é líder');
+  await asUser(U.platform);
+  check((await moderate(r5.id, 'resolvida', 'Removido pela liderança.')).member_removed, false);
+  check((await reportItem(U.platform, r5.id)).reported_is_member, false);
 
   // ---------------------------------------------------------------- exclusão de contas e equipes
   await asSystem();
@@ -643,7 +712,7 @@ try {
   await db.exec(`DELETE FROM public.teams WHERE id = '${team}'`);
   check(await value('SELECT count(*)::int AS result FROM public.chat_reports'), 0);
 
-  console.log(`${checks} PostgreSQL checks passed: privileges, content filter (incl. length cap and linear time), reports, notifications, rate limit, RLS isolation, column privileges, leadership reports routed to the platform, moderation, blocks, deletion, storage evidence, forged attachment paths, notice filter, platform push, account suspension, platform ownership transfer and cascades.`);
+  console.log(`${checks} PostgreSQL checks passed: privileges, content filter (incl. length cap and linear time), reports, notifications, rate limit, RLS isolation, column privileges, leadership reports routed to the platform, moderation, blocks, deletion, storage evidence, forged attachment paths, notice filter, platform push, account suspension, platform ownership transfer (service role only, logged and notified once by the 20261003130000 trigger, under the 20261003120000 guards), leader removal left to the team, and cascades.`);
 } finally {
   await db.close();
 }

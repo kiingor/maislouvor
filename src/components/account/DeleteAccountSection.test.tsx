@@ -133,7 +133,8 @@ describe("DeleteAccountSection", () => {
   it("asks the owner to transfer the team first and unlocks after the transfer", async () => {
     let previews = 0;
     mocks.rpc.mockImplementation(async (fn: string) => {
-      if (fn === "transfer_team_ownership") return { data: { team_id: "team-a", owner_profile_id: "p-mario" }, error: null };
+      // Contrato de produção (20261003120000): { ok: true } ou { ok: false, error }.
+      if (fn === "transfer_team_ownership") return { data: { ok: true }, error: null };
       previews++;
       return previews === 1
         ? { data: preview([team({ role: "admin", is_owner: true, action: "transfer_required", candidates })], false), error: null }
@@ -159,6 +160,29 @@ describe("DeleteAccountSection", () => {
     expect(within(dialog).getByLabelText(/Para confirmar, digite/)).toBeEnabled();
     expect(mocks.refetchTeams).toHaveBeenCalled();
     expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Propriedade transferida" }));
+  });
+
+  it("explains a refused transfer and reloads the summary", async () => {
+    let previews = 0;
+    const blocked = preview([team({ role: "admin", is_owner: true, action: "transfer_required", candidates })], false);
+    mocks.rpc.mockImplementation(async (fn: string) => {
+      if (fn === "transfer_team_ownership") return { data: { ok: false, error: "not_member" }, error: null };
+      previews++;
+      return { data: blocked, error: null };
+    });
+    renderSection();
+    const dialog = await open();
+
+    fireEvent.change(await within(dialog).findByLabelText("Novo dono(a)"), { target: { value: "p-mel" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Transferir" }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Não foi possível transferir",
+      description: "A pessoa escolhida não faz mais parte da equipe. Atualize a tela e escolha outra pessoa.",
+      variant: "destructive",
+    })));
+    await waitFor(() => expect(previews).toBe(2));
+    expect(mocks.toast).not.toHaveBeenCalledWith(expect.objectContaining({ title: "Propriedade transferida" }));
+    expect(within(dialog).getByLabelText(/Para confirmar, digite/)).toBeDisabled();
   });
 
   it("lets the only leader promote someone through the members update", async () => {

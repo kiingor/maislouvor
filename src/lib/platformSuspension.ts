@@ -1,11 +1,16 @@
 import { supabase } from "@/integrations/supabase/client";
 import { chatModerationSupabase } from "@/integrations/supabase/chat-moderation-client";
-import type { OwnedTeam, SuspensionAction } from "../../supabase/functions/platform-suspend-account/flow";
-import { SUSPENSION_REASON_MAX } from "../../supabase/functions/platform-suspend-account/flow";
+import type {
+  OwnedTeam,
+  OwnershipTransferResult,
+  SuspensionAction,
+} from "../../supabase/functions/platform-suspend-account/flow";
+import { SUSPENSION_REASON_MAX, TRANSFER_OWNERSHIP_ACTION } from "../../supabase/functions/platform-suspend-account/flow";
 
 // Suspensão de contas pela plataforma (painel /admin): edge function
-// platform-suspend-account (banimento no GoTrue + registro no banco) e as RPCs de
-// 20261003132000_chat_moderation.sql para a propriedade das equipes.
+// platform-suspend-account (banimento no GoTrue + registro no banco, e a
+// transferência da propriedade das equipes, que precisa da service_role) e a
+// RPC de 20261003132000_chat_moderation.sql com a situação dos membros.
 
 export type { OwnedTeam, SuspensionAction };
 export { SUSPENSION_REASON_MAX };
@@ -67,12 +72,18 @@ export async function listTeamMemberSuspensions(teamId: string): Promise<MemberS
   return (data ?? []) as unknown as MemberSuspension[];
 }
 
-/** A plataforma passa a propriedade da equipe para outro membro (que vira líder). */
-export async function transferTeamOwnershipAsPlatform(teamId: string, memberId: string) {
-  const { data, error } = await chatModerationSupabase.rpc("platform_transfer_team_ownership", {
-    p_team_id: teamId,
-    p_new_owner_member_id: memberId,
+/**
+ * A plataforma passa a propriedade da equipe para outro membro (que vira líder).
+ * Vai pela edge function (service_role): com o JWT de quem administra a
+ * plataforma, os guardas do banco recusam a promoção e a troca do dono.
+ */
+export async function transferTeamOwnershipAsPlatform(teamId: string, memberId: string): Promise<OwnershipTransferResult> {
+  const { data, error } = await supabase.functions.invoke("platform-suspend-account", {
+    body: { action: TRANSFER_OWNERSHIP_ACTION, team_id: teamId, new_owner_member_id: memberId },
   });
-  if (error) throw error;
-  return data as unknown as { team_id: string; owner_profile_id: string };
+  if (!error && data?.ok) {
+    return { team_id: String(data.team_id), owner_profile_id: String(data.owner_profile_id) };
+  }
+  const body = (data && typeof data === "object" ? data : null) ?? (await readFunctionError(error));
+  throw new Error(typeof body?.message === "string" ? body.message : "Não foi possível transferir a propriedade agora. Tente novamente.");
 }

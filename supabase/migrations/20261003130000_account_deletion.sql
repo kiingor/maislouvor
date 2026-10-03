@@ -4,7 +4,9 @@
 --
 -- Quem chama: a edge function delete-account (service_role), depois de
 -- autenticar o usuário pelo JWT e conferir a confirmação digitada. O app só usa
--- as duas RPCs de usuário: get_account_deletion_preview() e transfer_team_ownership().
+-- a RPC de usuário get_account_deletion_preview() e, para passar a equipe,
+-- transfer_team_ownership() — que é de 20261003120000_team_member_privilege_guard.sql
+-- (já em produção) e NÃO é criada nem alterada aqui (ver a seção 3).
 --
 -- Ordem: banco primeiro (uma transação), arquivos depois. delete_account_data
 -- lista os arquivos ANTES de apagar as linhas e os guarda numa fila
@@ -58,7 +60,8 @@
 --     todos os outros membros dentro. Agora: ON DELETE RESTRICT. A exclusão
 --     só segue quando nenhuma equipe com outros membros depende da pessoa:
 --       * dono de equipe com outros membros -> transferir a propriedade antes
---         (transfer_team_ownership, que também promove o novo dono a líder);
+--         (transfer_team_ownership, de 20261003120000, que também promove o
+--         novo dono a líder; o antigo dono continua líder);
 --       * único líder (sem ser dono) com outros membros -> promover outro
 --         membro a líder antes (o app usa o mesmo update de papel da aba Membros);
 --       * dono e único membro -> a equipe é excluída junto com a conta;
@@ -352,43 +355,68 @@ END;
 $$;
 
 -- ----------------------------------------------------------------------------
--- 3) Transferência de propriedade: só o dono atual; o novo dono precisa ser
---    membro e vira líder. Fica registrada no log da plataforma e avisa o novo dono.
+-- 3) Troca de dono: registro no log da plataforma e aviso ao novo dono.
+--    A transferência em si NÃO é desta migração: transfer_team_ownership() vem de
+--    20261003120000_team_member_privilege_guard.sql, já em produção (só o dono
+--    atual chama; devolve {ok:true} ou {ok:false, error:'forbidden'|'not_member'};
+--    o novo dono vira líder e o antigo continua líder), e guard_team_owner_change
+--    só deixa teams.owner_id mudar, com o JWT de um usuário, dentro dela. Redefinir
+--    a função aqui trocaria a de produção por uma que o próprio guarda recusa.
+--    A plataforma passa a equipe por platform_transfer_team_ownership
+--    (20261003132000, só service_role, pela edge function platform-suspend-account).
+--
+--    Este gatilho vale para TODA troca de dono — pelo dono, pela plataforma ou à
+--    mão pelo suporte —, uma vez por troca (WHEN: só quando o dono muda de fato).
+--    Sem JWT de usuário (service_role), quem chama informa, em configurações
+--    locais da transação (set_config(..., true)), quem agiu e a origem:
+--      app.ownership_change_actor  = auth.users.id de quem agiu
+--      app.ownership_change_source = 'platform' (equipe de suporte do +Louvor)
+--    Nunca trava a troca: quem agiu ou o novo dono que não existem mais ficam de
+--    fora (registro sem autor, sem aviso).
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.transfer_team_ownership(p_team_id uuid, p_new_owner_profile_id uuid)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
-DECLARE v_profile uuid; v_team public.teams; v_member public.team_members;
+CREATE OR REPLACE FUNCTION public.teams_owner_change_effects()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_platform boolean := coalesce(current_setting('app.ownership_change_source', true), '') = 'platform';
+  v_actor_setting text := current_setting('app.ownership_change_actor', true);
+  v_actor uuid;
+  v_sender uuid;
+  v_leader boolean;
 BEGIN
-  SELECT id INTO v_profile FROM public.profiles WHERE user_id = auth.uid();
-  IF auth.uid() IS NULL OR v_profile IS NULL THEN RAISE EXCEPTION 'Entre para continuar.' USING ERRCODE = '42501'; END IF;
-  SELECT * INTO v_team FROM public.teams WHERE id = p_team_id FOR UPDATE;
-  IF v_team.id IS NULL OR v_team.owner_id IS DISTINCT FROM v_profile THEN
-    RAISE EXCEPTION 'Só o dono da equipe pode transferir a propriedade.' USING ERRCODE = '42501';
-  END IF;
-  IF p_new_owner_profile_id IS NULL OR p_new_owner_profile_id = v_profile THEN
-    RAISE EXCEPTION 'Escolha outra pessoa da equipe.' USING ERRCODE = '22023';
-  END IF;
-  SELECT * INTO v_member FROM public.team_members
-  WHERE team_id = p_team_id AND profile_id = p_new_owner_profile_id FOR UPDATE;
-  IF v_member.id IS NULL THEN
-    RAISE EXCEPTION 'A pessoa escolhida não faz parte desta equipe.' USING ERRCODE = '22023';
-  END IF;
+  IF NEW.owner_id IS NOT DISTINCT FROM OLD.owner_id THEN RETURN NULL; END IF;
 
-  -- Líder tem acesso total: exceções de permissão deixam de valer (como no MemberEditModal).
-  UPDATE public.team_members SET role = 'admin', permissions = '{}'::jsonb WHERE id = v_member.id;
-  UPDATE public.teams SET owner_id = p_new_owner_profile_id WHERE id = p_team_id;
+  SELECT u.id INTO v_actor FROM auth.users u
+  WHERE u.id = coalesce(auth.uid(), CASE WHEN v_actor_setting ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                                      THEN v_actor_setting::uuid END);
+  -- O aviso sai em nome do antigo dono só quando foi ele quem passou a equipe.
+  SELECT p.id INTO v_sender FROM public.profiles p
+  WHERE NOT v_platform AND p.id = OLD.owner_id AND p.user_id = auth.uid();
+  SELECT EXISTS (SELECT 1 FROM public.team_members m
+                 WHERE m.team_id = NEW.id AND m.profile_id = NEW.owner_id AND m.role = 'admin')
+    INTO v_leader;
 
   INSERT INTO public.platform_audit_log(actor_user_id, action, entity_id, details)
-  VALUES (auth.uid(), 'team_ownership_transfer', p_team_id::text, jsonb_build_object(
-    'from_profile_id', v_profile, 'to_profile_id', p_new_owner_profile_id, 'previous_role', v_member.role));
-  INSERT INTO public.notifications(profile_id, type, title, body, link, team_id, sender_profile_id)
-  VALUES (p_new_owner_profile_id, 'team_ownership', 'Você agora é dono(a) da equipe',
-    'A propriedade de ' || v_team.name || ' foi transferida para você, que agora também é líder.',
-    '/app/settings', p_team_id, v_profile);
+  VALUES (v_actor, 'team_ownership_transfer', NEW.id::text, jsonb_build_object(
+    'from_profile_id', OLD.owner_id, 'to_profile_id', NEW.owner_id, 'by_platform', v_platform));
 
-  RETURN jsonb_build_object('team_id', p_team_id, 'owner_profile_id', p_new_owner_profile_id);
+  INSERT INTO public.notifications(profile_id, type, title, body, link, team_id, sender_profile_id)
+  SELECT p.id, 'team_ownership', 'Você agora é dono(a) da equipe',
+    CASE WHEN v_platform
+      THEN 'A equipe de suporte do +Louvor transferiu a propriedade de ' || coalesce(NEW.name, 'uma equipe') || ' para você'
+      ELSE 'A propriedade de ' || coalesce(NEW.name, 'uma equipe') || ' foi transferida para você' END
+      || CASE WHEN v_leader THEN ', que agora também é líder.' ELSE '.' END,
+    '/app/settings', NEW.id, v_sender
+  FROM public.profiles p WHERE p.id = NEW.owner_id;
+
+  RETURN NULL;
 END;
 $$;
+
+DROP TRIGGER IF EXISTS teams_owner_change_effects ON public.teams;
+CREATE TRIGGER teams_owner_change_effects
+AFTER UPDATE OF owner_id ON public.teams
+FOR EACH ROW WHEN (OLD.owner_id IS DISTINCT FROM NEW.owner_id)
+EXECUTE FUNCTION public.teams_owner_change_effects();
 
 -- ----------------------------------------------------------------------------
 -- 4) Arquivos da pessoa no Storage (removidos pela edge function, pela Storage
@@ -565,19 +593,20 @@ $$;
 
 -- ----------------------------------------------------------------------------
 -- 6) Permissões. Explícitas também para sobrepor os default privileges do
---    Supabase, que dão EXECUTE a anon/authenticated.
+--    Supabase, que dão EXECUTE a anon/authenticated. transfer_team_ownership
+--    fica de fora: as permissões dela são as de 20261003120000 (authenticated e
+--    service_role), já em produção.
 -- ----------------------------------------------------------------------------
 REVOKE ALL ON FUNCTION public.account_deletion_preview_for(uuid), public.account_deletion_storage_objects(uuid),
   public.account_deletion_release_storage_owner(uuid), public.delete_account_data(uuid),
-  public.get_account_deletion_preview(), public.transfer_team_ownership(uuid, uuid),
+  public.get_account_deletion_preview(), public.teams_owner_change_effects(),
   public.account_deletion_blocking_references(), public.account_deletion_draft_song_ids(uuid),
   public.account_deletion_storage_done(uuid, jsonb)
   FROM PUBLIC, anon, authenticated;
 -- Só usadas de dentro das outras (rodam como dono da função).
 REVOKE ALL ON FUNCTION public.account_deletion_release_storage_owner(uuid), public.account_deletion_draft_song_ids(uuid)
   FROM service_role;
-GRANT EXECUTE ON FUNCTION public.get_account_deletion_preview(), public.transfer_team_ownership(uuid, uuid)
-  TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_account_deletion_preview() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.account_deletion_preview_for(uuid), public.account_deletion_storage_objects(uuid),
   public.delete_account_data(uuid), public.account_deletion_storage_done(uuid, jsonb),
   public.account_deletion_blocking_references()

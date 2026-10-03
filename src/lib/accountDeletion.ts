@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { accountDeletionSupabase } from "@/integrations/supabase/account-deletion-client";
+import type { TransferTeamOwnershipError } from "@/integrations/supabase/account-deletion-types";
 import { DELETE_ACCOUNT_ANCHOR, DELETE_ACCOUNT_SETTINGS_PATH } from "@/lib/legal";
 import {
   DELETE_CONFIRMATION,
@@ -66,13 +67,35 @@ export async function fetchDeletionPreview(): Promise<DeletionPreview> {
   return parseDeletionPreview(data);
 }
 
-/** Dono passa a equipe para outro membro, que vira líder (RPC transfer_team_ownership). */
+/** Recusas de transfer_team_ownership ({ ok: false, error }) em português. */
+export const TRANSFER_OWNERSHIP_ERRORS: Record<TransferTeamOwnershipError, string> = {
+  forbidden: "Só o dono da equipe pode transferi-la. Atualize a tela: talvez a equipe já tenha outro dono.",
+  not_member: "A pessoa escolhida não faz mais parte da equipe. Atualize a tela e escolha outra pessoa.",
+};
+
+/** O banco recusou a transferência: a equipe mudou desde a prévia (vale recarregá-la). */
+export class TeamOwnershipTransferRefused extends Error {
+  constructor(readonly code: TransferTeamOwnershipError | "unknown") {
+    super(code === "unknown" ? "Não foi possível transferir a equipe agora. Tente novamente." : TRANSFER_OWNERSHIP_ERRORS[code]);
+    this.name = "TeamOwnershipTransferRefused";
+  }
+}
+
+/**
+ * Dono passa a equipe para outro membro, que vira líder; o dono atual continua
+ * líder. RPC transfer_team_ownership de 20261003120000 (já em produção): responde
+ * { ok: true } ou { ok: false, error: "forbidden" | "not_member" } em vez de erro.
+ * Falha de rede ou do PostgREST continua sendo Error com a mensagem do cliente.
+ */
 export async function transferTeamOwnership(teamId: string, newOwnerProfileId: string) {
-  const { error } = await accountDeletionSupabase.rpc("transfer_team_ownership", {
+  const { data, error } = await accountDeletionSupabase.rpc("transfer_team_ownership", {
     p_team_id: teamId,
     p_new_owner_profile_id: newOwnerProfileId,
   });
   if (error) throw new Error(error.message);
+  const result = (data ?? {}) as { ok?: unknown; error?: unknown };
+  if (result.ok === true) return;
+  throw new TeamOwnershipTransferRefused(result.error === "forbidden" || result.error === "not_member" ? result.error : "unknown");
 }
 
 /** Único líder (sem ser dono) promove outro membro: mesmo update de papel da aba Membros. */

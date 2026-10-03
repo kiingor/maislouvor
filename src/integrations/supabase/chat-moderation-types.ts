@@ -33,7 +33,7 @@ export type ChatModerationFunctions = {
   block_user: JsonFunction<{ p_profile_id: string }>;
   unblock_user: JsonFunction<{ p_profile_id: string }>;
   list_blocked_users: JsonFunction<never>;
-  // Plataforma: propriedade da equipe de quem foi suspenso e situação das contas.
-  platform_transfer_team_ownership: JsonFunction<{ p_team_id: string; p_new_owner_member_id: string }>;
+  // Plataforma: situação das contas dos membros. A propriedade da equipe passa pela
+  // edge function platform-suspend-account (platform_transfer_team_ownership é só da service_role).
   platform_team_member_suspensions: JsonFunction<{ p_team_id: string }>;
 };

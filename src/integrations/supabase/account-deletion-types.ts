@@ -13,8 +13,14 @@ export type AccountDeletionTables = {
   };
 };
 
-// Migração 20261003130000_account_deletion.sql. As funções internas
-// (account_deletion_preview_for, delete_account_data...) só a edge function chama.
+/** Resposta de transfer_team_ownership (20261003120000, já em produção): recusa não vira erro. */
+export type TransferTeamOwnershipError = "forbidden" | "not_member";
+export type TransferTeamOwnershipResult = { ok: true } | { ok: false; error: TransferTeamOwnershipError };
+
+// get_account_deletion_preview é da migração 20261003130000_account_deletion.sql;
+// transfer_team_ownership é de 20261003120000_team_member_privilege_guard.sql
+// (a 130000 não a redefine). As funções internas (account_deletion_preview_for,
+// delete_account_data...) só a edge function chama.
 export type AccountDeletionFunctions = {
   get_account_deletion_preview: { Args: never; Returns: Json };
   transfer_team_ownership: {

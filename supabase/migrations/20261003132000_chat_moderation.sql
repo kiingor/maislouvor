@@ -22,7 +22,9 @@
 --      da propriedade da equipe de quem foi suspenso.
 --
 -- Depende de 20260930010000_platform_admin_and_support.sql (is_platform_admin,
--- platform_admins, platform_audit_log). Escritas só por RPC: nenhum cliente
+-- platform_admins, platform_audit_log), de 20261003120000 (guardas de líder e
+-- dono, já em produção) e de 20261003130000 (gatilho que registra e avisa toda
+-- troca de dono). Escritas só por RPC: nenhum cliente
 -- grava direto nestas tabelas. As funções usadas pelas policies do Storage
 -- ficam no schema private (fora da API do PostgREST): ninguém as chama como RPC
 -- para descobrir se existe denúncia sobre um arquivo.
@@ -379,6 +381,9 @@ BEGIN
       r.reported_profile_id, reported.full_name AS reported_name, reported.avatar_url AS reported_avatar_url,
       EXISTS (SELECT 1 FROM public.team_members tm WHERE tm.team_id = r.team_id AND tm.profile_id = r.reported_profile_id) AS reported_is_member,
       (team.owner_id = r.reported_profile_id) AS reported_is_owner,
+      -- Líder hoje: só a liderança da equipe o remove (a plataforma suspende).
+      EXISTS (SELECT 1 FROM public.team_members tm WHERE tm.team_id = r.team_id AND tm.profile_id = r.reported_profile_id
+              AND tm.role = 'admin') AS reported_is_leader,
       -- Conta suspensa pela plataforma (só a plataforma vê).
       (v_platform AND EXISTS (SELECT 1 FROM public.platform_account_suspensions s
                               WHERE s.profile_id = r.reported_profile_id)) AS reported_suspended,
@@ -446,6 +451,13 @@ BEGIN
       RAISE EXCEPTION 'Você não pode remover a si mesmo por aqui.' USING ERRCODE = '22023';
     ELSIF EXISTS (SELECT 1 FROM public.teams WHERE id = v_report.team_id AND owner_id = v_report.reported_profile_id) THEN
       RAISE EXCEPTION 'Quem enviou a mensagem é o responsável pela equipe e não pode ser removido por aqui.' USING ERRCODE = '22023';
+    -- guard_team_member_privileges (20261003120000): só um líder da própria equipe
+    -- remove outro líder. A plataforma (sem ser líder ali) afasta pela suspensão.
+    ELSIF EXISTS (SELECT 1 FROM public.team_members WHERE team_id = v_report.team_id
+                    AND profile_id = v_report.reported_profile_id AND role = 'admin')
+          AND NOT public.has_team_role(auth.uid(), v_report.team_id, 'admin') THEN
+      RAISE EXCEPTION 'Quem enviou a mensagem é líder da equipe, e só outro líder da equipe pode removê-lo. Para afastar a pessoa, suspenda a conta.'
+        USING ERRCODE = '22023';
     END IF;
     DELETE FROM public.team_members WHERE team_id = v_report.team_id AND profile_id = v_report.reported_profile_id;
     v_removed := FOUND;
@@ -731,8 +743,9 @@ CREATE POLICY "Chat media under open report cannot be changed" ON storage.object
 -- confere que quem chama administra a plataforma, bane o usuário no GoTrue (não
 -- entra nem renova a sessão) e grava aqui. Reativar desfaz o banimento e apaga a
 -- linha; o histórico fica em platform_audit_log. A propriedade das equipes de
--- quem foi suspenso passa para outro membro com platform_transfer_team_ownership
--- (depois disso, a moderação também pode remover a pessoa da equipe).
+-- quem foi suspenso passa para outro membro com platform_transfer_team_ownership,
+-- pela mesma edge function. Quem era dono continua líder da equipe: só a
+-- liderança da equipe o remove (guard_team_member_privileges, 20261003120000).
 CREATE TABLE IF NOT EXISTS public.platform_account_suspensions (
   user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   profile_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -815,11 +828,22 @@ $$;
 
 -- A plataforma passa a propriedade de uma equipe para outro membro (ex.: o dono
 -- foi suspenso). O novo dono vira líder, como em transfer_team_ownership.
-CREATE OR REPLACE FUNCTION public.platform_transfer_team_ownership(p_team_id uuid, p_new_owner_member_id uuid)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+-- Só a edge function platform-suspend-account (service_role) chama, com o
+-- usuário do JWT em p_actor_user_id, conferido de novo aqui: com o JWT de quem
+-- administra a plataforma (sem ser líder da equipe), os guardas de 20261003120000
+-- recusariam a promoção a líder e a troca de teams.owner_id. O registro no log e
+-- o aviso ao novo dono vêm do gatilho teams_owner_change_effects (20261003130000),
+-- com a origem e quem agiu nas configurações locais da transação.
+-- Assinatura antiga (p_team_id, p_new_owner_member_id), nunca publicada: sai.
+DROP FUNCTION IF EXISTS public.platform_transfer_team_ownership(uuid, uuid);
+CREATE OR REPLACE FUNCTION public.platform_transfer_team_ownership(
+  p_actor_user_id uuid, p_team_id uuid, p_new_owner_member_id uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE v_team public.teams; v_member public.team_members;
 BEGIN
-  PERFORM public.platform_require_admin();
+  IF p_actor_user_id IS NULL OR NOT EXISTS (SELECT 1 FROM public.platform_admins WHERE user_id = p_actor_user_id) THEN
+    RAISE EXCEPTION 'Acesso restrito ao administrador da plataforma.' USING ERRCODE = '42501';
+  END IF;
   SELECT * INTO v_team FROM public.teams WHERE id = p_team_id FOR UPDATE;
   IF v_team.id IS NULL THEN RAISE EXCEPTION 'Equipe não encontrada.' USING ERRCODE = 'P0002'; END IF;
   SELECT * INTO v_member FROM public.team_members WHERE id = p_new_owner_member_id AND team_id = p_team_id FOR UPDATE;
@@ -831,17 +855,13 @@ BEGIN
     RAISE EXCEPTION 'Essa conta está suspensa. Escolha outra pessoa.' USING ERRCODE = '22023';
   END IF;
 
+  PERFORM set_config('app.ownership_change_source', 'platform', true);
+  PERFORM set_config('app.ownership_change_actor', p_actor_user_id::text, true);
   UPDATE public.team_members SET role = 'admin', permissions = '{}'::jsonb WHERE id = v_member.id;
   UPDATE public.teams SET owner_id = v_member.profile_id WHERE id = p_team_id;
+  PERFORM set_config('app.ownership_change_source', '', true);
+  PERFORM set_config('app.ownership_change_actor', '', true);
 
-  INSERT INTO public.platform_audit_log(actor_user_id, action, entity_id, details)
-  VALUES (auth.uid(), 'team_ownership_transfer', p_team_id::text, jsonb_build_object(
-    'from_profile_id', v_team.owner_id, 'to_profile_id', v_member.profile_id, 'previous_role', v_member.role,
-    'by_platform', true));
-  INSERT INTO public.notifications(profile_id, type, title, body, link, team_id)
-  VALUES (v_member.profile_id, 'team_ownership', 'Você agora é dono(a) da equipe',
-    'A equipe de suporte do +Louvor transferiu a propriedade de ' || v_team.name || ' para você, que agora também é líder.',
-    '/app/settings', p_team_id);
   RETURN jsonb_build_object('team_id', p_team_id, 'owner_profile_id', v_member.profile_id);
 END;
 $$;
@@ -874,21 +894,22 @@ REVOKE ALL ON FUNCTION
   public.block_user(uuid), public.unblock_user(uuid), public.list_blocked_users(),
   public.platform_account_suspension_target(uuid, uuid),
   public.platform_record_account_suspension(uuid, uuid, boolean, text, uuid),
-  public.platform_transfer_team_ownership(uuid, uuid), public.platform_team_member_suspensions(uuid)
+  public.platform_transfer_team_ownership(uuid, uuid, uuid), public.platform_team_member_suspensions(uuid)
   FROM PUBLIC, anon, authenticated;
 -- (As funções das policies do Storage estão no schema private, com as permissões acima.)
 GRANT EXECUTE ON FUNCTION
   public.report_chat_message(uuid, text, text), public.list_chat_reports(uuid, text, text, integer, integer),
   public.moderate_chat_report(uuid, text, text, boolean), public.delete_chat_message(uuid),
   public.block_user(uuid), public.unblock_user(uuid), public.list_blocked_users(),
-  public.platform_transfer_team_ownership(uuid, uuid), public.platform_team_member_suspensions(uuid)
+  public.platform_team_member_suspensions(uuid)
   TO authenticated;
 -- Só a edge function (service_role) chama estas: send-push e platform-suspend-account.
 GRANT EXECUTE ON FUNCTION
   public.chat_fold_text(text), public.chat_term_key(text), public.chat_mask_text(text),
   public.chat_report_platform_push_targets(uuid, uuid),
   public.platform_account_suspension_target(uuid, uuid),
-  public.platform_record_account_suspension(uuid, uuid, boolean, text, uuid)
+  public.platform_record_account_suspension(uuid, uuid, boolean, text, uuid),
+  public.platform_transfer_team_ownership(uuid, uuid, uuid)
   TO service_role;
 
 RESET lock_timeout;

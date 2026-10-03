@@ -90,6 +90,8 @@ export interface ChatReport {
   reported_avatar_url: string | null;
   reported_is_member: boolean;
   reported_is_owner: boolean;
+  /** Líder da equipe hoje: só a liderança da própria equipe o remove (a plataforma suspende). */
+  reported_is_leader?: boolean;
   /** Conta suspensa pela plataforma (só a plataforma recebe true). */
   reported_suspended?: boolean;
   overdue: boolean;

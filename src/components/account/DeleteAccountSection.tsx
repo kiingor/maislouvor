@@ -19,6 +19,7 @@ import {
   isConfirmationTyped,
   promoteTeamLeader,
   requestAccountDeletion,
+  TeamOwnershipTransferRefused,
   transferTeamOwnership,
   type DeletionTeam,
 } from "@/lib/accountDeletion";
@@ -72,6 +73,8 @@ function ResolveTeam({ team, onResolved }: { team: DeletionTeam; onResolved: () 
         description: error instanceof Error ? error.message : String(error),
         variant: "destructive",
       });
+      // Recusa do banco (outro dono, pessoa fora da equipe): a prévia está velha.
+      if (error instanceof TeamOwnershipTransferRefused) void onResolved().catch(() => undefined);
     } finally {
       setSaving(false);
     }
