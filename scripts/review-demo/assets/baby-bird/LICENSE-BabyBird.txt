@@ -1,0 +1,23 @@
+Baby Bird (vocals and stems)
+Admiral Bob
+Copyright 2010 Admiral Bob
+
+Source: https://ccmixter.org/files/admiralbob77/25039
+License: Creative Commons Attribution 3.0 Unported (CC BY 3.0)
+License URL: https://creativecommons.org/licenses/by/3.0/
+Legal code: https://creativecommons.org/licenses/by/3.0/legalcode
+
+The artist's track page licenses these recordings under CC BY 3.0,
+including the instrumental stems and A Cappella archive. The separate
+noncommercial notice in the ccMixter website footer applies to its site
+text/images, not to the audio license displayed on this track.
+
+Files used: piano.mp3, acousticguitar.mp3, bass.mp3, drums.mp3, vocal.mp3.
+Changes: excerpt from 34.285714 to 61.714285 seconds; short fades,
+gain adjustments and AAC encoding. Each stem is 27.428571 seconds.
+The interactive mix adjusts volume and solo; no AI source separation
+was performed on these recordings. No endorsement by the artist is implied.
+
+Audio source and preparation details: ../audio/credits.json.
+The license applies to the audio excerpts as well. Preserve this credit
+and the source/license links when redistributing them.

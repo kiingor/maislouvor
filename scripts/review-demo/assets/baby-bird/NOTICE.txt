@@ -1,0 +1,20 @@
+Baby Bird (vocals and stems) — Admiral Bob — Copyright 2010 Admiral Bob
+Source: https://ccmixter.org/files/admiralbob77/25039
+License: Creative Commons Attribution 3.0 Unported (CC BY 3.0)
+https://creativecommons.org/licenses/by/3.0/
+
+Files in this folder (used by scripts/review-demo/seed.mjs for the App Review
+demo account):
+
+- vocals.m4a, keys.m4a, guitar.m4a, bass.m4a, drums.m4a: the same excerpts
+  published on the +Louvor landing page (landing/public/audio). Origin, cut
+  points, gain changes and sha256 of each file: credits.json. License notice:
+  LICENSE-BabyBird.txt (its "../audio/credits.json" reference points to
+  credits.json in this folder).
+- mix.m4a: a mixdown made from the five excerpts above. Change: the five stems
+  summed and multiplied by 0.56 (the landing's master gain, to avoid clipping),
+  encoded as AAC 160 kbps (ffmpeg amix normalize=0, volume=0.56). No AI source
+  separation was performed on these recordings.
+
+No endorsement by the artist is implied. Preserve this credit and the source and
+license links when redistributing these files.
