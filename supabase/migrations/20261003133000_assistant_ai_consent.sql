@@ -463,6 +463,10 @@ begin
   elsif not public.assistant_team_consent_valid(v_code.team_id) then
     -- O líder aceitou o aviso ao gerar o código; se revogou depois, não ativa.
     return jsonb_build_object('ok', false, 'error', 'consent_required');
+  elsif exists (select 1 from public.assistant_team_settings s where s.team_id = v_code.team_id and not s.enabled) then
+    -- Equipe suspensa pela plataforma (ex.: a equipe de revisão das lojas): o
+    -- código ainda mostra o aviso de IA no app, mas não liga grupo nenhum.
+    return jsonb_build_object('ok', false, 'error', 'team_suspended');
   end if;
 
   select * into v_group from public.assistant_groups where group_jid = p_group_jid for update;

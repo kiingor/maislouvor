@@ -174,12 +174,14 @@ Um líder da equipe precisa gerar o código no app +Louvor, em *Ajustes › Equi
 *@${name} ativar CÓDIGO*`;
 }
 
-export type ActivationError = "invalid_code" | "used_code" | "expired_code" | "group_taken" | "consent_required";
+export type ActivationError = "invalid_code" | "used_code" | "expired_code" | "group_taken" | "consent_required" | "team_suspended";
 
 export function activationErrorMessage(name: string, error: string): string {
   switch (error) {
     case "consent_required":
       return "Esse código não vale mais 🔒 Um líder precisa aceitar no app o aviso sobre a IA (Ajustes › Equipe › Assistente no WhatsApp) e gerar um código novo.";
+    case "team_suspended":
+      return "O assistente está suspenso nesta equipe 🛌 Não ativei este grupo. Fale com o suporte do +Louvor.";
     case "used_code":
       return "Esse código já foi usado 🎫 Gere um novo no app (Ajustes › Equipe › Assistente no WhatsApp) e mande de novo.";
     case "expired_code":

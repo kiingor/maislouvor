@@ -496,7 +496,9 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
               </button>
             </div>
             <p className={GROUP_FOOTER}>
-              Mande a mensagem no grupo marcando o @{name}. Ele se apresenta e lista tudo o que sabe fazer.
+              {data.team_enabled
+                ? `Mande a mensagem no grupo marcando o @${name}. Ele se apresenta e lista tudo o que sabe fazer.`
+                : `Com o ${name} suspenso nesta equipe, o código não ativa nenhum grupo.`}
               {consent && consent.state !== "granted" && ` Antes do primeiro código, você lê e aceita o aviso sobre o uso de IA da ${ASSISTANT_AI_PROVIDER}.`}
             </p>
           </section>

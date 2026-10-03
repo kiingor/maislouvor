@@ -376,11 +376,15 @@ $$;
 --    os arquivos das equipes que serão excluídas (audio, covers e chat usam
 --    <team_id>/ como primeira pasta). Áudios e capas das músicas cadastradas
 --    das equipes que continuam NÃO entram: são da equipe.
+--    Anexo do chat que é prova de denúncia em aberto (moderação do chat,
+--    20261003132000) também fica, numa equipe que continua: a moderação o apaga
+--    ao fechar a denúncia (moderate_chat_report devolve attachment_to_remove).
 --    Precisa rodar antes das exclusões (usa o perfil, as mensagens e as equipes).
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.account_deletion_storage_objects(p_user_id uuid)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
-DECLARE v_profile uuid; v_avatar text; v_teams text[]; v_drafts text[]; v_owner_id text := ''; v_result jsonb;
+DECLARE v_profile uuid; v_avatar text; v_teams text[]; v_drafts text[]; v_owner_id text := ''; v_evidence text := '';
+  v_result jsonb;
 BEGIN
   IF p_user_id IS NULL THEN RAISE EXCEPTION 'Usuário não informado.' USING ERRCODE = '22023'; END IF;
   IF to_regclass('storage.objects') IS NULL THEN RETURN '[]'::jsonb; END IF;
@@ -396,17 +400,22 @@ BEGIN
              AND attname = 'owner_id' AND NOT attisdropped) THEN
     v_owner_id := ' OR o.owner_id = $1::text';
   END IF;
+  -- Só com a moderação do chat aplicada (a função vem de 20261003132000).
+  IF to_regprocedure('public.chat_media_has_open_report(text)') IS NOT NULL THEN
+    v_evidence := ' AND NOT (o.bucket_id = ''chat'' AND split_part(o.name, ''/'', 1) <> ALL ($3)'
+      || ' AND public.chat_media_has_open_report(o.name))';
+  END IF;
   EXECUTE format($q$
     SELECT COALESCE(jsonb_agg(jsonb_build_object('bucket', o.bucket_id, 'path', o.name) ORDER BY o.bucket_id, o.name), '[]'::jsonb)
     FROM storage.objects o
-    WHERE (o.bucket_id = 'avatars' AND (split_part(o.name, '/', 1) = $1::text OR o.name = $4))
+    WHERE ((o.bucket_id = 'avatars' AND (split_part(o.name, '/', 1) = $1::text OR o.name = $4))
        OR (o.bucket_id = 'chat' AND (o.owner = $1%s OR o.name IN (
              SELECT m.attachment_path FROM public.messages m
              WHERE m.sender_profile_id = $2 AND m.attachment_path IS NOT NULL)))
        OR (o.bucket_id IN ('audio', 'covers', 'chat') AND split_part(o.name, '/', 1) = ANY ($3))
        OR (o.bucket_id IN ('audio', 'covers') AND EXISTS (SELECT 1 FROM unnest($5) AS d(prefix)
-             WHERE starts_with(o.name, d.prefix || '.') OR starts_with(o.name, d.prefix || '/')))
-  $q$, v_owner_id) INTO v_result USING p_user_id, v_profile, v_teams, v_avatar, v_drafts;
+             WHERE starts_with(o.name, d.prefix || '.') OR starts_with(o.name, d.prefix || '/'))))%s
+  $q$, v_owner_id, v_evidence) INTO v_result USING p_user_id, v_profile, v_teams, v_avatar, v_drafts;
   RETURN v_result;
 END;
 $$;
