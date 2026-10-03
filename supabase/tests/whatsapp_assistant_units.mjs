@@ -9,7 +9,7 @@ import { AiError, createOpenAi } from '../functions/whatsapp-assistant/openai.ts
 import { ACTION_TOOL_NAMES, ASSISTANT_TOOLS, READ_ONLY_TOOLS, runTool } from '../functions/whatsapp-assistant/tools.ts';
 import {
   activationErrorMessage, AI_DISCLOSURE_LINE, buildInstructions, capabilitiesList, consentRequiredMessage, helpMessage,
-  linkErrorMessage, unknownSenderMessage, welcomeMessage,
+  linkErrorMessage, QUOTE_LOG_NOTE, QUOTE_NOT_SHARED_NOTE, unknownSenderMessage, welcomeMessage,
 } from '../functions/whatsapp-assistant/persona.ts';
 import { createHandler } from '../functions/whatsapp-assistant/handler.ts';
 import { ASSISTANT_CAPABILITIES } from '../functions/whatsapp-assistant/capabilities.ts';
@@ -237,16 +237,19 @@ ok(AI_DISCLOSURE_LINE.includes('OpenAI (EUA)') && AI_DISCLOSURE_LINE.includes('A
 ok(activationErrorMessage('Asafe', 'consent_required').includes('aceitar no app'), 'ativação sem o aceite do líder');
 ok(linkErrorMessage('consent_required').includes('permita no app'), 'vínculo sem o aceite da pessoa');
 const unknownText = unknownSenderMessage('unknown', 'Louvor Sede');
-ok(unknownText.includes('Telefone') && unknownText.includes('desligou'), 'desconhecido explica o telefone e o desligamento');
+ok(unknownText.includes('Telefone') && unknownText.includes('só reconheço quem permite no app'), 'desconhecido explica o telefone e a permissão');
+ok(AI_DISCLOSURE_LINE.includes('Cada pessoa escolhe no app'), 'no grupo: cada pessoa decide se o assistente usa os dados dela');
 ok(consentRequiredMessage('Asafe').includes('Ajustes › Equipe › Assistente no WhatsApp'), 'equipe bloqueada pede a confirmação do líder');
 ok(prompt.includes('nao_compartilham'), 'prompt: não adivinhar quem não compartilha dados');
 
 // Handler com banco simulado: o estado do aceite decide se a pergunta vai para a IA.
-function fakeAssistant({ consent, sender = { ok: true, member_id: 'M', profile_id: 'P', full_name: 'Ana Souza', role: 'viewer', instruments: [] } }) {
+function fakeAssistant({ consent, sender = { ok: true, member_id: 'M', profile_id: 'P', full_name: 'Ana Souza', role: 'viewer', instruments: [] },
+  quoteAuthor = () => false, groupInfo = null }) {
   const calls = [];
   const replies = [];
   const asked = [];
-  const rpc = async (fn) => {
+  const logged = [];
+  const rpc = async (fn, args) => {
     calls.push(fn);
     switch (fn) {
       case 'assistant_runtime_config':
@@ -259,22 +262,25 @@ function fakeAssistant({ consent, sender = { ok: true, member_id: 'M', profile_i
       case 'assistant_resolve_sender': return sender;
       case 'assistant_consume_quota': return { allowed: true, day: '2026-10-03' };
       case 'assistant_history': return [];
+      case 'assistant_quote_author_allowed': calls.push(args.p_wa_ids); return quoteAuthor(args);
+      case 'assistant_log_exchange': logged.push(args.p_question); return null;
       default: return null;
     }
   };
   const whatsapp = {
     async sendText(_to, text) { replies.push(text); },
     async sendPresence() {},
-    async groupInfo() { return null; },
+    async groupInfo() { return groupInfo; },
   };
   const handle = createHandler({ rpc, whatsapp, log: () => {},
     ask: async (request) => { asked.push(request); return { text: 'ok', inputTokens: 1, outputTokens: 1, cachedTokens: 0, toolCalls: [] }; } });
-  const ask = async (text, from = { lid: '10002@lid', pn: '552199990000@s.whatsapp.net' }) => (await handle({
+  const ask = async (text, from = { lid: '10002@lid', pn: '552199990000@s.whatsapp.net' }, quote = null) => (await handle({
     event: 'messages.upsert', instance: 'maislouvor', sender: BOT_PN, data: {
       key: { remoteJid: GROUP, fromMe: false, id: `U${Math.random()}`, participant: from.lid, participantAlt: from.pn },
-      message: { extendedTextMessage: { text: `@88001 ${text}`, contextInfo: { mentionedJid: [BOT_LID] } } },
+      message: { extendedTextMessage: { text: `@88001 ${text}`, contextInfo: { mentionedJid: [BOT_LID],
+        ...(quote ? { stanzaId: 'Q1', participant: quote.author, quotedMessage: { conversation: quote.text } } : {}) } } },
       messageTimestamp: Math.floor(Date.now() / 1000) } })).map((o) => `${o.action}:${o.detail}`);
-  return { ask, calls, replies, asked };
+  return { ask, calls, replies, asked, logged };
 }
 for (const consent of [undefined, 'granted', 'pending']) {
   const bot = fakeAssistant({ consent });
@@ -288,4 +294,36 @@ bot = fakeAssistant({ consent: 'granted', sender: { ok: false, error: 'unknown' 
 check([await bot.ask('qual minha escala?'), bot.asked.length], [['replied:sender_unknown'], 0], 'desligado: sem IA');
 check(bot.replies, [unknownText], 'com a dica de como religar');
 
-console.log(`${checks} unit checks passed: Evolution payloads, mentions, commands, formatting, prompt, tools, the OpenAI tool loop and the AI consent gate.`);
+// Citação de outra pessoa: só vai para a IA se o banco confirmar que o autor é da equipe e permite.
+const QUOTE = 'Não vou poder ir, estou no hospital.';
+bot = fakeAssistant({ consent: 'granted' });
+check(await bot.ask('o que ela disse?', undefined, { author: '5511912345678@s.whatsapp.net', text: QUOTE }), ['answered:no_tools']);
+check([bot.asked[0].message, bot.logged], [`o que ela disse?${QUOTE_NOT_SHARED_NOTE}`, [`o que ela disse?${QUOTE_LOG_NOTE}`]],
+  'autor sem permissão: a IA não recebe a citação');
+check(bot.calls.filter(Array.isArray), [['5511912345678@s.whatsapp.net']], 'confere o autor pelo id citado');
+bot = fakeAssistant({ consent: 'granted', quoteAuthor: () => true });
+await bot.ask('o que ela disse?', undefined, { author: '5511912345678@s.whatsapp.net', text: QUOTE });
+ok(bot.asked[0].message.includes(QUOTE) && bot.asked[0].message.includes('Contexto'), 'autor que permite: vai como contexto');
+check(bot.logged, [`o que ela disse?${QUOTE_LOG_NOTE}`], 'o histórico nunca guarda o texto citado');
+// @lid sem vínculo: os ids do participante na lista do grupo vão junto (o banco acha pelo telefone).
+bot = fakeAssistant({ consent: 'granted', quoteAuthor: ({ p_wa_ids }) => p_wa_ids.includes('5511912345678@s.whatsapp.net'),
+  groupInfo: { subject: 'Louvor', participants: [{ ids: ['10077@lid', '5511912345678@s.whatsapp.net'] }] } });
+await bot.ask('e isso?', undefined, { author: '10077@lid', text: QUOTE });
+ok(bot.asked[0].message.includes(QUOTE), '@lid resolvido pela lista do grupo');
+// Banco anterior (RPC inexistente): na dúvida, não vai.
+bot = fakeAssistant({ consent: 'granted', quoteAuthor: () => { throw new Error('function does not exist'); } });
+check(await bot.ask('e isso?', undefined, { author: '5511912345678@s.whatsapp.net', text: QUOTE }), ['answered:no_tools'], 'falha não derruba a resposta');
+ok(!bot.asked[0].message.includes(QUOTE), 'falha: a citação não vai');
+// Banco sem a migração do aviso (ai_consent ausente): sem consentimento algum, a citação vai como antes.
+bot = fakeAssistant({});
+await bot.ask('e isso?', undefined, { author: '5511912345678@s.whatsapp.net', text: QUOTE });
+check([bot.asked[0].message.includes(QUOTE), bot.calls.includes('assistant_quote_author_allowed')], [true, false], 'banco anterior: como antes');
+check(bot.logged, [`e isso?${QUOTE_LOG_NOTE}`], 'mas o histórico já não guarda a citação');
+// Citar a si mesmo ou o próprio assistente não precisa de consulta.
+bot = fakeAssistant({ consent: 'granted' });
+await bot.ask('confere?', undefined, { author: '10002@lid', text: 'Eu levo o violão.' });
+ok(bot.asked[0].message.includes('Eu levo o violão.') && !bot.calls.includes('assistant_quote_author_allowed'), 'a própria mensagem vai');
+await bot.ask('e agora?', undefined, { author: BOT_LID, text: 'Domingo às 18h.' });
+check([bot.asked[1].message, bot.calls.includes('assistant_quote_author_allowed')], ['e agora?', false], 'resposta do assistente: só a pergunta');
+
+console.log(`${checks} unit checks passed: Evolution payloads, mentions, commands, formatting, prompt, tools, the OpenAI tool loop, the AI consent gate and quoted messages.`);

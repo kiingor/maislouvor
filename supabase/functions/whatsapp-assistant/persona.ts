@@ -111,7 +111,14 @@ ${instructions}
 
 /** Transparência no grupo: quem usa o assistente sabe que a resposta vem de uma IA de terceiros. */
 export const AI_DISCLOSURE_LINE =
-  "🔒 Minhas respostas são geradas com IA da OpenAI (EUA). Quem não quiser que eu use seus dados desliga em *Ajustes › Meu usuário › Assistente no WhatsApp*.";
+  "🔒 Minhas respostas são geradas com IA da OpenAI (EUA). Cada pessoa escolhe no app, em *Ajustes › Meu usuário › Assistente no WhatsApp*, se eu posso usar os dados dela para reconhecê-la e responder.";
+
+/** Citação de outra pessoa que não vai para a IA (o autor não é da equipe ou não permite o uso dos dados). */
+export const QUOTE_NOT_SHARED_NOTE =
+  "\n\n(Contexto: está respondendo a uma mensagem de outra pessoa do grupo. O texto dela não é compartilhado com o assistente; não tente adivinhar o conteúdo.)";
+
+/** O que fica no histórico (assistant_messages) no lugar de qualquer texto citado de outra pessoa. */
+export const QUOTE_LOG_NOTE = "\n\n(Respondendo a uma mensagem de outra pessoa do grupo.)";
 
 export function capabilitiesList(name: string): string {
   const lines = ASSISTANT_CAPABILITIES.map((c) => `${c.emoji} *${c.title}* — ${c.description}`);
@@ -185,7 +192,7 @@ No app +Louvor, abra *Ajustes › Meu usuário › Assistente no WhatsApp* e toq
     default:
       return `Procurei na escala inteira e não te achei 😅 Confira se o seu WhatsApp está em *Ajustes › Meu usuário › Telefone* no app +Louvor (com DDD) e me chame de novo!
 
-Se você desligou no app o uso dos seus dados por mim, eu não te reconheço mesmo: dá para ligar de novo em *Ajustes › Meu usuário › Assistente no WhatsApp*.`;
+Eu também só reconheço quem permite no app que eu use seus dados: confira em *Ajustes › Meu usuário › Assistente no WhatsApp*.`;
   }
 }
 

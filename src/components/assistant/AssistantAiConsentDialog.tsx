@@ -11,6 +11,7 @@ import {
   ASSISTANT_AI_RETENTION,
   assistantAiDataSent,
   consentVersionLabel,
+  graceUntilLabel,
   openPrivacyPolicy,
   privacyPolicyUrl,
 } from "@/lib/assistantAiConsent";
@@ -35,6 +36,12 @@ interface Props {
   /** team-confirm: equipe e quantos grupos estão ativos. */
   teamName?: string;
   groups?: number;
+  /**
+   * Pessoa: hoje o assistente ainda a reconhece pela tolerância de quem já usava
+   * (até decidir ou até graceUntil). O texto diz o que "Agora não" mantém.
+   */
+  legacy?: boolean;
+  graceUntil?: string | null;
   /** Ação em andamento: trava os botões. */
   busy?: "accept" | "decline" | null;
   onAccept?: () => void;
@@ -79,8 +86,8 @@ function Item({ icon: Icon, title, children }: { icon: LucideIcon; title: string
  * opcional e como revogar. O aceite é gravado por quem abre o diálogo.
  */
 export function AssistantAiConsentDialog({
-  open, variant, assistantName = "Asafe", teamName, groups = 0, busy = null, onAccept, onDecline, onClose,
-  blocking = variant === "team-confirm",
+  open, variant, assistantName = "Asafe", teamName, groups = 0, legacy = false, graceUntil = null, busy = null,
+  onAccept, onDecline, onClose, blocking = variant === "team-confirm",
 }: Props) {
   const name = assistantName;
   const team = variant.startsWith("team-");
@@ -98,12 +105,22 @@ export function AssistantAiConsentDialog({
     "member-review": `Privacidade do ${name}`,
   }[variant];
 
+  const until = graceUntilLabel(graceUntil);
   const lead =
     variant === "team-confirm"
       ? `O ${name} já está ativo em ${groups === 1 ? "1 grupo" : `${groups} grupos`} ${teamName ? `da equipe ${teamName}` : "desta equipe"}. Para continuar, confirme que a equipe aceita o uso de IA de terceiros, ou desative o assistente.`
       : variant === "member-notice"
-        ? `Sua equipe usa o ${name} no WhatsApp. Escolha se ele pode usar os seus dados.`
+        ? legacy
+          ? `Sua equipe usa o ${name} no WhatsApp e ele já reconhece você pelo telefone do cadastro. Escolha se ele pode continuar usando os seus dados.`
+          : `Sua equipe usa o ${name} no WhatsApp. Ele só reconhece você no grupo se você permitir o uso dos seus dados.`
         : null;
+
+  // O que acontece sem o aceite: tem de bater com o que o banco faz (assistant_member_ai_allowed).
+  const optional = team
+    ? `Sem o ${name}, a equipe usa o +Louvor normalmente. Além do seu aceite como líder, cada pessoa (inclusive você) escolhe em Ajustes › Meu usuário se o ${name} pode usar os dados dela.`
+    : legacy
+      ? `Até você decidir, o ${name} continua reconhecendo você pelo telefone do cadastro, como já fazia${until ? ` (${until})` : ""}. Se não permitir, ele deixa de reconhecer você; o app funciona normalmente e seu nome continua nas escalas da equipe.`
+      : `Sem isso, o ${name} não reconhece você no grupo, mas o app funciona normalmente. Seu nome continua nas escalas da equipe.`;
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next && !blocking && !busy) onClose(); }}>
@@ -141,11 +158,7 @@ export function AssistantAiConsentDialog({
             <Item icon={Clock} title="Por quanto tempo">
               {ASSISTANT_AI_RETENTION.app} {ASSISTANT_AI_RETENTION.provider}
             </Item>
-            <Item icon={ShieldCheck} title="É opcional">
-              {team
-                ? `Sem o ${name}, a equipe usa o +Louvor normalmente. Cada membro pode desligar o uso dos próprios dados em Ajustes › Meu usuário.`
-                : `Sem isso, o ${name} não reconhece você no grupo, mas o app funciona normalmente. Seu nome continua nas escalas da equipe.`}
-            </Item>
+            <Item icon={ShieldCheck} title="É opcional">{optional}</Item>
             <Item icon={Undo2} title="Como revogar">
               {team
                 ? `Em Ajustes › Equipe › Assistente no WhatsApp. O ${name} é desligado em todos os grupos da equipe.`

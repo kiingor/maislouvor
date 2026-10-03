@@ -96,6 +96,29 @@ describe("aviso de IA", () => {
     expect(within(dialog).getByRole("button", { name: "Desativar o assistente" })).toBeEnabled();
   });
 
+  it("tells a person who never agreed that declining keeps the assistant from recognizing them", () => {
+    render(<AssistantAiConsentDialog open variant="member" onAccept={vi.fn()} onDecline={vi.fn()} onClose={vi.fn()} />);
+    const text = screen.getByRole("dialog", { name: "Permitir que o Asafe use seus dados?" }).textContent ?? "";
+    expect(text).toContain("Sem isso, o Asafe não reconhece você no grupo");
+    expect(text).not.toContain("continua reconhecendo");
+  });
+
+  it("tells a grandfathered person exactly what keeps happening until they decide", () => {
+    render(
+      <AssistantAiConsentDialog open variant="member-notice" legacy graceUntil="2026-11-02T15:00:00Z"
+        onAccept={vi.fn()} onDecline={vi.fn()} onClose={vi.fn()} />,
+    );
+    const text = screen.getByRole("dialog", { name: "O Asafe usa IA da OpenAI" }).textContent ?? "";
+    expect(text).toContain("ele já reconhece você pelo telefone do cadastro");
+    expect(text).toContain("Até você decidir, o Asafe continua reconhecendo você pelo telefone do cadastro, como já fazia (até 02/11/2026)");
+    expect(text).toContain("Se não permitir, ele deixa de reconhecer você");
+  });
+
+  it("tells leaders that each person still chooses for their own data", () => {
+    render(<AssistantAiConsentDialog open variant="team-activate" onAccept={vi.fn()} onDecline={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByRole("dialog").textContent).toContain("cada pessoa (inclusive você) escolhe em Ajustes › Meu usuário");
+  });
+
   it("explains the database errors", () => {
     expect(consentErrorMessage(new Error("outdated_version"))).toMatch(/Atualize o app/);
     expect(consentErrorMessage(new Error("consent_required"))).toMatch(/Aceite o aviso/);
@@ -164,8 +187,18 @@ describe("TeamAssistantSettings com o aviso de IA", () => {
       p_scope: "team_activation", p_team_id: "team-1", p_version: ASSISTANT_AI_CONSENT_VERSION,
     }));
 
+    fireEvent.click(screen.getByRole("button", { name: "Revisar e confirmar" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Desativar o assistente" }));
+    let confirm = await screen.findByRole("alertdialog", { name: "Desativar o Asafe?" });
+    expect(confirm.textContent).toContain("todos os grupos desta equipe (1 grupo)");
+    expect(confirm.textContent).toContain("as missões agendadas ficam pausadas");
+    expect(confirm.textContent).toContain("“@Asafe ativar CÓDIGO” em cada grupo");
+    fireEvent.click(within(confirm).getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(mocks.rpc).not.toHaveBeenCalledWith("revoke_assistant_consent", expect.anything());
+
     fireEvent.click(screen.getByRole("button", { name: "Desativar o Asafe" }));
-    const confirm = await screen.findByRole("alertdialog", { name: "Desativar o Asafe?" });
+    confirm = await screen.findByRole("alertdialog", { name: "Desativar o Asafe?" });
     fireEvent.click(within(confirm).getByRole("button", { name: "Desativar" }));
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith("revoke_assistant_consent", {
       p_scope: "team_activation", p_team_id: "team-1",
@@ -175,8 +208,53 @@ describe("TeamAssistantSettings com o aviso de IA", () => {
 });
 
 describe("MyAssistantSettings com o aviso de IA", () => {
-  it("lets the person turn off the use of their data (grandfathered default is on)", async () => {
-    let consent: Record<string, unknown> = { state: "pending", allowed: true };
+  it("never shows the switch on for a person who has not agreed", async () => {
+    mocks.rpc.mockImplementation(async (fn: string) =>
+      fn === "assistant_my_status"
+        ? { data: myStatus({ state: "pending", allowed: false, legacy: false }), error: null }
+        : { data: null, error: null });
+    renderWithQuery(<MyAssistantSettings />);
+
+    const toggle = await screen.findByRole("switch", { name: "Permitir que o Asafe use meus dados" });
+    expect(toggle).not.toBeChecked();
+    expect(screen.getByText("Falta autorizar")).toBeInTheDocument();
+    expect(screen.getByText(/Não autorizado\. O Asafe só reconhece você no grupo depois que você permitir/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Não permitir" })).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    const dialog = await screen.findByRole("dialog", { name: "Permitir que o Asafe use seus dados?" });
+    expect(dialog.textContent).toContain("Sem isso, o Asafe não reconhece você no grupo");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Agora não" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(mocks.rpc.mock.calls.map(([fn]) => fn)).toEqual(["assistant_my_status"]);
+  });
+
+  it("shows a grandfathered person as undecided (switch off) and lets them refuse after a confirmation", async () => {
+    let consent: Record<string, unknown> = { state: "pending", allowed: true, legacy: true, grace_until: "2026-11-02T15:00:00Z" };
+    mocks.rpc.mockImplementation(async (fn: string) => {
+      if (fn === "assistant_my_status") return { data: myStatus(consent), error: null };
+      if (fn === "revoke_assistant_consent") { consent = { state: "opted_out", allowed: false }; return { data: { ok: true }, error: null }; }
+      return { data: null, error: null };
+    });
+    renderWithQuery(<MyAssistantSettings />);
+
+    const toggle = await screen.findByRole("switch", { name: "Permitir que o Asafe use meus dados" });
+    expect(toggle).not.toBeChecked();
+    expect(screen.getByText("Falta decidir")).toBeInTheDocument();
+    expect(screen.getByText(/Você ainda não decidiu.*ainda reconhece você pelo telefone até 02\/11\/2026/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Não permitir" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Não permitir o uso dos seus dados?" });
+    expect(confirm.textContent).toContain("apaga o histórico das suas conversas com ele");
+    expect(mocks.rpc).not.toHaveBeenCalledWith("revoke_assistant_consent", expect.anything());
+    fireEvent.click(within(confirm).getByRole("button", { name: "Não permitir" }));
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith("revoke_assistant_consent", { p_scope: "member_link", p_team_id: null }));
+    expect(await screen.findByText("Desligado")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Permitir que o Asafe use meus dados" })).not.toBeChecked();
+  });
+
+  it("asks for confirmation before turning off a granted permission", async () => {
+    let consent: Record<string, unknown> = { state: "granted", allowed: true, accepted_at: "2026-10-03T12:00:00Z" };
     mocks.rpc.mockImplementation(async (fn: string) => {
       if (fn === "assistant_my_status") return { data: myStatus(consent), error: null };
       if (fn === "revoke_assistant_consent") { consent = { state: "opted_out", allowed: false }; return { data: { ok: true }, error: null }; }
@@ -186,7 +264,6 @@ describe("MyAssistantSettings com o aviso de IA", () => {
 
     const toggle = await screen.findByRole("switch", { name: "Permitir que o Asafe use meus dados" });
     expect(toggle).toBeChecked();
-    expect(screen.getByText(/Você ainda não decidiu/)).toBeInTheDocument();
     fireEvent.click(toggle);
     const confirm = await screen.findByRole("alertdialog", { name: "Desligar o uso dos seus dados?" });
     fireEvent.click(within(confirm).getByRole("button", { name: "Desligar" }));
@@ -218,7 +295,7 @@ describe("MyAssistantSettings com o aviso de IA", () => {
   });
 
   it("asks for consent before generating a WhatsApp link code", async () => {
-    let consent: Record<string, unknown> = { state: "pending", allowed: true };
+    let consent: Record<string, unknown> = { state: "pending", allowed: false };
     mocks.rpc.mockImplementation(async (fn: string) => {
       if (fn === "assistant_my_status") return { data: myStatus(consent, { has_phone: false }), error: null };
       if (fn === "give_assistant_consent") { consent = { state: "granted", allowed: true }; return { data: { ok: true }, error: null }; }
@@ -254,32 +331,67 @@ describe("AssistantConsentGate", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
-  it("shows the member notice once and remembers when it is closed", async () => {
+  it("asks the leader to confirm before deactivating from the prompt", async () => {
+    let teams = [{ team_id: "team-1", team_name: "Louvor Sede", state: "pending", groups: 2 }];
+    mocks.rpc.mockImplementation(async (fn: string) => {
+      if (fn === "assistant_consent_prompts") return { data: { version: ASSISTANT_AI_CONSENT_VERSION, assistant_name: "Asafe", teams, member_notice: false }, error: null };
+      if (fn === "revoke_assistant_consent") { teams = []; return { data: { ok: true }, error: null }; }
+      return { data: null, error: null };
+    });
+    renderWithQuery(<AssistantConsentGate />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Desativar o assistente" }));
+    let confirm = await screen.findByRole("alertdialog", { name: "Desativar o Asafe?" });
+    expect(confirm.textContent).toContain("todos os grupos desta equipe (2 grupos)");
+    expect(confirm.textContent).toContain("as missões agendadas ficam pausadas");
+    fireEvent.click(within(confirm).getByRole("button", { name: "Cancelar" }));
+    expect(await screen.findByRole("dialog", { name: "Confirme o uso de IA no Asafe" })).toBeInTheDocument();
+    expect(mocks.rpc).not.toHaveBeenCalledWith("revoke_assistant_consent", expect.anything());
+
+    fireEvent.click(screen.getByRole("button", { name: "Desativar o assistente" }));
+    confirm = await screen.findByRole("alertdialog", { name: "Desativar o Asafe?" });
+    fireEvent.click(within(confirm).getByRole("button", { name: "Desativar" }));
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith("revoke_assistant_consent", { p_scope: "team_activation", p_team_id: "team-1" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("brings the member notice back on the next app open until the person decides", async () => {
     mocks.rpc.mockResolvedValue({ data: { version: ASSISTANT_AI_CONSENT_VERSION, assistant_name: "Asafe", teams: [], member_notice: true }, error: null });
     const first = renderWithQuery(<AssistantConsentGate />);
     const dialog = await screen.findByRole("dialog", { name: "O Asafe usa IA da OpenAI" });
+    expect(dialog.textContent).toContain("Ele só reconhece você no grupo se você permitir");
     expect(within(dialog).getByRole("button", { name: "Permitir" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Não permitir" })).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Fechar" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(storage.size).toBe(0);
     first.unmount();
 
     renderWithQuery(<AssistantConsentGate />);
-    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledTimes(2));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "O Asafe usa IA da OpenAI" })).toBeInTheDocument();
+    expect(mocks.rpc.mock.calls.map(([fn]) => fn)).toEqual(["assistant_consent_prompts", "assistant_consent_prompts"]);
   });
 
-  it("records the member's refusal", async () => {
+  it("records the member's refusal only after a confirmation", async () => {
     let notice = true;
     mocks.rpc.mockImplementation(async (fn: string) => {
-      if (fn === "assistant_consent_prompts") return { data: { version: ASSISTANT_AI_CONSENT_VERSION, assistant_name: "Asafe", teams: [], member_notice: notice }, error: null };
+      if (fn === "assistant_consent_prompts") {
+        return { data: { version: ASSISTANT_AI_CONSENT_VERSION, assistant_name: "Asafe", teams: [], member_notice: notice, member_legacy: true }, error: null };
+      }
       if (fn === "revoke_assistant_consent") { notice = false; return { data: { ok: true }, error: null }; }
       return { data: null, error: null };
     });
     renderWithQuery(<AssistantConsentGate />);
-    fireEvent.click(await screen.findByRole("button", { name: "Não permitir" }));
+    const dialog = await screen.findByRole("dialog", { name: "O Asafe usa IA da OpenAI" });
+    expect(dialog.textContent).toContain("ele já reconhece você pelo telefone do cadastro");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Não permitir" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Não permitir o uso dos seus dados?" });
+    expect(mocks.rpc).not.toHaveBeenCalledWith("revoke_assistant_consent", expect.anything());
+    fireEvent.click(within(confirm).getByRole("button", { name: "Não permitir" }));
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith("revoke_assistant_consent", { p_scope: "member_link", p_team_id: null }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   it("stays quiet when the backend does not have the consent migration yet", async () => {

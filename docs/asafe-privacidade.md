@@ -32,8 +32,9 @@ Código: `supabase/functions/whatsapp-assistant/*`, migrações
    equipe** e guarda o par em `assistant_wa_identities` (fonte `phone`). Quando o
    WhatsApp esconde o número, a pessoa gera um código em Ajustes › Meu usuário
    (`assistant_create_link_code`) e manda `vincular CÓDIGO` no privado do
-   assistente (`assistant_link_identity`, fonte `code`). Desde 03/10/2026 o
-   vínculo por código exige o aceite da pessoa (`member_link`).
+   assistente (`assistant_link_identity`, fonte `code`). Desde 03/10/2026 só é
+   reconhecido quem permite o uso dos dados (`member_link`, ver abaixo), e o
+   vínculo por código exige esse aceite.
 3. **Pergunta.** Só mensagens que marcam o assistente (ou respondem a ele) são
    tratadas; o resto do grupo é ignorado sem gravar nada. Com limite diário
    disponível, a edge function chama a OpenAI (`openai.ts`).
@@ -52,8 +53,11 @@ SHA-256 do id do perfil (nunca o nome ou telefone) e `prompt_cache_key` fixo.
   grupo, das últimas `history_minutes` (padrão 180).
 - **Mensagem**: o texto da pessoa, sem a menção ao assistente e com menções a
   outras pessoas trocadas por `@pessoa` (nenhum número vai). Se ela responder a
-  uma mensagem de outra pessoa, o texto citado (até 500 caracteres) vai junto,
-  marcado como contexto.
+  uma mensagem de outra pessoa, o texto citado (até 500 caracteres) só vai,
+  marcado como contexto, quando o autor é exatamente um membro da equipe que
+  permite o uso dos dados (`assistant_quote_author_allowed`, sem gravar nada;
+  `@lid` sem vínculo é resolvido pela lista do grupo). Senão vai só uma nota de
+  que há uma citação não compartilhada. Erro na consulta = não vai.
 - **Resultados das ferramentas** (JSON, sempre presos à equipe do grupo e às
   permissões do app): escalas e funções de quem pergunta; agenda de cultos;
   escala completa do culto **com nomes e confirmação**, roteiro, músicas, tons,
@@ -72,7 +76,7 @@ telefone/`@lid` conhecido.
 
 | Tabela | Conteúdo | Prazo |
 | --- | --- | --- |
-| `assistant_messages` | pergunta (até 2000 caracteres) e resposta (até 4000), perfil, grupo, tokens | 30 dias (`assistant_purge`, roda em ~1% das mensagens novas — a limpeza pode atrasar em grupos com pouco uso) |
+| `assistant_messages` | pergunta (até 2000 caracteres, **sem** o texto citado de outra pessoa) e resposta (até 4000), perfil, grupo, tokens | 30 dias (`assistant_purge`, roda em ~1% das mensagens novas — a limpeza pode atrasar em grupos com pouco uso) |
 | `assistant_inbound_seen` | só ids de mensagens (deduplicação) | 3 dias |
 | `assistant_activation_codes` / `assistant_link_codes` | códigos | 7 dias após uso/vencimento |
 | `assistant_wa_identities` | id do WhatsApp → perfil | até desvincular, desligar o uso dos dados ou mudar o telefone |
@@ -80,6 +84,7 @@ telefone/`@lid` conhecido.
 | `assistant_outbox` | avisos a enviar (nomes e funções da escala) | 30 dias após concluir |
 | `assistant_mission_requests` / `assistant_missions` | pedidos e textos das missões | 90 dias / até cancelar |
 | `assistant_ai_consents` | aceites e revogações (versão do texto, datas) | histórico permanente; sem dado pessoal após excluir a conta (`profile_id` vira null) |
+| `assistant_ai_legacy_members` | equipe + perfil de quem já usava o Asafe quando o aviso chegou (tolerância) | até a pessoa decidir, o líder desativar pelo app ou a conta/equipe ser excluída |
 
 Logs da edge function: erros sem payload; "chamado em grupo não ativado"
 registra até 80 caracteres do texto da mensagem.
@@ -94,35 +99,52 @@ registra até 80 caracteres do texto da mensagem.
   código. Sem ele não se gera código nem se ativa grupo (`consent_required`).
   Revogar (`revoke_assistant_consent('team_activation', equipe)`) desliga o
   assistente em todos os grupos da equipe (missões pausam, avisos param).
-- **`member_link`** (pessoa): aceito antes de vincular por código ou pelo
-  interruptor "Permitir que o Asafe use meus dados". Desligar grava
-  `profiles.assistant_ai_opt_out = true`, apaga os vínculos do WhatsApp, os
-  códigos pendentes e o histórico da pessoa em `assistant_messages`.
-- **Quem desligou**: não é reconhecido (fica como "desconhecido", sem IA), não é
-  marcado (@) nos avisos e sai das listas de disponibilidade enviadas à IA
-  (a ferramenta informa só quantas pessoas ficaram de fora). O nome continua na
-  escala, no roteiro e nos avisos, que é o que a equipe já vê no app. Dois
-  perfis com o mesmo número continuam "ambíguos": o assistente nunca troca uma
-  pessoa pela outra.
+- **`member_link`** (pessoa, **opt-in**): o interruptor "Permitir que o Asafe
+  use meus dados" só aparece ligado com esse aceite, que também é exigido antes
+  de vincular por código. Sem ele o assistente não reconhece a pessoa (fica
+  "desconhecida", sem IA), não a marca (@) nos avisos e a tira das listas de
+  disponibilidade enviadas à IA (a ferramenta informa só quantas pessoas ficaram
+  de fora). O nome continua na escala, no roteiro e nos avisos, que é o que a
+  equipe já vê no app. Dois perfis com o mesmo número continuam "ambíguos": o
+  assistente nunca troca uma pessoa pela outra. Regra única no banco:
+  `assistant_member_ai_allowed(equipe, perfil)`.
+- **Não permitir / desligar** grava `profiles.assistant_ai_opt_out = true`,
+  apaga os vínculos do WhatsApp, os códigos pendentes e o histórico da pessoa
+  em `assistant_messages`. No app, sempre depois de uma confirmação que diz isso.
+- **Tolerância de quem já usava**: quem estava numa equipe com grupo ativo
+  quando a migração rodou pela primeira vez (`assistant_ai_legacy_members`, foto
+  única) — ou aceitou um texto anterior e não revogou — continua reconhecido até
+  decidir. O app mostra o interruptor **desligado** com "Você ainda não
+  decidiu… ainda reconhece você pelo telefone" e os botões para permitir ou "Não
+  permitir". Quem entra numa equipe depois, ou numa equipe ativada depois,
+  precisa permitir. Desativar o Asafe pelo app (revogar a equipe) encerra a
+  tolerância daquela equipe.
 - **Equipes que já usavam o Asafe** (grupo ativo sem aceite da versão atual):
   estado `pending`. O assistente continua funcionando; os líderes veem, ao abrir
   o app e em Ajustes › Equipe, um aviso que só sai com "Concordo e manter
-  ativo" ou "Desativar". Membros dessas equipes veem uma vez o aviso de membro
-  (permitir / não permitir; fechar = decidir depois em Ajustes).
+  ativo" ou "Desativar" (com confirmação que lista as consequências: todos os
+  grupos, missões pausadas, reativar com código em cada grupo). Membros de
+  equipes ativas que ainda não decidiram veem o aviso de membro ao abrir o app
+  (permitir / não permitir); fechar só adia até a próxima abertura.
 - **Alavancas da plataforma** (em `assistant_config`, sem tela):
-  - `ai_consent_required_from`: a partir dessa data as equipes `pending` ficam
-    `blocked` — o assistente não chama a IA e responde pedindo a confirmação do
-    líder no app. `null` (padrão) = nunca bloqueia.
-  - `ai_member_consent_required`: `true` = só reconhece quem aceitou o aviso de
-    membro (opt-in estrito). `false` (padrão) = reconhece pelo telefone até a
-    pessoa desligar.
+  - `ai_consent_required_from`: fim das tolerâncias. A partir dessa data as
+    equipes `pending` ficam `blocked` — o assistente não chama a IA e responde
+    pedindo a confirmação do líder no app — e quem só tinha a tolerância deixa
+    de ser reconhecido. `null` (padrão) = sem prazo.
+  - `ai_member_consent_required`: `true` = encerra já a tolerância das pessoas
+    (só reconhece quem permitiu no app). `false` (padrão) = tolerância até
+    decidir ou até `ai_consent_required_from`.
+
+Aplicar a migração: ela usa `lock_timeout = 3s` para os `ALTER TABLE` em
+`profiles` e `assistant_config`. Se der timeout (uma transação longa segurando a
+tabela), basta rodar de novo; é idempotente e a foto da tolerância só é tirada
+na primeira execução completa.
 
 ## Limitações conhecidas
 
-- O texto de uma mensagem de outra pessoa, quando quem pergunta a cita ao chamar
-  o assistente, vai para a OpenAI como contexto — mesmo que o autor tenha
-  desligado o uso dos dados (não identificamos o autor da citação).
-- Nomes de quem desligou continuam nas escalas/roteiros enviados à IA quando
+- Num banco ainda sem esta migração (edge function publicada antes), a citação
+  vai como antes: não há consentimento algum para conferir.
+- Nomes de quem não permitiu ou desligou continuam nas escalas/roteiros enviados à IA quando
   alguém pergunta pela escala de um culto (necessários para responder).
 - A frase sobre a retenção na OpenAI (até 30 dias para segurança, sem
   treinamento) segue a política pública da API e precisa ser conferida pelo

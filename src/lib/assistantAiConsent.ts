@@ -47,6 +47,13 @@ export const ASSISTANT_AI_LOCAL_DATA =
 export const ASSISTANT_AI_PURPOSE =
   "Gerar as respostas e executar as ações que a própria pessoa pedir, como confirmar a escala ou marcar disponibilidade.";
 
+/** Fim da tolerância de quem já usava (assistant_config.ai_consent_required_from) -> "até 02/11/2026". */
+export function graceUntilLabel(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "" : `até ${date.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}`;
+}
+
 /** "2026-10-03" -> "03/10/2026" */
 export function consentVersionLabel(version: string = ASSISTANT_AI_CONSENT_VERSION): string {
   const [y, m, d] = version.split("-");
@@ -65,9 +72,17 @@ export interface TeamAiConsent {
 
 /** Ajustes > Meu usuário (assistant_my_status.ai_consent). */
 export interface MemberAiConsent {
+  /** granted = permitiu na versão atual; pending = ainda não decidiu; opted_out = não permitiu ou desligou. */
   state: "granted" | "pending" | "opted_out";
   /** O assistente reconhece a pessoa e usa os dados dela hoje? */
   allowed: boolean;
+  /**
+   * Reconhecida hoje só pela tolerância de quem já usava o assistente antes do
+   * aviso (ou aceitou um texto anterior), até decidir ou até grace_until.
+   * Ausente em bancos anteriores à correção: tratar como false.
+   */
+  legacy?: boolean;
+  grace_until?: string | null;
   accepted_at: string | null;
   current_version: string;
 }
@@ -81,6 +96,9 @@ export interface AssistantConsentPrompts {
   assistant_name: string;
   teams: { team_id: string; team_name: string; state: "pending" | "blocked"; groups: number }[];
   member_notice: boolean;
+  /** Ainda reconhecida pela tolerância de quem já usava (o aviso diz que nada muda até decidir). */
+  member_legacy?: boolean;
+  grace_until?: string | null;
 }
 
 const MESSAGES: Record<string, string> = {

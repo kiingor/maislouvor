@@ -8,27 +8,37 @@
 -- Dois consentimentos, sempre com a versão do texto mostrado no app:
 --   team_activation ... um líder aceita o aviso antes de gerar o código de
 --                        ativação (vale para a equipe; o grupo só ativa com ele);
---   member_link ....... a pessoa aceita antes de vincular o WhatsApp por código
---                        (e pode desligar o uso dos próprios dados a qualquer hora).
+--   member_link ....... a pessoa permite que o assistente use os dados dela
+--                        (reconhecer pelo telefone/WhatsApp, marcar, listar);
+--                        também exigido antes de vincular o WhatsApp por código.
 --
--- Quem desliga (profiles.assistant_ai_opt_out) não é reconhecido pelo telefone
--- (o assistente o trata como desconhecido), não é marcado nos avisos e some das
--- listas de disponibilidade que vão para a IA. O nome continua nas escalas e no
--- roteiro, que é o que a equipe já vê no app.
+-- Por pessoa vale o opt-in: sem member_link o assistente não reconhece ninguém.
+-- A única exceção é a tolerância de quem já usava: quem estava numa equipe com
+-- o Asafe ativo quando esta migração rodou (assistant_ai_legacy_members, foto
+-- única) ou aceitou um texto anterior continua reconhecido até decidir no app.
+-- Quem desliga (profiles.assistant_ai_opt_out) é tratado como desconhecido, não
+-- é marcado nos avisos e some das listas de disponibilidade que vão para a IA.
+-- O nome continua nas escalas e no roteiro, que é o que a equipe já vê no app.
 --
 -- Equipes que já usavam o Asafe (grupos ativos sem consentimento da versão
 -- atual) ficam "pendentes": o assistente continua funcionando e os líderes
--- recebem no app um aviso que só sai com "concordo" ou "desativar". Se um dia
--- for preciso parar de vez as pendentes, preencha
--- assistant_config.ai_consent_required_from: a partir dessa data elas ficam
--- "bloqueadas" (o assistente não chama a IA e pede a confirmação no app).
+-- recebem no app um aviso que só sai com "concordo" ou "desativar". Para
+-- encerrar as tolerâncias, preencha assistant_config.ai_consent_required_from:
+-- a partir dessa data as equipes pendentes ficam "bloqueadas" (o assistente não
+-- chama a IA e pede a confirmação no app) e quem ainda não permitiu deixa de ser
+-- reconhecido.
 --
 -- As RPCs alteradas abaixo são cópias fiéis das definições mais recentes
 -- (20260928120000_whatsapp_assistant.sql e, para assistant_notice_mentions,
 -- 20260929120000_assistant_notifications.sql), mudando só o necessário.
 --
--- Idempotente: seguro rodar mais de uma vez.
+-- Idempotente: seguro rodar mais de uma vez. Os ALTER TABLE pedem um lock
+-- exclusivo rápido em profiles e assistant_config: com lock_timeout, se alguma
+-- transação longa (backup, relatório) segurar a tabela, a migração desiste em
+-- 3 s em vez de enfileirar todo o app atrás dela. Deu timeout? Rode de novo.
 -- ============================================================================
+
+set lock_timeout = '3s';
 
 -- ----------------------------------------------------------------------------
 -- 1) Versão do texto, tabela de consentimentos e opção por pessoa
@@ -85,12 +95,38 @@ create policy "assistant_ai_consents_select_team_admin" on public.assistant_ai_c
 alter table public.profiles add column if not exists assistant_ai_opt_out boolean not null default false;
 
 -- Alavancas da plataforma (sem tela por enquanto; mudar direto no banco):
---   ai_consent_required_from ... equipes ativas sem consentimento param de usar
---                                a IA a partir desta data (null = nunca);
---   ai_member_consent_required . só reconhece quem aceitou o aviso de membro
---                                (false = reconhece pelo telefone até a pessoa desligar).
+--   ai_consent_required_from ... fim das tolerâncias (null = sem prazo): equipes
+--                                ativas sem consentimento param de usar a IA e
+--                                quem já usava e não permitiu deixa de ser reconhecido;
+--   ai_member_consent_required . true = acaba já a tolerância de quem já usava
+--                                (só reconhece quem permitiu no app).
 alter table public.assistant_config add column if not exists ai_consent_required_from timestamptz;
 alter table public.assistant_config add column if not exists ai_member_consent_required boolean not null default false;
+
+-- Tolerância de quem já usava: membros das equipes com grupo ativo no momento
+-- em que esta migração rodou pela primeira vez. A foto é tirada uma única vez
+-- (rodar de novo não acrescenta ninguém); quem entra numa equipe depois precisa
+-- permitir no app. Sai daqui ao decidir (permitir ou não) ou quando um líder
+-- desativa o Asafe da equipe pelo app.
+do $$
+begin
+  if to_regclass('public.assistant_ai_legacy_members') is null then
+    create table public.assistant_ai_legacy_members (
+      team_id     uuid not null references public.teams(id) on delete cascade,
+      profile_id  uuid not null references public.profiles(id) on delete cascade,
+      captured_at timestamptz not null default now(),
+      primary key (team_id, profile_id)
+    );
+    insert into public.assistant_ai_legacy_members (team_id, profile_id)
+    select distinct tm.team_id, tm.profile_id
+      from public.team_members tm
+     where exists (select 1 from public.assistant_groups g where g.team_id = tm.team_id and g.active);
+  end if;
+end $$;
+create index if not exists assistant_ai_legacy_members_profile_id_idx on public.assistant_ai_legacy_members(profile_id);
+alter table public.assistant_ai_legacy_members enable row level security;
+revoke all on public.assistant_ai_legacy_members from public, anon, authenticated;
+grant all on public.assistant_ai_legacy_members to service_role;
 
 -- ----------------------------------------------------------------------------
 -- 2) Estado do consentimento
@@ -146,8 +182,13 @@ as $$
        and c.text_version = public.assistant_ai_consent_version())
 $$;
 
--- O assistente pode usar os dados desta pessoa (reconhecer, marcar, listar)?
-create or replace function public.assistant_profile_ai_allowed(p_profile_id uuid)
+-- O assistente pode usar os dados desta pessoa nesta equipe (reconhecer, marcar,
+-- listar)? Sim com o aceite da versão atual. Sem ele, só na tolerância de quem já
+-- usava: estava na equipe quando o aviso chegou (assistant_ai_legacy_members) ou
+-- aceitou um texto anterior e não revogou; vale até ai_consent_required_from e
+-- some com ai_member_consent_required. Quem desligou: nunca.
+-- p_team_id null = em alguma equipe (Ajustes > Meu usuário).
+create or replace function public.assistant_member_ai_allowed(p_team_id uuid, p_profile_id uuid)
 returns boolean
 language sql
 stable
@@ -156,10 +197,60 @@ set search_path = public
 as $$
   select coalesce((
     select not p.assistant_ai_opt_out
-           and (not coalesce((select c.ai_member_consent_required from public.assistant_config c where c.id), false)
-                or public.assistant_member_consent_valid(p.id))
+           and (public.assistant_member_consent_valid(p.id)
+                or (not coalesce(c.ai_member_consent_required, false)
+                    and (c.ai_consent_required_from is null or c.ai_consent_required_from > now())
+                    and (exists (select 1 from public.assistant_ai_legacy_members l
+                                  where l.profile_id = p.id and (p_team_id is null or l.team_id = p_team_id))
+                         or exists (select 1 from public.assistant_ai_consents x
+                                     where x.profile_id = p.id and x.scope = 'member_link' and x.revoked_at is null))))
       from public.profiles p
+      left join public.assistant_config c on c.id
      where p.id = p_profile_id), false)
+$$;
+
+-- Em alguma equipe (sem equipe definida: Ajustes > Meu usuário, outra equipe).
+create or replace function public.assistant_profile_ai_allowed(p_profile_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.assistant_member_ai_allowed(null, p_profile_id)
+$$;
+
+-- Autor de uma mensagem citada ao chamar o assistente: o texto só vai para a IA
+-- se for exatamente um membro desta equipe que permite o uso dos dados. Mesma
+-- busca do assistant_resolve_sender (vínculo nesta equipe, senão telefone do
+-- cadastro), mas sem gravar nada.
+create or replace function public.assistant_quote_author_allowed(p_team_id uuid, p_wa_ids text[])
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_ids        text[] := array(select distinct x from unnest(coalesce(p_wa_ids, '{}'::text[])) x where coalesce(x, '') <> '');
+  v_phones     text[];
+  v_candidates uuid[];
+begin
+  v_phones := array(select split_part(x, '@', 1) from unnest(v_ids) x where x like '%@s.whatsapp.net');
+  select array_agg(distinct i.profile_id) into v_candidates
+    from public.assistant_wa_identities i
+    join public.team_members tm on tm.profile_id = i.profile_id and tm.team_id = p_team_id
+   where i.wa_id = any(v_ids);
+  if coalesce(cardinality(v_candidates), 0) = 0 and cardinality(v_phones) > 0 then
+    select array_agg(distinct tm.profile_id) into v_candidates
+      from public.team_members tm
+      join public.profiles p on p.id = tm.profile_id
+     where tm.team_id = p_team_id
+       and exists (select 1 from unnest(v_phones) ph where public.assistant_phone_matches(p.phone, ph));
+  end if;
+  return coalesce(cardinality(v_candidates), 0) = 1
+     and public.assistant_member_ai_allowed(p_team_id, v_candidates[1]);
+end;
 $$;
 
 -- ----------------------------------------------------------------------------
@@ -211,12 +302,15 @@ begin
   values (v_profile, 'member_link', v_version)
   on conflict do nothing;
   update public.profiles set assistant_ai_opt_out = false where id = v_profile and assistant_ai_opt_out;
+  -- Decidiu: a tolerância de quem já usava deixa de importar.
+  delete from public.assistant_ai_legacy_members where profile_id = v_profile;
   return jsonb_build_object('ok', true, 'scope', p_scope, 'state', 'granted', 'version', v_version);
 end;
 $$;
 
 -- team_activation: o líder recusa/revoga pela equipe. O Asafe é desligado em
--- todos os grupos (missões pausam e a fila de avisos para sozinhas).
+-- todos os grupos (missões pausam e a fila de avisos para sozinhas) e acaba a
+-- tolerância dos membros: se a equipe voltar, cada um permite no app.
 -- member_link: a pessoa desliga o uso dos próprios dados. Some o vínculo do
 -- WhatsApp e o histórico de conversa dela com o assistente.
 create or replace function public.revoke_assistant_consent(p_scope text, p_team_id uuid default null)
@@ -248,6 +342,7 @@ begin
      where team_id = p_team_id and active;
     get diagnostics v_groups = row_count;
     delete from public.assistant_activation_codes where team_id = p_team_id and used_at is null;
+    delete from public.assistant_ai_legacy_members where team_id = p_team_id;
     return jsonb_build_object('ok', true, 'scope', p_scope, 'team_id', p_team_id,
       'groups_deactivated', v_groups, 'state', public.assistant_team_consent_state(p_team_id));
   end if;
@@ -259,6 +354,7 @@ begin
      set revoked_at = now()
    where profile_id = v_profile and scope = 'member_link' and revoked_at is null;
   update public.profiles set assistant_ai_opt_out = true where id = v_profile;
+  delete from public.assistant_ai_legacy_members where profile_id = v_profile;
   delete from public.assistant_wa_identities where profile_id = v_profile;
   get diagnostics v_links = row_count;
   delete from public.assistant_link_codes where profile_id = v_profile and used_at is null;
@@ -268,7 +364,8 @@ end;
 $$;
 
 -- Ao abrir o app: equipes em que sou líder com o Asafe ativo sem o aceite da
--- versão atual (aviso que só sai com uma decisão) e se devo ver o aviso de membro.
+-- versão atual (aviso que só sai com uma decisão) e se devo ver o aviso de membro
+-- (member_legacy: ainda sou reconhecido pela tolerância, até grace_until).
 create or replace function public.assistant_consent_prompts()
 returns jsonb
 language sql
@@ -300,7 +397,12 @@ as $$
       and (exists (select 1 from public.assistant_wa_identities i where i.profile_id = me.id)
            or exists (select 1 from public.team_members tm
                         join public.assistant_groups g on g.team_id = tm.team_id and g.active
-                       where tm.profile_id = me.id)), false)
+                       where tm.profile_id = me.id)), false),
+    'member_legacy', coalesce(public.assistant_profile_ai_allowed(me.id)
+      and not public.assistant_member_consent_valid(me.id), false),
+    'grace_until', case when public.assistant_profile_ai_allowed(me.id)
+                         and not public.assistant_member_consent_valid(me.id)
+                        then c.ai_consent_required_from end
   )
   from public.assistant_config c
   left join me on true
@@ -390,9 +492,10 @@ begin
 end;
 $$;
 
--- [20260928] + quem desligou o uso dos dados não é reconhecido (vira
--- desconhecido). A checagem de "mais de um perfil com o mesmo número" vem
--- antes: nunca troca uma pessoa por outra que divide o telefone.
+-- [20260928] + só reconhece quem permite o uso dos dados nesta equipe
+-- (assistant_member_ai_allowed): quem não permitiu ou desligou vira desconhecido.
+-- A checagem de "mais de um perfil com o mesmo número" vem antes: nunca troca
+-- uma pessoa por outra que divide o telefone.
 create or replace function public.assistant_resolve_sender(p_team_id uuid, p_wa_ids text[], p_phones text[])
 returns jsonb
 language plpgsql
@@ -414,7 +517,7 @@ begin
     from public.assistant_wa_identities i
     join public.team_members tm on tm.profile_id = i.profile_id and tm.team_id = p_team_id
    where i.wa_id = any(v_ids)
-     and public.assistant_profile_ai_allowed(i.profile_id)
+     and public.assistant_member_ai_allowed(p_team_id, i.profile_id)
    order by (i.source = 'code') desc, i.last_seen_at desc
    limit 1;
 
@@ -440,15 +543,17 @@ begin
     if coalesce(cardinality(v_candidates), 0) = 0 then
       -- Conhecido pelo assistente, mas de outra equipe (ainda não entrou nesta).
       if exists (select 1 from public.assistant_wa_identities i
-                  where i.wa_id = any(v_ids) and public.assistant_profile_ai_allowed(i.profile_id)) then
+                  where i.wa_id = any(v_ids) and public.assistant_profile_ai_allowed(i.profile_id)
+                    and not exists (select 1 from public.team_members tm
+                                     where tm.team_id = p_team_id and tm.profile_id = i.profile_id)) then
         return jsonb_build_object('ok', false, 'error', 'not_member');
       end if;
       return jsonb_build_object('ok', false,
         'error', case when cardinality(v_phones) = 0 then 'no_phone' else 'unknown' end);
     elsif cardinality(v_candidates) > 1 then
       return jsonb_build_object('ok', false, 'error', 'ambiguous');
-    elsif not public.assistant_profile_ai_allowed(v_candidates[1]) then
-      -- Desligou "Permitir que o Asafe use meus dados": tratado como desconhecido.
+    elsif not public.assistant_member_ai_allowed(p_team_id, v_candidates[1]) then
+      -- Não permitiu (ou desligou) "Permitir que o Asafe use meus dados": desconhecido.
       return jsonb_build_object('ok', false, 'error', 'unknown');
     end if;
     v_profile := v_candidates[1];
@@ -528,7 +633,7 @@ begin
 end;
 $$;
 
--- [20260928] + quem desligou o uso dos dados fica fora das listas (só a contagem).
+-- [20260928] + quem não permite o uso dos dados fica fora das listas (só a contagem).
 create or replace function public.assistant_tool_disponibilidade_equipe(p_team_id uuid, p_member_id uuid, p_args jsonb default '{}'::jsonb)
 returns jsonb
 language plpgsql
@@ -562,7 +667,7 @@ begin
         join public.team_members tm on tm.id = ma.team_member_id
         join public.profiles p on p.id = tm.profile_id
        where tm.team_id = p_team_id and ma.available_date = v_date and ma.status = 'available'
-         and public.assistant_profile_ai_allowed(p.id)
+         and public.assistant_member_ai_allowed(p_team_id, p.id)
     ), '[]'::jsonb) end,
     'indisponiveis', case when v_mode <> 'available_only' then coalesce((
       select jsonb_agg(p.full_name order by p.full_name)
@@ -570,7 +675,7 @@ begin
         join public.team_members tm on tm.id = ma.team_member_id
         join public.profiles p on p.id = tm.profile_id
        where tm.team_id = p_team_id and ma.available_date = v_date and ma.status = 'unavailable'
-         and public.assistant_profile_ai_allowed(p.id)
+         and public.assistant_member_ai_allowed(p_team_id, p.id)
     ), '[]'::jsonb) end,
     -- Sem resposta só existe quando a equipe pede confirmação de disponibilidade.
     'sem_resposta', case when v_mode <> 'unavailable_only' then coalesce((
@@ -578,7 +683,7 @@ begin
         from public.team_members tm
         join public.profiles p on p.id = tm.profile_id
        where tm.team_id = p_team_id
-         and public.assistant_profile_ai_allowed(p.id)
+         and public.assistant_member_ai_allowed(p_team_id, p.id)
          and not exists (
            select 1 from public.member_availability ma
             where ma.team_member_id = tm.id
@@ -595,7 +700,7 @@ begin
 
   select count(*) into v_hidden
     from public.team_members tm
-   where tm.team_id = p_team_id and not public.assistant_profile_ai_allowed(tm.profile_id);
+   where tm.team_id = p_team_id and not public.assistant_member_ai_allowed(p_team_id, tm.profile_id);
   if v_hidden > 0 then
     v_result := v_result || jsonb_build_object(
       'nao_compartilham', v_hidden,
@@ -605,7 +710,7 @@ begin
 end;
 $$;
 
--- [20260929] + não marca (@) quem desligou o uso dos dados: o nome sai em texto.
+-- [20260929] + não marca (@) quem não permite o uso dos dados: o nome sai em texto.
 create or replace function public.assistant_notice_mentions(p_team_id uuid, p_profile_ids uuid[], p_participants jsonb)
 returns jsonb language plpgsql stable security definer set search_path = public as $$
 declare v_part jsonb; v_ids text[]; v_candidates uuid[]; v_profile uuid; v_jid text;
@@ -627,7 +732,7 @@ begin
             exists (select 1 from assistant_wa_identities i where i.profile_id = p.id and i.wa_id = any(v_ids)));
     end if;
     if cardinality(v_candidates) = 1 and v_candidates[1] = any(p_profile_ids)
-      and public.assistant_profile_ai_allowed(v_candidates[1]) then
+      and public.assistant_member_ai_allowed(p_team_id, v_candidates[1]) then
       v_profile := v_candidates[1];
       select jid into v_jid from unnest(v_ids) jid order by (jid like '%@lid') desc, jid limit 1;
       if v_found ? v_profile::text then v_ambiguous := array_append(v_ambiguous, v_profile); end if;
@@ -737,6 +842,7 @@ end;
 $$;
 
 -- [20260928] + estado do consentimento da pessoa (Ajustes > Meu usuário).
+-- legacy = reconhecida hoje só pela tolerância de quem já usava (até grace_until).
 create or replace function public.assistant_my_status()
 returns jsonb
 language sql
@@ -755,12 +861,18 @@ as $$
                     when public.assistant_member_consent_valid(p.id) then 'granted'
                     else 'pending' end,
       'allowed', public.assistant_profile_ai_allowed(p.id),
+      'legacy', l.legacy,
+      'grace_until', case when l.legacy then c.ai_consent_required_from end,
       'accepted_at', (select max(x.accepted_at) from public.assistant_ai_consents x
                        where x.profile_id = p.id and x.scope = 'member_link' and x.revoked_at is null),
       'current_version', public.assistant_ai_consent_version())
   )
   from public.assistant_config c
   left join public.profiles p on p.user_id = auth.uid()
+  cross join lateral (
+    select coalesce(public.assistant_profile_ai_allowed(p.id)
+                    and not public.assistant_member_consent_valid(p.id), false) as legacy
+  ) l
   where c.id
 $$;
 
@@ -805,8 +917,8 @@ begin
      where n.nspname = 'public'
        and p.proname in (
          'assistant_ai_consent_version', 'assistant_team_consent_valid', 'assistant_team_consent_state',
-         'assistant_member_consent_valid', 'assistant_profile_ai_allowed',
-         'give_assistant_consent', 'revoke_assistant_consent', 'assistant_consent_prompts',
+         'assistant_member_consent_valid', 'assistant_member_ai_allowed', 'assistant_profile_ai_allowed',
+         'assistant_quote_author_allowed', 'give_assistant_consent', 'revoke_assistant_consent', 'assistant_consent_prompts',
          'assistant_group_context', 'assistant_activate_group', 'assistant_resolve_sender',
          'assistant_link_identity', 'assistant_tool_disponibilidade_equipe', 'assistant_notice_mentions',
          'assistant_team_overview', 'assistant_create_activation_code', 'assistant_my_status',
@@ -825,5 +937,7 @@ grant execute on function public.assistant_team_overview(uuid) to authenticated;
 grant execute on function public.assistant_create_activation_code(uuid) to authenticated;
 grant execute on function public.assistant_my_status() to authenticated;
 grant execute on function public.assistant_create_link_code() to authenticated;
+
+reset lock_timeout;
 
 notify pgrst, 'reload schema';

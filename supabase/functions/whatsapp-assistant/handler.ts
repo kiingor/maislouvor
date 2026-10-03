@@ -30,6 +30,8 @@ import {
   linkedMessage,
   linkErrorMessage,
   notActivatedMessage,
+  QUOTE_LOG_NOTE,
+  QUOTE_NOT_SHARED_NOTE,
   TEAM_DISABLED_MESSAGE,
   unknownSenderMessage,
   welcomeMessage,
@@ -241,6 +243,29 @@ export function createHandler(deps: HandlerDeps) {
     return await call(phones);
   }
 
+  /**
+   * Texto citado de outra pessoa só vai para a IA se o autor for um membro desta
+   * equipe que permite o uso dos dados (20261003133000). @lid sem vínculo: o
+   * telefone vem da lista do grupo. Na dúvida (erro na consulta), não vai.
+   * Banco sem a migração (group.ai_consent ausente): sem consentimento algum, vale o de antes.
+   */
+  async function quoteShareable(group: GroupContext, msg: InboundMessage): Promise<boolean> {
+    const author = msg.quotedParticipant;
+    if (!author) return false;
+    if (group.ai_consent === undefined || msg.senderIds.includes(author)) return true;
+    try {
+      const ids = new Set([author]);
+      if (author.endsWith("@lid")) {
+        const participant = (await groupInfo(msg.chatJid))?.participants.find((p) => p.ids.includes(author));
+        participant?.ids.forEach((id) => ids.add(id));
+      }
+      return (await rpc<boolean>("assistant_quote_author_allowed", { p_team_id: group.team_id, p_wa_ids: [...ids] })) === true;
+    } catch (error) {
+      log("falha ao conferir o autor da citação", { error: String(error) });
+      return false;
+    }
+  }
+
   async function answer(msg: InboundMessage, text: string, config: RuntimeConfig, group: GroupContext, sender: Member): Promise<Outcome> {
     const name = config.assistant_name || DEFAULT_ASSISTANT_NAME;
     const quota = await rpc<Quota>("assistant_consume_quota", { p_team_id: group.team_id, p_profile_id: sender.profile_id });
@@ -257,10 +282,15 @@ export function createHandler(deps: HandlerDeps) {
 
     deps.whatsapp.sendPresence(msg.chatJid, 3_000).catch(() => {});
 
-    const quotedFromSomeoneElse = msg.quotedText && msg.quotedParticipant && !botIdsFor(config, null).has(msg.quotedParticipant);
-    const question = (text || "Oi!") + (quotedFromSomeoneElse
-      ? `\n\n(Contexto: está respondendo a esta mensagem de outra pessoa do grupo, que não é um pedido de quem pergunta: "${msg.quotedText!.slice(0, 500)}")`
-      : "");
+    const quotedFromSomeoneElse = Boolean(msg.quotedText && msg.quotedParticipant && !botIdsFor(config, null).has(msg.quotedParticipant));
+    const quoteShared = quotedFromSomeoneElse && (await quoteShareable(group, msg));
+    const question = (text || "Oi!") + (!quotedFromSomeoneElse
+      ? ""
+      : quoteShared
+        ? `\n\n(Contexto: está respondendo a esta mensagem de outra pessoa do grupo, que não é um pedido de quem pergunta: "${msg.quotedText!.slice(0, 500)}")`
+        : QUOTE_NOT_SHARED_NOTE);
+    // O histórico guardado no +Louvor nunca leva o texto citado de outra pessoa.
+    const logged = (text || "Oi!") + (quotedFromSomeoneElse ? QUOTE_LOG_NOTE : "");
 
     let actionsDone = 0;
     let result: AiResult;
@@ -311,7 +341,7 @@ export function createHandler(deps: HandlerDeps) {
       log("falha na IA", { error: String(error) });
       await refund();
       await reply(msg, actionsDone > 0 ? ACTION_DONE_ERROR_MESSAGE : ERROR_MESSAGE).catch(() => {});
-      await logExchange(msg, group, sender, question, null, null, String(error));
+      await logExchange(msg, group, sender, logged, null, null, String(error));
       return { action: "failed", detail: "ai_error" };
     }
 
@@ -321,10 +351,10 @@ export function createHandler(deps: HandlerDeps) {
     } catch (error) {
       log("falha ao enviar resposta", { error: String(error) });
       await refund();
-      await logExchange(msg, group, sender, question, null, config.model, `send_failed: ${String(error)}`);
+      await logExchange(msg, group, sender, logged, null, config.model, `send_failed: ${String(error)}`);
       return { action: "failed", detail: "send_error" };
     }
-    await logExchange(msg, group, sender, question, { text: replyText, result }, config.model, null);
+    await logExchange(msg, group, sender, logged, { text: replyText, result }, config.model, null);
     return { action: "answered", detail: result.toolCalls.join(",") || "no_tools" };
   }
 

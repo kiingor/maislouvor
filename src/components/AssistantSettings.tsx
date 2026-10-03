@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { AssistantMissions } from "@/components/AssistantMissions";
 import { AssistantAiConsentDialog, type AssistantConsentVariant } from "@/components/assistant/AssistantAiConsentDialog";
+import { AssistantDeclineConfirm } from "@/components/assistant/AssistantDeclineConfirm";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,6 +42,7 @@ import {
   ASSISTANT_CONSENT_PROMPTS_KEY as CONSENT_PROMPTS_KEY,
   consentErrorMessage,
   giveAssistantConsent,
+  graceUntilLabel,
   isConsentRequiredError,
   revokeAssistantConsent,
 } from "@/lib/assistantAiConsent";
@@ -177,6 +179,7 @@ function AssistantUsageGuide({ name, initiallyOpen }: { name: string; initiallyO
             </p>
             <p className="mt-2 text-footnote leading-relaxed text-muted-foreground">
               Para reconhecer cada pessoa, ele usa o telefone do cadastro ou o vínculo do WhatsApp em Ajustes › Meu usuário.
+              Ali mesmo, cada pessoa escolhe se ele pode usar os dados dela; quem não permitir não é reconhecido.
             </p>
             <details className="group/assistant-examples mt-3 overflow-hidden rounded-xl border border-separator">
               <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-subhead font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
@@ -596,7 +599,7 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
                 </button>
               </div>
               <p className={GROUP_FOOTER}>
-                Cada membro pode desligar o uso dos próprios dados em Ajustes › Meu usuário. Revogar desliga o {name} em
+                Cada pessoa escolhe em Ajustes › Meu usuário se o {name} pode usar os dados dela. Revogar desliga o {name} em
                 todos os grupos desta equipe; para voltar, aceite o aviso de novo e gere outro código.
               </p>
             </section>
@@ -654,32 +657,19 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
           busy={consentBusy}
           blocking={false}
           onAccept={handleAcceptConsent}
-          onDecline={consentDialog === "team-confirm" ? handleRevokeConsent : () => setConsentDialog(null)}
+          onDecline={consentDialog === "team-confirm" ? () => { setConsentDialog(null); setDeactivateOpen(true); } : () => setConsentDialog(null)}
           onClose={() => setConsentDialog(null)}
         />
       )}
-      <AlertDialog open={deactivateOpen} onOpenChange={(open) => { if (!consentBusy) setDeactivateOpen(open); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Desativar o {name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Ele para de responder e de enviar avisos em todos os grupos desta equipe, e o aceite do uso de IA é revogado.
-              Para voltar, aceite o aviso de novo e gere outro código.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={consentBusy !== null}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-ios-red text-white hover:bg-ios-red/90"
-              disabled={consentBusy !== null}
-              onClick={(e) => { e.preventDefault(); void handleRevokeConsent(); }}
-            >
-              {consentBusy === "decline" && <Loader2 className="animate-spin" aria-hidden="true" />}
-              Desativar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <AssistantDeclineConfirm
+        open={deactivateOpen}
+        kind="team"
+        assistantName={name}
+        groups={data?.groups.length ?? 0}
+        busy={consentBusy !== null}
+        onConfirm={() => void handleRevokeConsent()}
+        onCancel={() => setDeactivateOpen(false)}
+      />
 
     </section>
   );
@@ -759,26 +749,32 @@ export function MyAssistantSettings() {
   // Ausente = banco ainda sem a migração do aviso: fluxo antigo, sem diálogo.
   const consent = data.ai_consent;
   const optedOut = consent?.state === "opted_out";
+  const granted = consent?.state === "granted";
+  // Reconhecida hoje só pela tolerância de quem já usava: ainda precisa decidir.
+  const legacy = Boolean(consent && !granted && !optedOut && consent.allowed);
+  const until = graceUntilLabel(consent?.grace_until);
 
   const status = optedOut
     ? { label: "Desligado", className: "text-muted-foreground" }
     : consent && !consent.allowed
       ? { label: "Falta autorizar", className: "text-ios-orange" }
-      : data.linked
-        ? { label: "Reconhece você", className: "text-ios-green" }
-        : data.has_phone
-          ? { label: "Pelo seu telefone", className: "text-muted-foreground" }
-          : { label: "Cadastre seu telefone", className: "text-ios-orange" };
+      : legacy
+        ? { label: "Falta decidir", className: "text-ios-orange" }
+        : data.linked
+          ? { label: "Reconhece você", className: "text-ios-green" }
+          : data.has_phone
+            ? { label: "Pelo seu telefone", className: "text-muted-foreground" }
+            : { label: "Cadastre seu telefone", className: "text-ios-orange" };
 
   const consentStatus = !consent
     ? null
-    : consent.state === "granted"
+    : granted
       ? `Autorizado${consent.accepted_at ? ` em ${fullDate(consent.accepted_at)}` : ""}. A IA da OpenAI responde suas perguntas no grupo.`
       : optedOut
         ? `Desligado: o ${name} não reconhece você nem usa seus dados nas respostas.`
-        : consent.allowed
-          ? `Você ainda não decidiu. Por enquanto, o ${name} reconhece você pelo telefone do cadastro.`
-          : `Desligado até você autorizar.`;
+        : legacy
+          ? `Você ainda não decidiu. Como sua equipe já usava o ${name}, ele ainda reconhece você pelo telefone${until ? ` ${until}` : ""}. Ligue para permitir ou toque em Não permitir.`
+          : `Não autorizado. O ${name} só reconhece você no grupo depois que você permitir.`;
 
   const refreshStatus = async () => {
     qc.invalidateQueries({ queryKey: CONSENT_PROMPTS_KEY });
@@ -864,7 +860,7 @@ export function MyAssistantSettings() {
               <span id="assistant-allow-status" className="block text-footnote text-muted-foreground">{consentStatus}</span>
             </span>
             <Switch
-              checked={consent.allowed}
+              checked={granted}
               disabled={consentBusy !== null}
               aria-labelledby="assistant-allow-label"
               aria-describedby="assistant-allow-status"
@@ -873,12 +869,11 @@ export function MyAssistantSettings() {
           </Row>
         )}
 
-        {consent && consent.state === "pending" && consent.allowed && (
-          <button type="button" onClick={() => setConsentDialog("member")} className={ROW_BUTTON}>
-            <IconTile icon={FileText} />
+        {legacy && (
+          <button type="button" onClick={() => setOptOutOpen(true)} disabled={consentBusy !== null} className={ROW_BUTTON}>
+            <IconTile icon={PowerOff} />
             <span className={ROW_BODY}>
-              <span className="min-w-0 flex-1 text-body text-primary">Ler o aviso e confirmar</span>
-              <ChevronRight className="h-[18px] w-[18px] text-label-tertiary" strokeWidth={2.5} aria-hidden="true" />
+              <span className="min-w-0 flex-1 text-body text-ios-red">Não permitir</span>
             </span>
           </button>
         )}
@@ -956,34 +951,23 @@ export function MyAssistantSettings() {
           open={consentDialog !== null}
           variant={consentDialog ?? "member-review"}
           assistantName={name}
+          legacy={legacy}
+          graceUntil={consent.grace_until ?? null}
           busy={consentBusy}
           onAccept={handleAcceptConsent}
           onDecline={() => setConsentDialog(null)}
           onClose={() => setConsentDialog(null)}
         />
       )}
-      <AlertDialog open={optOutOpen} onOpenChange={(open) => { if (!consentBusy) setOptOutOpen(open); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Desligar o uso dos seus dados?</AlertDialogTitle>
-            <AlertDialogDescription>
-              O {name} deixa de reconhecer você no grupo, esquece o WhatsApp vinculado e apaga o histórico das suas
-              conversas com ele. Seu nome continua nas escalas da equipe. Dá para ligar de novo quando quiser.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={consentBusy !== null}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-ios-red text-white hover:bg-ios-red/90"
-              disabled={consentBusy !== null}
-              onClick={(e) => { e.preventDefault(); void handleOptOut(); }}
-            >
-              {consentBusy === "decline" && <Loader2 className="animate-spin" aria-hidden="true" />}
-              Desligar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <AssistantDeclineConfirm
+        open={optOutOpen}
+        kind="member"
+        firstDecision={!granted}
+        assistantName={name}
+        busy={consentBusy !== null}
+        onConfirm={() => void handleOptOut()}
+        onCancel={() => setOptOutOpen(false)}
+      />
     </section>
   );
 }
