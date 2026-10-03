@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   song: {} as Record<string, unknown>,
   updates: vi.fn(),
   rpc: vi.fn(),
+  invoke: vi.fn(),
   toast: vi.fn(),
   can: vi.fn(() => true),
   jobs: [] as unknown[],
@@ -43,6 +45,7 @@ vi.mock("@/components/SongRepertoriosCard", () => ({
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     rpc: mocks.rpc,
+    functions: { invoke: mocks.invoke },
     storage: {
       from: () => ({
         createSignedUrl: async () => ({ data: null, error: null }),
@@ -253,5 +256,52 @@ describe("song registration lifecycle", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Salvar rascunho" }));
     await waitFor(() => expect(finished).toHaveBeenCalled());
+  });
+});
+
+describe("store build (VITE_STORE_BUILD=1)", () => {
+  beforeEach(() => {
+    vi.stubEnv("VITE_STORE_BUILD", "1");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+  it("keeps the recording link and the file upload, with no YouTube import anywhere", async () => {
+    Object.assign(mocks.song, { media_url: "https://youtu.be/abcdefghijk" });
+    // Importação feita no site que falhou por cookie: no app das lojas, nada sobre isso.
+    mocks.jobs = [
+      { id: "job", status: "error", url: "https://youtu.be/abcdefghijk", error: "COOKIE_EXPIRED" },
+    ];
+    await start();
+    fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
+    const link = await screen.findByLabelText("Link da gravação");
+    expect(link).toHaveAttribute("placeholder", "Cole o link da gravação…");
+    expect(screen.getByText("Arquivo de áudio da gravação")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/YouTube|administrador/);
+    const recording = screen.getByRole("region", { name: "Qual gravação vamos usar?" });
+    expect(within(recording).queryByRole("button", { name: /Importar/ })).not.toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Faixas" }), { button: 0, ctrlKey: false });
+    expect(await screen.findByText(/Envie a gravação e separe em faixas/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/YouTube|Importe/);
+    // Nenhum botão da gravação dispara importação (inclusive "Conferir versão", que abre o player).
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Gravação" }), { button: 0, ctrlKey: false });
+    const again = await screen.findByRole("region", { name: "Qual gravação vamos usar?" });
+    for (const button of within(again).getAllByRole("button")) fireEvent.click(button);
+    expect(mocks.invoke).not.toHaveBeenCalledWith("import-youtube", expect.anything());
+    expect(mocks.invoke).not.toHaveBeenCalledWith("import-song-audio", expect.anything());
+  });
+  it("asks for the audio file again when the saved recording URL changes", async () => {
+    Object.assign(mocks.song, {
+      media_url: "https://youtu.be/abcdefghijk",
+      recording_source_url: "https://youtu.be/abcdefghijk",
+    });
+    await start();
+    fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
+    fireEvent.change(await screen.findByLabelText("Link da gravação"), {
+      target: { value: "https://youtu.be/ZYXWVUTSRQP" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
+    await screen.findByText("O link mudou. Envie o áudio desta versão novamente.");
+    expect(document.body.textContent).not.toMatch(/Importe/);
   });
 });

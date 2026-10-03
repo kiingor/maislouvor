@@ -29,9 +29,11 @@
 --                                                     SET NULL e manteria o texto)
 --     support_tickets da pessoa (+ mensagens) ....... CASCADE
 --     team_invites para o e-mail da pessoa .......... DELETE explícito (sem FK)
---     rascunhos de músicas da pessoa (is_draft) ..... DELETE explícito (só quem
---       criou enxerga um rascunho) + arquivos ....... fila de arquivos
---     equipes em que a pessoa é o ÚNICO membro ...... DELETE explícito da equipe
+--     rascunhos de músicas da pessoa (is_draft) ..... DELETE explícito (no app só
+--       quem criou enxerga um rascunho) + arquivos .. fila de arquivos; rascunho que
+--       já está num repertório ou culto fica com a equipe, sem autor (SET NULL)
+--     equipes que a pessoa É DONA e em que é o ÚNICO
+--       membro ...................................... DELETE explícito da equipe
 --       (músicas, cultos, repertórios, chat e arquivos da equipe vão junto;
 --        os grupos do Asafe saem antes, para os avisos de "culto removido"
 --        não tentarem entrar na fila de uma equipe que está sumindo)
@@ -59,14 +61,21 @@
 --         (transfer_team_ownership, que também promove o novo dono a líder);
 --       * único líder (sem ser dono) com outros membros -> promover outro
 --         membro a líder antes (o app usa o mesmo update de papel da aba Membros);
---       * único membro -> a equipe é excluída junto com a conta.
+--       * dono e único membro -> a equipe é excluída junto com a conta;
+--       * último membro sem ser o dono (o dono saiu de team_members) -> só sai:
+--         a equipe fica, vazia, com o dono, que decide o que fazer com ela.
 --
 -- FKs que travariam a exclusão: a migração FALHA (em vez de só avisar) quando
 -- encontra uma que não sabe decidir sozinha. Depois de TODAS as migrações,
 -- SELECT * FROM public.account_deletion_blocking_references() tem de voltar vazio.
 --
--- Idempotente: seguro rodar mais de uma vez.
+-- Idempotente: seguro rodar mais de uma vez. Os ALTER TABLE das FKs pedem lock
+-- exclusivo em profiles e nas tabelas do conteúdo até o fim da transação: com
+-- lock_timeout, se alguma transação longa segurar uma delas, a migração desiste
+-- em 3 s em vez de enfileirar o app inteiro atrás dela. Deu timeout? Rode de novo.
 -- ============================================================================
+
+SET lock_timeout = '3s';
 
 -- ----------------------------------------------------------------------------
 -- 0) Conferência: FKs que fariam a exclusão de uma conta falhar.
@@ -248,21 +257,31 @@ GRANT SELECT, DELETE ON public.account_deletion_storage_queue TO service_role;
 
 -- ----------------------------------------------------------------------------
 -- 2) Prévia: o que acontece com cada equipe da pessoa.
---    action: delete_team (único membro) | leave | transfer_required (dono com
---    outros membros) | promote_required (único líder, sem ser dono).
+--    action: delete_team (dona e único membro) | leave | transfer_required (dono
+--    com outros membros) | promote_required (único líder, sem ser dono).
 -- ----------------------------------------------------------------------------
 
 -- Rascunhos de música da pessoa. is_draft vem do cadastro de músicas
--- (20260930200000); sem a coluna, não há rascunho.
+-- (20260930200000); sem a coluna, não há rascunho. O app só mostra o rascunho a
+-- quem o criou, mas a RLS de songs deixa a equipe ler: um rascunho que já entrou
+-- num repertório ou culto (ex.: pelo gerador de repertório) é da equipe e fica,
+-- sem autor (created_by vira NULL pela FK), com os arquivos.
 CREATE OR REPLACE FUNCTION public.account_deletion_draft_song_ids(p_profile_id uuid)
 RETURNS uuid[] LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
-DECLARE v_ids uuid[];
+DECLARE v_ids uuid[]; v_used text := '';
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid = 'public.songs'::regclass
                  AND attname = 'is_draft' AND NOT attisdropped) THEN
     RETURN '{}';
   END IF;
-  EXECUTE 'SELECT COALESCE(array_agg(id ORDER BY id), ''{}'') FROM public.songs WHERE created_by = $1 AND is_draft'
+  IF to_regclass('public.repertorio_songs') IS NOT NULL THEN
+    v_used := v_used || ' AND NOT EXISTS (SELECT 1 FROM public.repertorio_songs rs WHERE rs.song_id = s.id)';
+  END IF;
+  IF to_regclass('public.culto_songs') IS NOT NULL THEN
+    v_used := v_used || ' AND NOT EXISTS (SELECT 1 FROM public.culto_songs cs WHERE cs.song_id = s.id)';
+  END IF;
+  EXECUTE 'SELECT COALESCE(array_agg(s.id ORDER BY s.id), ''{}'') FROM public.songs s WHERE s.created_by = $1 AND s.is_draft'
+    || v_used
     INTO v_ids USING p_profile_id;
   RETURN v_ids;
 END;
@@ -285,8 +304,11 @@ BEGIN
     LEFT JOIN public.team_members me ON me.team_id = t.id AND me.profile_id = v_profile
     WHERE t.owner_id = v_profile OR me.id IS NOT NULL
   ), classified AS (
+    -- Só o dono apaga a equipe junto. Último membro que não é o dono (um líder
+    -- tirou o dono de team_members) só sai: a equipe continua de quem é dona.
     SELECT m.*, s.others, CASE
-        WHEN s.others = 0 THEN 'delete_team'
+        WHEN s.others = 0 AND m.is_owner THEN 'delete_team'
+        WHEN s.others = 0 THEN 'leave'
         WHEN m.is_owner THEN 'transfer_required'
         WHEN m.my_role = 'admin' AND s.other_admins = 0 THEN 'promote_required'
         ELSE 'leave' END AS action
@@ -376,6 +398,11 @@ $$;
 --    os arquivos das equipes que serão excluídas (audio, covers e chat usam
 --    <team_id>/ como primeira pasta). Áudios e capas das músicas cadastradas
 --    das equipes que continuam NÃO entram: são da equipe.
+--    Nunca pelo que o cliente grava sozinho: profiles.avatar_url e
+--    messages.attachment_path são texto livre para o próprio usuário. Um anexo
+--    entra pelo dono no Storage (quem enviou) ou, só quando o arquivo não tem
+--    dono registrado, pela mensagem — na pasta da equipe da mensagem e sem
+--    mensagem de outra pessoa apontando para o mesmo arquivo.
 --    Anexo do chat que é prova de denúncia em aberto (moderação do chat,
 --    20261003132000) também fica, numa equipe que continua: a moderação o apaga
 --    ao fechar a denúncia (moderate_chat_report devolve attachment_to_remove).
@@ -383,13 +410,12 @@ $$;
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.account_deletion_storage_objects(p_user_id uuid)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
-DECLARE v_profile uuid; v_avatar text; v_teams text[]; v_drafts text[]; v_owner_id text := ''; v_evidence text := '';
-  v_result jsonb;
+DECLARE v_profile uuid; v_teams text[]; v_drafts text[];
+  v_owned text := ''; v_ownerless text := ''; v_evidence text := ''; v_result jsonb;
 BEGIN
   IF p_user_id IS NULL THEN RAISE EXCEPTION 'Usuário não informado.' USING ERRCODE = '22023'; END IF;
   IF to_regclass('storage.objects') IS NULL THEN RETURN '[]'::jsonb; END IF;
-  SELECT id, substring(avatar_url FROM '/storage/v1/object/public/avatars/([^?#]+)')
-    INTO v_profile, v_avatar FROM public.profiles WHERE user_id = p_user_id;
+  SELECT id INTO v_profile FROM public.profiles WHERE user_id = p_user_id;
   SELECT COALESCE(array_agg(e->>'team_id'), '{}') INTO v_teams
   FROM jsonb_array_elements(public.account_deletion_preview_for(p_user_id)->'teams') e
   WHERE e->>'action' = 'delete_team';
@@ -398,24 +424,28 @@ BEGIN
   -- Versões novas do Storage gravam o dono também em owner_id (texto).
   IF EXISTS (SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid = 'storage.objects'::regclass
              AND attname = 'owner_id' AND NOT attisdropped) THEN
-    v_owner_id := ' OR o.owner_id = $1::text';
+    v_owned := ' OR o.owner_id = $1::text';
+    v_ownerless := ' AND o.owner_id IS NULL';
   END IF;
   -- Só com a moderação do chat aplicada (a função vem de 20261003132000).
-  IF to_regprocedure('public.chat_media_has_open_report(text)') IS NOT NULL THEN
+  IF to_regprocedure('private.chat_media_has_open_report(text)') IS NOT NULL THEN
     v_evidence := ' AND NOT (o.bucket_id = ''chat'' AND split_part(o.name, ''/'', 1) <> ALL ($3)'
-      || ' AND public.chat_media_has_open_report(o.name))';
+      || ' AND private.chat_media_has_open_report(o.name))';
   END IF;
   EXECUTE format($q$
     SELECT COALESCE(jsonb_agg(jsonb_build_object('bucket', o.bucket_id, 'path', o.name) ORDER BY o.bucket_id, o.name), '[]'::jsonb)
     FROM storage.objects o
-    WHERE ((o.bucket_id = 'avatars' AND (split_part(o.name, '/', 1) = $1::text OR o.name = $4))
-       OR (o.bucket_id = 'chat' AND (o.owner = $1%s OR o.name IN (
+    WHERE ((o.bucket_id = 'avatars' AND split_part(o.name, '/', 1) = $1::text)
+       OR (o.bucket_id = 'chat' AND (o.owner = $1%1$s OR (o.owner IS NULL%2$s AND o.name IN (
              SELECT m.attachment_path FROM public.messages m
-             WHERE m.sender_profile_id = $2 AND m.attachment_path IS NOT NULL)))
+             WHERE m.sender_profile_id = $2 AND m.attachment_path IS NOT NULL
+               AND split_part(m.attachment_path, '/', 1) = m.team_id::text
+               AND NOT EXISTS (SELECT 1 FROM public.messages x
+                               WHERE x.attachment_path = m.attachment_path AND x.sender_profile_id <> $2)))))
        OR (o.bucket_id IN ('audio', 'covers', 'chat') AND split_part(o.name, '/', 1) = ANY ($3))
-       OR (o.bucket_id IN ('audio', 'covers') AND EXISTS (SELECT 1 FROM unnest($5) AS d(prefix)
-             WHERE starts_with(o.name, d.prefix || '.') OR starts_with(o.name, d.prefix || '/'))))%s
-  $q$, v_owner_id, v_evidence) INTO v_result USING p_user_id, v_profile, v_teams, v_avatar, v_drafts;
+       OR (o.bucket_id IN ('audio', 'covers') AND EXISTS (SELECT 1 FROM unnest($4) AS d(prefix)
+             WHERE starts_with(o.name, d.prefix || '.') OR starts_with(o.name, d.prefix || '/'))))%3$s
+  $q$, v_owned, v_ownerless, v_evidence) INTO v_result USING p_user_id, v_profile, v_teams, v_drafts;
   RETURN v_result;
 END;
 $$;
@@ -488,7 +518,8 @@ BEGIN
     -- cascata da equipe leva músicas, cultos, chat...
     DELETE FROM public.assistant_groups WHERE team_id = ANY (v_delete_teams);
     DELETE FROM public.teams WHERE id = ANY (v_delete_teams);
-    -- Rascunhos: só quem criou enxerga; sem a pessoa, ninguém mais chegaria neles.
+    -- Rascunhos que só a pessoa usava (os que já estão num repertório ou culto
+    -- ficam com a equipe, sem autor).
     DELETE FROM public.songs WHERE id = ANY (public.account_deletion_draft_song_ids(v_profile));
     GET DIAGNOSTICS v_drafts = ROW_COUNT;
     -- Conversas com o Asafe: a FK é SET NULL (estatística), aqui o texto sai.
@@ -551,5 +582,7 @@ GRANT EXECUTE ON FUNCTION public.account_deletion_preview_for(uuid), public.acco
   public.delete_account_data(uuid), public.account_deletion_storage_done(uuid, jsonb),
   public.account_deletion_blocking_references()
   TO service_role;
+
+RESET lock_timeout;
 
 NOTIFY pgrst, 'reload schema';

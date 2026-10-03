@@ -16,17 +16,20 @@
 -- A única exceção é a tolerância de quem já usava: quem estava numa equipe com
 -- o Asafe ativo quando esta migração rodou (assistant_ai_legacy_members, foto
 -- única) ou aceitou um texto anterior continua reconhecido até decidir no app.
--- Quem desliga (profiles.assistant_ai_opt_out) é tratado como desconhecido, não
--- é marcado nos avisos e some das listas de disponibilidade que vão para a IA.
--- O nome continua nas escalas e no roteiro, que é o que a equipe já vê no app.
+-- Quem desliga (assistant_ai_opt_outs) é tratado como desconhecido, não é
+-- marcado nos avisos e some das listas que vão para a IA: na disponibilidade
+-- vira só a contagem, e nas escalas e vozes do roteiro aparece sem nome. O mesmo
+-- vale para quem ainda não permitiu (fora da tolerância de quem já usava).
 --
 -- Equipes que já usavam o Asafe (grupos ativos sem consentimento da versão
 -- atual) ficam "pendentes": o assistente continua funcionando e os líderes
--- recebem no app um aviso que só sai com "concordo" ou "desativar". Para
--- encerrar as tolerâncias, preencha assistant_config.ai_consent_required_from:
--- a partir dessa data as equipes pendentes ficam "bloqueadas" (o assistente não
--- chama a IA e pede a confirmação no app) e quem ainda não permitiu deixa de ser
--- reconhecido.
+-- recebem no app um aviso que só sai com "concordo" ou "desativar". As
+-- tolerâncias acabam em assistant_config.ai_consent_required_from (30 dias depois
+-- da primeira aplicação desta migração; ajustável): a partir dessa data as equipes
+-- pendentes ficam "bloqueadas" (o assistente não chama a IA e pede a confirmação
+-- no app) e quem ainda não permitiu deixa de ser reconhecido. Os grupos que já
+-- estavam ativos recebem uma vez a linha de transparência (OpenAI) junto com a
+-- primeira resposta depois do deploy (assistant_claim_ai_disclosure).
 --
 -- As RPCs alteradas abaixo são cópias fiéis das definições mais recentes
 -- (20260928120000_whatsapp_assistant.sql e, para assistant_notice_mentions,
@@ -91,8 +94,27 @@ create policy "assistant_ai_consents_select_team_admin" on public.assistant_ai_c
   for select to authenticated
   using (team_id is not null and public.has_team_role(auth.uid(), team_id, 'admin'));
 
--- "Permitir que o Asafe use meus dados" desligado.
-alter table public.profiles add column if not exists assistant_ai_opt_out boolean not null default false;
+-- "Permitir que o Asafe use meus dados" desligado: uma linha por pessoa. Fica
+-- fora de profiles de propósito: a RLS de profiles deixa a equipe ler a linha
+-- inteira, e desligar é uma escolha privada (nem o assistente diz quem foi). Só
+-- as RPCs abaixo leem e gravam; o app vê o próprio estado em assistant_my_status.
+create table if not exists public.assistant_ai_opt_outs (
+  profile_id   uuid primary key references public.profiles(id) on delete cascade,
+  opted_out_at timestamptz not null default now()
+);
+alter table public.assistant_ai_opt_outs enable row level security;
+revoke all on public.assistant_ai_opt_outs from public, anon, authenticated;
+grant all on public.assistant_ai_opt_outs to service_role;
+-- Versões anteriores deste arquivo guardavam em profiles.assistant_ai_opt_out.
+do $$
+begin
+  if exists (select 1 from pg_attribute where attrelid = 'public.profiles'::regclass
+               and attname = 'assistant_ai_opt_out' and not attisdropped) then
+    execute 'insert into public.assistant_ai_opt_outs (profile_id)
+             select id from public.profiles where assistant_ai_opt_out on conflict do nothing';
+    execute 'alter table public.profiles drop column assistant_ai_opt_out';
+  end if;
+end $$;
 
 -- Alavancas da plataforma (sem tela por enquanto; mudar direto no banco):
 --   ai_consent_required_from ... fim das tolerâncias (null = sem prazo): equipes
@@ -102,6 +124,17 @@ alter table public.profiles add column if not exists assistant_ai_opt_out boolea
 --                                (só reconhece quem permitiu no app).
 alter table public.assistant_config add column if not exists ai_consent_required_from timestamptz;
 alter table public.assistant_config add column if not exists ai_member_consent_required boolean not null default false;
+-- Sem data, equipes pendentes e quem já usava seguiriam mandando dados à OpenAI
+-- sem prazo. Na primeira aplicação: 30 dias. Ajuste para o lançamento do APK novo
+-- (sugestão: data do APK + 14 dias); rodar de novo não mexe numa data definida.
+update public.assistant_config
+   set ai_consent_required_from = now() + interval '30 days'
+ where id and ai_consent_required_from is null;
+
+-- Versão do aviso de IA cuja linha de transparência o grupo já recebeu (no
+-- boas-vindas da ativação ou, nos grupos que já estavam ativos, uma vez junto
+-- com a primeira resposta depois do deploy).
+alter table public.assistant_groups add column if not exists ai_disclosure_version text;
 
 -- Tolerância de quem já usava: membros das equipes com grupo ativo no momento
 -- em que esta migração rodou pela primeira vez. A foto é tirada uma única vez
@@ -196,7 +229,7 @@ security definer
 set search_path = public
 as $$
   select coalesce((
-    select not p.assistant_ai_opt_out
+    select not exists (select 1 from public.assistant_ai_opt_outs o where o.profile_id = p.id)
            and (public.assistant_member_consent_valid(p.id)
                 or (not coalesce(c.ai_member_consent_required, false)
                     and (c.ai_consent_required_from is null or c.ai_consent_required_from > now())
@@ -301,7 +334,7 @@ begin
   insert into public.assistant_ai_consents (profile_id, scope, text_version)
   values (v_profile, 'member_link', v_version)
   on conflict do nothing;
-  update public.profiles set assistant_ai_opt_out = false where id = v_profile and assistant_ai_opt_out;
+  delete from public.assistant_ai_opt_outs where profile_id = v_profile;
   -- Decidiu: a tolerância de quem já usava deixa de importar.
   delete from public.assistant_ai_legacy_members where profile_id = v_profile;
   return jsonb_build_object('ok', true, 'scope', p_scope, 'state', 'granted', 'version', v_version);
@@ -353,7 +386,8 @@ begin
   update public.assistant_ai_consents
      set revoked_at = now()
    where profile_id = v_profile and scope = 'member_link' and revoked_at is null;
-  update public.profiles set assistant_ai_opt_out = true where id = v_profile;
+  insert into public.assistant_ai_opt_outs (profile_id) values (v_profile)
+  on conflict (profile_id) do update set opted_out_at = now();
   delete from public.assistant_ai_legacy_members where profile_id = v_profile;
   delete from public.assistant_wa_identities where profile_id = v_profile;
   get diagnostics v_links = row_count;
@@ -374,7 +408,8 @@ security definer
 set search_path = public
 as $$
   with me as (
-    select id, assistant_ai_opt_out from public.profiles where user_id = auth.uid() limit 1
+    select p.id, exists (select 1 from public.assistant_ai_opt_outs o where o.profile_id = p.id) as assistant_ai_opt_out
+      from public.profiles p where p.user_id = auth.uid() limit 1
   )
   select jsonb_build_object(
     'version', public.assistant_ai_consent_version(),
@@ -474,10 +509,13 @@ begin
     return jsonb_build_object('ok', false, 'error', 'group_taken');
   end if;
 
+  -- O boas-vindas que o assistente manda em seguida traz a linha da OpenAI.
   insert into public.assistant_groups as g
-    (group_jid, team_id, group_name, active, activated_by, activated_at, deactivated_at, deactivated_by)
+    (group_jid, team_id, group_name, active, activated_by, activated_at, deactivated_at, deactivated_by,
+     ai_disclosure_version)
   values
-    (p_group_jid, v_code.team_id, nullif(btrim(coalesce(p_group_name, '')), ''), true, v_code.created_by, now(), null, null)
+    (p_group_jid, v_code.team_id, nullif(btrim(coalesce(p_group_name, '')), ''), true, v_code.created_by, now(), null, null,
+     public.assistant_ai_consent_version())
   on conflict (group_jid) do update
     set team_id = excluded.team_id,
         group_name = coalesce(excluded.group_name, g.group_name),
@@ -485,7 +523,8 @@ begin
         activated_by = excluded.activated_by,
         activated_at = now(),
         deactivated_at = null,
-        deactivated_by = null;
+        deactivated_by = null,
+        ai_disclosure_version = excluded.ai_disclosure_version;
 
   update public.assistant_activation_codes
      set used_at = now(), used_group_jid = p_group_jid
@@ -493,6 +532,26 @@ begin
 
   select name into v_team from public.teams where id = v_code.team_id;
   return jsonb_build_object('ok', true, 'team_id', v_code.team_id, 'team_name', v_team);
+end;
+$$;
+
+-- Linha de transparência para um grupo ativo que ainda não a recebeu nesta
+-- versão do aviso: true uma vez só (e já marca). O handler a junta à resposta.
+create or replace function public.assistant_claim_ai_disclosure(p_group_jid text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_rows integer;
+begin
+  update public.assistant_groups
+     set ai_disclosure_version = public.assistant_ai_consent_version()
+   where group_jid = p_group_jid and active
+     and ai_disclosure_version is distinct from public.assistant_ai_consent_version();
+  get diagnostics v_rows = row_count;
+  return v_rows > 0;
 end;
 $$;
 
@@ -614,7 +673,7 @@ begin
   elsif cardinality(v_ids) = 0 then
     return jsonb_build_object('ok', false, 'error', 'no_sender');
   elsif not public.assistant_member_consent_valid(v_code.profile_id)
-        or exists (select 1 from public.profiles where id = v_code.profile_id and assistant_ai_opt_out) then
+        or exists (select 1 from public.assistant_ai_opt_outs where profile_id = v_code.profile_id) then
     -- Código gerado antes do aviso (ou a pessoa desligou depois): não vincula e não vale mais.
     update public.assistant_link_codes set used_at = now() where code = v_code.code;
     return jsonb_build_object('ok', false, 'error', 'consent_required');
@@ -629,7 +688,7 @@ begin
 
   insert into public.notifications (profile_id, type, title, body, link)
   values (v_code.profile_id, 'assistant', 'WhatsApp vinculado ao assistente',
-          'Um WhatsApp foi vinculado ao seu perfil com o seu código. Se não foi você, desvincule em Ajustes › Meu usuário.',
+          'Um WhatsApp foi vinculado ao seu perfil com o seu código. Se não foi você, desvincule em Usuário › Meu usuário.',
           '/app/settings');
 
   select full_name into v_name from public.profiles where id = v_code.profile_id;
@@ -712,6 +771,91 @@ begin
   end if;
   return v_result;
 end;
+$$;
+
+-- [20260928] + escala e vozes do roteiro só com o nome de quem permite o uso
+-- dos dados nesta equipe: os demais aparecem sem nome (função, confirmação e
+-- voz ficam), com um aviso para a IA não tentar adivinhar quem são.
+create or replace function public.assistant_culto_details(p_culto_id uuid, p_member_id uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with people as (
+    -- Quem aparece no culto (escala e vozes) e se o nome pode ir para a IA.
+    select tm.id as member_id, p.full_name,
+           public.assistant_member_ai_allowed(tm.team_id, tm.profile_id) as allowed
+      from public.team_members tm
+      join public.profiles p on p.id = tm.profile_id
+     where tm.id in (select l.team_member_id from public.culto_lineup l where l.culto_id = p_culto_id
+                     union
+                     select v.team_member_id from public.culto_song_voices v
+                       join public.culto_songs cs on cs.id = v.culto_song_id
+                      where cs.culto_id = p_culto_id)
+  )
+  select jsonb_build_object(
+    'culto_id', c.id,
+    'culto', c.name,
+    'data', c.date,
+    'dia_semana', public.assistant_weekday(c.date),
+    'descricao', nullif(btrim(coalesce(c.description, '')), ''),
+    'minhas_funcoes', (
+      select coalesce(jsonb_agg(l.instrument order by public.assistant_instrument_order(l.instrument)), '[]'::jsonb)
+        from public.culto_lineup l
+       where l.culto_id = c.id and l.team_member_id = p_member_id),
+    'escala', coalesce((
+      select jsonb_agg(jsonb_build_object('funcao', e.instrument, 'pessoas', e.pessoas)
+                       order by public.assistant_instrument_order(e.instrument), e.instrument)
+        from (
+          select l.instrument,
+                 jsonb_agg(jsonb_build_object(
+                   'nome', case when pp.allowed then coalesce(nullif(btrim(pp.full_name), ''), 'Sem nome') end,
+                   'confirmacao', public.assistant_lineup_label(l.status))
+                   order by (not pp.allowed), pp.full_name) as pessoas
+            from public.culto_lineup l
+            join people pp on pp.member_id = l.team_member_id
+           where l.culto_id = c.id
+           group by l.instrument
+        ) e), '[]'::jsonb),
+    'roteiro', coalesce((
+      select jsonb_agg(r.item order by r.sort_order, r.k)
+        from (
+          select cs.sort_order, 0 as k, jsonb_build_object(
+                   'tipo', 'musica',
+                   'titulo', s.title,
+                   'artista', s.artist,
+                   'tom', coalesce(nullif(cs.key_override, ''), nullif(s.key_current, ''), s.key_original),
+                   'tom_original', s.key_original,
+                   'bpm', s.bpm,
+                   'link', s.media_url,
+                   'observacao', nullif(btrim(coalesce(cs.notes, '')), ''),
+                   'vozes', (
+                     select jsonb_agg(jsonb_build_object('nome', case when pp.allowed then pp.full_name end,
+                                                         'voz', v.voice, 'naipe', v.voice_part)
+                                      order by v.voice, (not pp.allowed), pp.full_name)
+                       from public.culto_song_voices v
+                       join people pp on pp.member_id = v.team_member_id
+                      where v.culto_song_id = cs.id)
+                 ) as item
+            from public.culto_songs cs
+            join public.songs s on s.id = cs.song_id
+           where cs.culto_id = c.id
+          union all
+          select b.sort_order, 1, jsonb_build_object(
+                   'tipo', 'momento',
+                   'titulo', b.title,
+                   'duracao_min', b.duration_min,
+                   'observacao', nullif(btrim(coalesce(b.notes, '')), ''))
+            from public.culto_blocks b
+           where b.culto_id = c.id
+        ) r), '[]'::jsonb)
+  ) || case when exists (select 1 from people where not allowed)
+            then jsonb_build_object('aviso', 'Quem aparece sem nome não compartilha dados com o assistente. Não tente adivinhar quem é: os nomes estão no app.')
+            else '{}'::jsonb end
+  from public.cultos c
+  where c.id = p_culto_id
 $$;
 
 -- [20260929] + não marca (@) quem não permite o uso dos dados: o nome sai em texto.
@@ -861,7 +1005,7 @@ as $$
     'has_phone', coalesce(length(public.assistant_phone_digits(p.phone)) >= 10, false),
     'linked', exists (select 1 from public.assistant_wa_identities i where i.profile_id = p.id),
     'ai_consent', jsonb_build_object(
-      'state', case when coalesce(p.assistant_ai_opt_out, false) then 'opted_out'
+      'state', case when exists (select 1 from public.assistant_ai_opt_outs o where o.profile_id = p.id) then 'opted_out'
                     when public.assistant_member_consent_valid(p.id) then 'granted'
                     else 'pending' end,
       'allowed', public.assistant_profile_ai_allowed(p.id),
@@ -926,7 +1070,7 @@ begin
          'assistant_group_context', 'assistant_activate_group', 'assistant_resolve_sender',
          'assistant_link_identity', 'assistant_tool_disponibilidade_equipe', 'assistant_notice_mentions',
          'assistant_team_overview', 'assistant_create_activation_code', 'assistant_my_status',
-         'assistant_create_link_code')
+         'assistant_create_link_code', 'assistant_claim_ai_disclosure', 'assistant_culto_details')
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f.sig);
     execute format('grant execute on function %s to service_role', f.sig);

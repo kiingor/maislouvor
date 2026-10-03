@@ -265,10 +265,15 @@ export function AvailabilityDayModal({
                   onChange={(e) => setReason(e.target.value)}
                   rows={3}
                   aria-labelledby="availability-reason-label"
-                  placeholder="Ex: viagem, compromisso de trabalho, saúde..."
+                  aria-describedby="availability-reason-hint"
+                  placeholder="Ex: viagem, trabalho, compromisso de família..."
                   className="block min-h-[88px] w-full resize-none bg-transparent px-4 py-[13px] text-body text-foreground placeholder:text-label-tertiary outline-none focus-visible:outline-none"
                 />
               </div>
+              {/* Dado sensível (LGPD, art. 11): a equipe lê o motivo. */}
+              <p id="availability-reason-hint" className="mt-2 px-4 text-footnote text-muted-foreground">
+                Sua equipe pode ver o motivo. Não informe dados de saúde: escreva só o necessário.
+              </p>
             </div>
           )}
 

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, Trash2, UserRoundCheck, LogOut, Crown } from "lucide-react";
@@ -106,7 +106,12 @@ function ResolveTeam({ team, onResolved }: { team: DeletionTeam; onResolved: () 
   );
 }
 
-function DeleteAccountDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+function DeleteAccountDialog({ open, onOpenChange, returnFocusRef }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Volta o foco (e a rolagem) para cá ao fechar, também quando a folha abriu sozinha pelo endereço. */
+  returnFocusRef?: RefObject<HTMLButtonElement>;
+}) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -165,7 +170,13 @@ function DeleteAccountDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
   return (
     <Dialog open={open} onOpenChange={(next) => !deleting && onOpenChange(next)}>
-      <DialogContent>
+      <DialogContent
+        onCloseAutoFocus={(event) => {
+          if (!returnFocusRef?.current) return;
+          event.preventDefault();
+          returnFocusRef.current.focus();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Excluir minha conta</DialogTitle>
           <DialogDescription>Esta ação é permanente e não pode ser desfeita.</DialogDescription>
@@ -287,16 +298,25 @@ export function DeleteAccountSection() {
   const [open, setOpen] = useState(false);
   const location = useLocation();
   const sectionRef = useRef<HTMLElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const handledEntry = useRef<string | null>(null);
 
-  // A página pública /excluir-conta manda para /app/settings#excluir-conta.
+  // /excluir-conta e o pedido de aceite dos termos mandam para
+  // /app/settings#excluir-conta: abre a exclusão direto. Só rolar até a seção não
+  // basta — ela fica no fim da página, abaixo de grupos que carregam depois e a
+  // empurram. Uma vez por navegação; ao fechar, o foco volta ao botão (que rola até ele).
   useEffect(() => {
-    if (location.hash === `#${DELETE_ACCOUNT_ANCHOR}`) sectionRef.current?.scrollIntoView?.({ block: "center" });
-  }, [location.hash]);
+    if (location.hash !== `#${DELETE_ACCOUNT_ANCHOR}` || handledEntry.current === location.key) return;
+    handledEntry.current = location.key;
+    setOpen(true);
+    sectionRef.current?.scrollIntoView?.({ block: "center" });
+  }, [location.hash, location.key]);
 
   return (
     <section id={DELETE_ACCOUNT_ANCHOR} ref={sectionRef} aria-label="Excluir conta" className="scroll-mt-24">
       <div className={GROUP}>
         <button
+          ref={buttonRef}
           type="button"
           onClick={() => setOpen(true)}
           aria-haspopup="dialog"
@@ -311,7 +331,7 @@ export function DeleteAccountSection() {
           Como funciona
         </Link>
       </p>
-      <DeleteAccountDialog open={open} onOpenChange={setOpen} />
+      <DeleteAccountDialog open={open} onOpenChange={setOpen} returnFocusRef={buttonRef} />
     </section>
   );
 }

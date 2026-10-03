@@ -60,6 +60,7 @@ import {
 import { detectBpmFromUrl } from "@/lib/detectBpm";
 import { useState, useEffect, useId, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { youtubeImportEnabled } from "@/lib/storeBuild";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -387,6 +388,8 @@ export default function SongEditor({
   const [durationInput, setDurationInput] = useState(""); // mm:ss or seconds
   const [detectingBpm, setDetectingBpm] = useState(false);
   const [importingYt, setImportingYt] = useState(false);
+  // Build das lojas (VITE_STORE_BUILD=1): sem importar do YouTube; o áudio vem do arquivo.
+  const youtubeImport = youtubeImportEnabled();
   // Aviso persistente quando o import falha por cookie do YouTube expirado (só o admin renova).
   const [ytCookieExpired, setYtCookieExpired] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -660,7 +663,7 @@ export default function SongEditor({
   }, [importJob, id]);
   const handleImportYoutube = async () => {
     const url = mediaUrl.trim();
-    if (!id || !url || importingYt || stemsProcessing) return;
+    if (!youtubeImport || !id || !url || importingYt || stemsProcessing) return;
     setImportingYt(true);
     setYtCookieExpired(false);
     try {
@@ -865,8 +868,12 @@ export default function SongEditor({
       theme: "Informe o tema principal.",
       cifra: "Cole a cifra completa para a equipe ensaiar.",
       audio: sourceChanged
-        ? "O link mudou. Importe a gravação desta versão novamente."
-        : "Importe o áudio pelo link da gravação ou escolha um arquivo.",
+        ? youtubeImport
+          ? "O link mudou. Importe a gravação desta versão novamente."
+          : "O link mudou. Envie o áudio desta versão novamente."
+        : youtubeImport
+        ? "Importe o áudio pelo link da gravação ou escolha um arquivo."
+        : "Envie o arquivo de áudio da gravação.",
     };
     setErrors(
       Object.fromEntries(
@@ -1326,7 +1333,11 @@ export default function SongEditor({
                         value={mediaUrl}
                         onChange={(e) => setMediaUrl(e.target.value)}
                         readOnly={readOnly || importBusy || separatingBusy}
-                        placeholder="Cole o link do YouTube…"
+                        placeholder={
+                          youtubeImport
+                            ? "Cole o link do YouTube…"
+                            : "Cole o link da gravação…"
+                        }
                         autoCapitalize="none"
                         autoCorrect="off"
                         spellCheck={false}
@@ -1340,13 +1351,14 @@ export default function SongEditor({
                           className="mt-2 text-xs text-destructive"
                           role="alert"
                         >
-                          O link mudou. Importe esta gravação novamente antes de
-                          continuar.
+                          {youtubeImport
+                            ? "O link mudou. Importe esta gravação novamente antes de continuar."
+                            : "O link mudou. Envie o áudio desta versão novamente antes de continuar."}
                         </p>
                       )}
                       {fieldError("audio")}
                       <div className="mt-3 flex flex-wrap gap-2">
-                        {!readOnly && (
+                        {!readOnly && youtubeImport && (
                           <Button
                             onClick={() => void handleImportYoutube()}
                             disabled={
@@ -1376,11 +1388,20 @@ export default function SongEditor({
                         )}
                       </div>
                       <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-                        Use o YouTube para importar. Links de outros serviços
-                        ficam salvos para consulta; você pode enviar o arquivo
-                        abaixo.
+                        {youtubeImport
+                          ? "Use o YouTube para importar. Links de outros serviços ficam salvos para consulta; você pode enviar o arquivo abaixo."
+                          : "O link fica salvo para a equipe conferir a versão. Envie o áudio da gravação abaixo."}
                       </p>
-                      {importJob?.status === "error" && !audioPath && (
+                      {!youtubeImport && importBusy && (
+                        <p
+                          role="status"
+                          className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"
+                        >
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                          Preparando o áudio desta gravação…
+                        </p>
+                      )}
+                      {youtubeImport && importJob?.status === "error" && !audioPath && (
                         <p
                           role="alert"
                           className="mt-2 text-xs text-destructive"
@@ -1392,7 +1413,9 @@ export default function SongEditor({
                       )}
                       <div className="mt-4 border-t border-separator pt-3">
                         <p className="mb-2 text-xs text-muted-foreground">
-                          Ou escolha um arquivo de áudio
+                          {youtubeImport
+                            ? "Ou escolha um arquivo de áudio"
+                            : "Arquivo de áudio da gravação"}
                         </p>
                         <AudioUpload
                           songId={id!}
@@ -1780,7 +1803,9 @@ export default function SongEditor({
                       <p className="py-5 text-sm text-muted-foreground">
                         {separatingBusy
                           ? "As faixas aparecem aqui quando a separação concluir."
-                          : "Importe a gravação e separe em faixas, ou envie as faixas prontas abaixo."}
+                          : youtubeImport
+                          ? "Importe a gravação e separe em faixas, ou envie as faixas prontas abaixo."
+                          : "Envie a gravação e separe em faixas, ou envie as faixas prontas abaixo."}
                       </p>
                     )}
                     <div className="mt-4 border-t border-separator pt-4">

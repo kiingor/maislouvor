@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import DeleteAccountInfo from "./DeleteAccountInfo";
@@ -6,7 +6,7 @@ import { isLegalPlaceholder, MY_SETTINGS_IN_APP, PRIVACY_EMAIL } from "@/lib/leg
 
 describe("public account deletion page", () => {
   it("explains the in-app path, what is erased or kept, and the e-mail fallback", () => {
-    render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><DeleteAccountInfo /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={["/excluir-conta"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><DeleteAccountInfo /></MemoryRouter>);
 
     expect(screen.getByRole("heading", { level: 1, name: "Excluir sua conta" })).toBeInTheDocument();
     expect(screen.getByText(MY_SETTINGS_IN_APP)).toBeInTheDocument();
@@ -28,8 +28,12 @@ describe("public account deletion page", () => {
     expect(screen.getByRole("heading", { name: "O que continua com a equipe" }).parentElement)
       .toHaveTextContent("Denúncias do chat que envolvem você continuam com a moderação");
     expect(screen.getByRole("note")).toHaveTextContent("precisam ser canceladas na loja");
-    expect(screen.getByRole("link", { name: /Política de Privacidade/ })).toHaveAttribute("href", "/privacidade");
-    expect(screen.getByRole("link", { name: /Termos de Uso/ })).toHaveAttribute("href", "/termos");
-    expect(screen.getByRole("link", { name: /Suporte/ })).toHaveAttribute("href", "/suporte");
+    // Mesma moldura das páginas legais: "Voltar" (o iOS não tem voltar do sistema) e os documentos no rodapé.
+    expect(screen.getByRole("button", { name: "Voltar" })).toBeInTheDocument();
+    const docs = screen.getByRole("navigation", { name: "Documentos" });
+    expect(within(docs).getByRole("link", { name: "Privacidade" })).toHaveAttribute("href", "/privacidade");
+    expect(within(docs).getByRole("link", { name: "Termos de Uso" })).toHaveAttribute("href", "/termos");
+    expect(within(docs).getByRole("link", { name: "Suporte" })).toHaveAttribute("href", "/suporte");
+    expect(within(docs).getByRole("link", { name: "Excluir conta" })).toHaveAttribute("aria-current", "page");
   });
 });

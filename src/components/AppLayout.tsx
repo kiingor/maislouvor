@@ -1,6 +1,6 @@
 import { useState, useEffect, Suspense } from "react";
 import { prefetchAppScreens } from "@/lib/routeLoaders";
-import { useNavigate, Outlet, useLocation } from "react-router-dom";
+import { useNavigate, Outlet } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { syncPushSubscription, registerNativePush } from "@/lib/push";
 import { useTeam } from "@/contexts/TeamContext";
@@ -18,10 +18,10 @@ import { TopBar } from "@/components/shell/TopBar";
 import { TabBar } from "@/components/shell/TabBar";
 import { ScrollEdge } from "@/components/shell/ScrollEdge";
 import { AssistantConsentGate } from "@/components/assistant/AssistantConsentGate";
+import { useScrollTopOnNavigate } from "@/components/shell/useScrollTopOnNavigate";
 
 function AppLayoutInner() {
   const navigate = useNavigate();
-  const location = useLocation();
   const shell = useShell()!;
   const [notifModalOpen, setNotifModalOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -50,10 +50,8 @@ function AppLayoutInner() {
     return () => el.removeEventListener("scroll", onScroll);
   }, [shell.scrollEl]);
 
-  // Cada tela começa do topo.
-  useEffect(() => {
-    shell.scrollEl?.scrollTo({ top: 0 });
-  }, [location.pathname, shell.scrollEl]);
+  // Cada tela começa do topo (menos quando o endereço aponta uma seção, #âncora).
+  useScrollTopOnNavigate(shell.scrollEl);
 
   const navItems = [
     { title: "Início", href: "/app/home", icon: Home },

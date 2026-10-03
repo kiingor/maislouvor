@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
 import { PopoverAnchor } from "@radix-ui/react-popover";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ToolbarButton } from "@/components/shell/ToolbarButton";
+import { useBlockedIds } from "@/components/chat/useBlockedUsers";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -41,7 +42,14 @@ interface NotificationBellProps {
 export function NotificationBell({ variant = "icon", open: openProp, onOpenChange, anchor }: NotificationBellProps) {
   const navigate = useNavigate();
   const { profileId } = useTeam();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [allNotifications, setNotifications] = useState<Notification[]>([]);
+  // Avisos escritos por quem você bloqueou ("Enviar aviso ao time") não aparecem,
+  // como as mensagens dessa pessoa no chat. Avisos do sistema (escala etc.) ficam.
+  const { ids: blockedIds } = useBlockedIds(profileId);
+  const notifications = useMemo(
+    () => allNotifications.filter((n) => !(n.type === "manual" && n.sender_profile_id && blockedIds.has(n.sender_profile_id))),
+    [allNotifications, blockedIds],
+  );
   const [openState, setOpenState] = useState(false);
   const open = openProp ?? openState;
   const setOpen = (v: boolean) => {

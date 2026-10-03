@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/check-legal-placeholders.mjs",
     "build": "vite build",
+    "build:store": "node scripts/check-legal-placeholders.mjs && VITE_STORE_BUILD=1 vite build",
     "build:dev": "vite build --mode development",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "lint": "eslint .",

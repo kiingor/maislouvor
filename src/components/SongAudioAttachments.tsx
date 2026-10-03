@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Headphones, Loader2, Pencil, Play, Plus, RefreshCw, Trash2, Upload, X, Youtube } from "lucide-react";
+import { AlertTriangle, Headphones, Link2, Loader2, Pencil, Play, Plus, RefreshCw, Trash2, Upload, X, Youtube } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSongAudioAttachments } from "@/hooks/useSongAudioAttachments";
 import { useToast } from "@/hooks/use-toast";
@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogToolbar } from "@/compo
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { youtubeImportEnabled } from "@/lib/storeBuild";
 
 /* Lista agrupada iOS (card opaco). Dentro de uma folha, a própria folha troca --card pelo
    fundo terciário no escuro (#2C2C2E), então o mesmo card contrasta com o material. */
@@ -71,6 +72,9 @@ export function SongAudioAttachments({ songId, teamId, readOnly = true, onPlayba
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const canEdit = !readOnly && !!teamId;
+  // Build das lojas: só arquivo (sem aba, status nem "Tentar novamente" do YouTube).
+  const youtube = youtubeImportEnabled();
+  const fromYoutube = youtube && source === "youtube";
 
   const refresh = () => qc.invalidateQueries({ queryKey: attachmentQueryKey(songId) });
   const run = async (operation: () => Promise<void>) => {
@@ -93,17 +97,17 @@ export function SongAudioAttachments({ songId, teamId, readOnly = true, onPlayba
   };
   const save = () => run(async () => {
     if (editing) await renameSongAudio(editing.id, title);
-    else if (source === "youtube") await importSongAudio(songId, title, url);
+    else if (fromYoutube) await importSongAudio(songId, title, url);
     else if (file) await uploadSongAudio(songId, teamId!, title, file);
     else return;
     setFormOpen(false);
     await refresh();
-    toast({ title: editing ? "Nome atualizado" : source === "youtube" ? "Importação iniciada" : "Áudio adicional salvo",
-      description: !editing && source === "youtube" ? "O áudio ficará disponível aqui quando a importação terminar." : undefined });
+    toast({ title: editing ? "Nome atualizado" : fromYoutube ? "Importação iniciada" : "Áudio adicional salvo",
+      description: !editing && fromYoutube ? "O áudio ficará disponível aqui quando a importação terminar." : undefined });
   });
 
-  const submitLabel = busy ? "Salvando..." : editing ? "Salvar nome" : source === "youtube" ? "Importar áudio" : "Adicionar áudio";
-  const submitDisabled = busy || !title.trim() || (!editing && (source === "file" ? !file : !url.trim()));
+  const submitLabel = busy ? "Salvando..." : editing ? "Salvar nome" : fromYoutube ? "Importar áudio" : "Adicionar áudio";
+  const submitDisabled = busy || !title.trim() || (!editing && (fromYoutube ? !url.trim() : !file));
 
   return (
     <section aria-label="Áudios adicionais" className="min-w-0">
@@ -143,7 +147,7 @@ export function SongAudioAttachments({ songId, teamId, readOnly = true, onPlayba
       ) : !attachments.length ? (
         <div className={cn(card, "flex items-center gap-3 px-4 py-4")}>
           <Headphones className="h-7 w-7 shrink-0 text-label-tertiary" aria-hidden="true" />
-          <p className="min-w-0 text-body text-muted-foreground">{canEdit ? "Adicione um arquivo de áudio ou importe do YouTube." : "Nenhum áudio adicional nesta música."}</p>
+          <p className="min-w-0 text-body text-muted-foreground">{canEdit ? (youtube ? "Adicione um arquivo de áudio ou importe do YouTube." : "Adicione um arquivo de áudio.") : "Nenhum áudio adicional nesta música."}</p>
         </div>
       ) : (
         <ul className={card}>
@@ -177,8 +181,13 @@ export function SongAudioAttachments({ songId, teamId, readOnly = true, onPlayba
                   <div className="min-w-0 flex-1">
                     <p className="line-clamp-2 break-words text-body text-foreground" title={item.title}>{item.title}</p>
                     <p className="flex items-center gap-1 text-footnote text-muted-foreground">
-                      {item.youtube_url ? <Youtube className="h-[13px] w-[13px] shrink-0" strokeWidth={2.25} aria-hidden="true" /> : <Upload className="h-[13px] w-[13px] shrink-0" strokeWidth={2.25} aria-hidden="true" />}
-                      {item.status === "queued" ? "Aguardando importação" : item.status === "processing" ? "Importando do YouTube..." : item.status === "error" ? "Falha na importação" : item.youtube_url ? "YouTube" : "Arquivo de áudio"}
+                      {!item.youtube_url ? <Upload className="h-[13px] w-[13px] shrink-0" strokeWidth={2.25} aria-hidden="true" />
+                        : youtube ? <Youtube className="h-[13px] w-[13px] shrink-0" strokeWidth={2.25} aria-hidden="true" />
+                        : <Link2 className="h-[13px] w-[13px] shrink-0" strokeWidth={2.25} aria-hidden="true" />}
+                      {item.status === "queued" ? "Aguardando importação"
+                        : item.status === "processing" ? (youtube ? "Importando do YouTube..." : "Importando...")
+                        : item.status === "error" ? "Falha na importação"
+                        : item.youtube_url ? (youtube ? "YouTube" : "Importado") : "Arquivo de áudio"}
                     </p>
                   </div>
                   {canEdit && (
@@ -207,7 +216,7 @@ export function SongAudioAttachments({ songId, teamId, readOnly = true, onPlayba
                 {item.status === "error" && (
                   <div className="min-w-0 space-y-1 pb-3 pl-16 pr-4">
                     <p className="text-footnote text-ios-red">{audioImportError(item.error)}</p>
-                    {canEdit && (
+                    {canEdit && youtube && item.youtube_url && (
                       <button
                         type="button"
                         disabled={busy}
@@ -239,7 +248,7 @@ export function SongAudioAttachments({ songId, teamId, readOnly = true, onPlayba
             title={editing ? "Renomear áudio" : "Adicionar áudio"}
             confirm={{ label: submitLabel, type: "submit", form: `${formId}-form`, disabled: submitDisabled, loading: busy }}
           />
-          <DialogDescription className="-mt-1 text-center">{editing ? "Use um nome fácil de reconhecer." : "Dê um nome ao material e escolha como importar."}</DialogDescription>
+          <DialogDescription className="-mt-1 text-center">{editing ? "Use um nome fácil de reconhecer." : youtube ? "Dê um nome ao material e escolha como importar." : "Dê um nome ao material e escolha o arquivo de áudio."}</DialogDescription>
           <form id={`${formId}-form`} className="min-w-0 space-y-5" onSubmit={(e) => { e.preventDefault(); save(); }}>
             <div>
               <label htmlFor={`${formId}-title`} className={groupLabel}>Nome do áudio</label>
@@ -248,12 +257,12 @@ export function SongAudioAttachments({ songId, teamId, readOnly = true, onPlayba
               </div>
             </div>
             {!editing && (
-              <Tabs value={source} onValueChange={setSource}>
-                <TabsList className="w-full">
+              <Tabs value={youtube ? source : "file"} onValueChange={setSource}>
+                {youtube && <TabsList className="w-full">
                   <TabsTrigger value="file" disabled={busy} className="flex-1"><Upload className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />Arquivo</TabsTrigger>
                   <TabsTrigger value="youtube" disabled={busy} className="flex-1"><Youtube className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />YouTube</TabsTrigger>
-                </TabsList>
-                <TabsContent value="file" className="mt-4">
+                </TabsList>}
+                <TabsContent value="file" className={youtube ? "mt-4" : "mt-0"}>
                   <label htmlFor={`${formId}-file`} className={groupLabel}>Arquivo de áudio</label>
                   <div className={cn(card, "px-4 py-3")}>
                     <input
@@ -274,7 +283,7 @@ export function SongAudioAttachments({ songId, teamId, readOnly = true, onPlayba
                   <p className={helper}>MP3, M4A, WAV e outros formatos de áudio. Até 50 MB.</p>
                   {file && <p className={cn(helper, "mt-1 break-all")}>{file.name}</p>}
                 </TabsContent>
-                <TabsContent value="youtube" className="mt-4">
+                {youtube && <TabsContent value="youtube" className="mt-4">
                   <label htmlFor={`${formId}-url`} className={groupLabel}>Link do YouTube</label>
                   <div className={card}>
                     <input
@@ -291,7 +300,7 @@ export function SongAudioAttachments({ songId, teamId, readOnly = true, onPlayba
                     />
                   </div>
                   <p className={helper}>A importação continua mesmo se você fechar esta tela.</p>
-                </TabsContent>
+                </TabsContent>}
               </Tabs>
             )}
           </form>

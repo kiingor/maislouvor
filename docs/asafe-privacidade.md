@@ -104,11 +104,14 @@ registra até 80 caracteres do texto da mensagem.
   de vincular por código. Sem ele o assistente não reconhece a pessoa (fica
   "desconhecida", sem IA), não a marca (@) nos avisos e a tira das listas de
   disponibilidade enviadas à IA (a ferramenta informa só quantas pessoas ficaram
-  de fora). O nome continua na escala, no roteiro e nos avisos, que é o que a
-  equipe já vê no app. Dois perfis com o mesmo número continuam "ambíguos": o
+  de fora). Nas escalas e nas vozes do roteiro que vão para a IA
+  (`assistant_culto_details`), a pessoa aparece **sem nome** (função, confirmação
+  e voz ficam), com um aviso para a IA não adivinhar. No app e nos avisos
+  automáticos do grupo (que não passam pela IA), o nome continua. Dois perfis com o mesmo número continuam "ambíguos": o
   assistente nunca troca uma pessoa pela outra. Regra única no banco:
   `assistant_member_ai_allowed(equipe, perfil)`.
-- **Não permitir / desligar** grava `profiles.assistant_ai_opt_out = true`,
+- **Não permitir / desligar** grava a pessoa em `assistant_ai_opt_outs` (fora de
+  `profiles`, que a equipe inteira lê; só as RPCs leem a tabela),
   apaga os vínculos do WhatsApp, os códigos pendentes e o histórico da pessoa
   em `assistant_messages`. No app, sempre depois de uma confirmação que diz isso.
 - **Tolerância de quem já usava**: quem estava numa equipe com grupo ativo
@@ -134,13 +137,20 @@ registra até 80 caracteres do texto da mensagem.
   - `ai_consent_required_from`: fim das tolerâncias. A partir dessa data as
     equipes `pending` ficam `blocked` — o assistente não chama a IA e responde
     pedindo a confirmação do líder no app — e quem só tinha a tolerância deixa
-    de ser reconhecido. `null` (padrão) = sem prazo.
+    de ser reconhecido. A migração põe **30 dias depois da primeira aplicação**
+    (rodar de novo não muda uma data definida); no deploy, ajustar para a data do
+    APK novo + 14 dias. `null` = sem prazo (não usar em produção).
   - `ai_member_consent_required`: `true` = encerra já a tolerância das pessoas
     (só reconhece quem permitiu no app). `false` (padrão) = tolerância até
     decidir ou até `ai_consent_required_from`.
 
+- **Linha de transparência** (OpenAI) nos grupos: vai no boas-vindas da ativação e
+  na ajuda. Grupos que já estavam ativos antes do aviso recebem a linha **uma vez**,
+  junto com a primeira resposta depois do deploy (`assistant_groups.ai_disclosure_version`,
+  marcada por `assistant_claim_ai_disclosure`; não entra no histórico da conversa).
+
 Aplicar a migração: ela usa `lock_timeout = 3s` para os `ALTER TABLE` em
-`profiles` e `assistant_config`. Se der timeout (uma transação longa segurando a
+`assistant_config` e `assistant_groups`. Se der timeout (uma transação longa segurando a
 tabela), basta rodar de novo; é idempotente e a foto da tolerância só é tirada
 na primeira execução completa.
 

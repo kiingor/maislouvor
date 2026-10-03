@@ -9,6 +9,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { MY_SETTINGS_IN_APP, TEAM_SETTINGS_IN_APP } from "@/lib/legal";
 
 interface Props {
   open: boolean;
@@ -54,17 +55,20 @@ export function AssistantDeclineConfirm({
                 </p>
                 <p>
                   Para voltar, um líder aceita o aviso de novo, gera outro código e manda “@{name} ativar CÓDIGO” em cada
-                  grupo. Depois, retome as missões em Ajustes › Equipe, e cada pessoa permite de novo o uso dos próprios dados.
+                  grupo. Depois, retome as missões em {TEAM_SETTINGS_IN_APP}, e cada pessoa permite de novo o uso dos próprios dados.
                 </p>
               </div>
             ) : (
               <div className="space-y-2">
                 <p>
-                  O {name} deixa de reconhecer você no grupo, não marca mais você nos avisos automáticos e tira seu nome das
-                  listas de disponibilidade que ele consulta. Ele também esquece o WhatsApp vinculado e apaga o histórico das
-                  suas conversas com ele.
+                  O {name} deixa de reconhecer você no grupo, não marca mais você nos avisos automáticos e não envia seu nome
+                  à IA: nas listas de disponibilidade e nas escalas que ele consulta, você aparece sem nome. Ele também esquece
+                  o WhatsApp vinculado e apaga o histórico das suas conversas com ele.
                 </p>
-                <p>Seu nome continua nas escalas da equipe. Dá para permitir de novo quando quiser em Ajustes › Meu usuário.</p>
+                <p>
+                  No app, nada muda: seu nome continua nas escalas da equipe. Dá para permitir de novo quando quiser em{" "}
+                  {MY_SETTINGS_IN_APP}.
+                </p>
               </div>
             )}
           </AlertDialogDescription>

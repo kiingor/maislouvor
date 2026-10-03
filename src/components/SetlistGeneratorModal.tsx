@@ -47,7 +47,9 @@ export function SetlistGeneratorModal({ open, onOpenChange, repertorioId, onGene
       const { data } = await supabase
         .from("songs")
         .select("id, title, artist, key_current, theme, duration_seconds, audio_path, cifra_text")
-        .eq("team_id", currentTeam.id);
+        .eq("team_id", currentTeam.id)
+        // Rascunhos são de quem os começou (o catálogo e o repertório também os escondem).
+        .eq("is_draft" as never, false);
       return data ?? [];
     },
     enabled: !!currentTeam && open,

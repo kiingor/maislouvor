@@ -40,7 +40,7 @@ export const ASSISTANT_AI_RETENTION = {
 export function assistantAiDataSent(name: string): { title: string; detail: string }[] {
   return [
     { title: `Mensagens enviadas ao ${name}`, detail: "o que é escrito ao marcar o assistente nos grupos conectados (e o texto de uma mensagem respondida ao chamá-lo)" },
-    { title: "Nome e função na equipe", detail: "de quem pergunta e das pessoas que aparecem nas escalas" },
+    { title: "Nome e função na equipe", detail: "de quem pergunta e das pessoas das escalas que permitem o uso dos dados (quem não permite aparece sem nome)" },
     { title: "Escalas e disponibilidade", detail: "cultos, funções, confirmações e dias marcados, sem o motivo das ausências" },
     { title: "Repertório", detail: "músicas, tons, BPM, links e o roteiro dos cultos" },
   ];

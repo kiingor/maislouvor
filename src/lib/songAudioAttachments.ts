@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { parseAdditionalAudioRequest } from "../../supabase/functions/import-song-audio/request";
+import { youtubeImportEnabled } from "@/lib/storeBuild";
 
 export type SongAudioAttachment = Database["public"]["Tables"]["song_audio_attachments"]["Row"];
 export const attachmentQueryKey = (songId: string) => ["song-audio-attachments", songId];
@@ -40,6 +41,8 @@ export async function uploadSongAudio(songId: string, teamId: string, title: str
 }
 
 export async function importSongAudio(songId: string, title: string, url: string, attachmentId?: string) {
+  // Build das lojas: nenhuma tela chama isto; a trava garante que nada baixe do YouTube.
+  if (!youtubeImportEnabled()) throw new Error("Envie o arquivo de áudio.");
   let input;
   try { input = parseAdditionalAudioRequest({ song_id: songId, title, url, attachment_id: attachmentId }); }
   catch { throw new Error("Informe um nome e um link HTTPS válido de um vídeo do YouTube."); }
@@ -68,6 +71,7 @@ export async function removeSongAudio(attachment: SongAudioAttachment) {
 }
 
 export function audioImportError(error: string | null) {
+  if (!youtubeImportEnabled()) return "Este áudio não foi importado. Remova e envie o arquivo de áudio.";
   return /COOKIE_EXPIRED|cookies for the authentication|sign in to confirm|not a bot/i.test(error || "")
     ? "O acesso ao YouTube expirou. Avise o administrador para renovar e tente novamente."
     : "Não foi possível importar este áudio. Tente novamente ou envie o arquivo.";

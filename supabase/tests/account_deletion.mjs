@@ -19,7 +19,7 @@ const names = ['olga', 'mario', 'mel', 'sara', 'lia', 'xavier', 'vera', 'ulisses
 const user = Object.fromEntries(names.map((n, i) => [n, id(1, i + 1)]));
 const prof = Object.fromEntries(names.map((n, i) => [n, id(2, i + 1)]));
 const team = { a: id(3, 1), b: id(3, 2), c: id(3, 3) };
-const song = { aBySara: id(4, 1), cBySara: id(4, 2), aByOlga: id(4, 3), draftA: id(4, 4) };
+const song = { aBySara: id(4, 1), cBySara: id(4, 2), aByOlga: id(4, 3), draftA: id(4, 4), draftUsed: id(4, 5) };
 const culto = { a: id(5, 1), c: id(5, 2) };
 const rep = { a: id(6, 1) };
 const sharedSong = id(7, 1);
@@ -194,12 +194,14 @@ try {
       ('${song.aBySara}', '${team.a}', 'Bondade de Deus', '${prof.sara}', false),
       ('${song.aByOlga}', '${team.a}', 'Grande é o Senhor', '${prof.olga}', false),
       ('${song.cBySara}', '${team.c}', 'Música do projeto', '${prof.sara}', false),
-      ('${song.draftA}', '${team.a}', 'Rascunho da Sara', '${prof.sara}', true);
+      ('${song.draftA}', '${team.a}', 'Rascunho da Sara', '${prof.sara}', true),
+      -- Rascunho que a liderança já pôs num repertório (a RLS de songs deixa a equipe ler).
+      ('${song.draftUsed}', '${team.a}', 'Rascunho no repertório', '${prof.sara}', true);
     INSERT INTO public.cultos(id, team_id, name, date, created_by) VALUES
       ('${culto.a}', '${team.a}', 'Culto de domingo', current_date + 3, '${prof.sara}'),
       ('${culto.c}', '${team.c}', 'Ensaio solo', current_date + 3, '${prof.sara}');
     INSERT INTO public.repertorios(id, team_id, name, created_by) VALUES ('${rep.a}', '${team.a}', 'Domingo', '${prof.sara}');
-    INSERT INTO public.repertorio_songs(repertorio_id, song_id) VALUES ('${rep.a}', '${song.aBySara}');
+    INSERT INTO public.repertorio_songs(repertorio_id, song_id) VALUES ('${rep.a}', '${song.aBySara}'), ('${rep.a}', '${song.draftUsed}');
     INSERT INTO public.culto_songs(id, culto_id, song_id, notes, notes_author_id) VALUES
       ('${sharedSong}', '${culto.a}', '${song.aBySara}', 'Entrar só no refrão', '${prof.sara}');
     INSERT INTO public.culto_songs(culto_id, song_id) VALUES ('${culto.c}', '${song.cBySara}');
@@ -262,7 +264,8 @@ try {
       ('audio', '${team.a}/${song.draftA}.mp3', '${user.sara}'),
       ('audio', '${team.a}/${song.draftA}/additional/${id(9, 1)}.mp3', NULL),
       ('covers', '${team.a}/${song.draftA}.png', '${user.sara}'),
-      ('audio', '${team.a}/${song.draftA}0.mp3', NULL);
+      ('audio', '${team.a}/${song.draftA}0.mp3', NULL),
+      ('audio', '${team.a}/${song.draftUsed}.mp3', NULL);
   `);
 
   // ----- permissões -----
@@ -345,7 +348,6 @@ try {
     { bucket: 'audio', path: `${team.c}/${song.cBySara}.mp3` },
     { bucket: 'audio', path: `${team.c}/${song.cBySara}/tracks/voz.mp3` },
     { bucket: 'avatars', path: `${user.sara}/avatar.webp` },
-    { bucket: 'avatars', path: 'legado/sara.png' },
     { bucket: 'chat', path: `${team.a}/1-voz.webm` },
     { bucket: 'chat', path: `${team.a}/2-cifra.jpg` },
     { bucket: 'chat', path: `${team.b}/9-avulso.jpg` },
@@ -353,7 +355,8 @@ try {
     { bucket: 'covers', path: `${team.a}/${song.draftA}.png` },
     { bucket: 'covers', path: `${team.c}/${song.cBySara}.jpg` },
   ].sort((x, y) => (x.bucket + x.path < y.bucket + y.path ? -1 : 1)),
-  'arquivos pessoais, dos rascunhos e da equipe que some (não o de outra música com o mesmo começo)');
+  'arquivos pessoais, dos rascunhos só dela e da equipe que some (não o de outra música com o mesmo começo, '
+  + 'nem o do rascunho que está num repertório, nem a foto apontada só pelo avatar_url)');
   await db.exec('ALTER TABLE storage.objects DROP COLUMN owner_id');
   check(await service('SELECT public.account_deletion_storage_objects($1) AS r', [user.sara]), objects, 'Storage sem owner_id');
 
@@ -393,11 +396,11 @@ try {
   check(await count('SELECT count(*) AS n FROM public.songs WHERE team_id = $1', [team.c]), 0, 'músicas dela junto');
   check(await count('SELECT count(*) AS n FROM public.messages WHERE team_id = $1', [team.c]), 0, 'chat dela junto');
   check(await rows(`SELECT id, created_by FROM public.songs WHERE team_id = $1 ORDER BY id`, [team.a]),
-    [{ id: song.aBySara, created_by: null }, { id: song.aByOlga, created_by: prof.olga }],
-    'músicas cadastradas ficam, sem autora; o rascunho dela sai');
+    [{ id: song.aBySara, created_by: null }, { id: song.aByOlga, created_by: prof.olga }, { id: song.draftUsed, created_by: null }],
+    'músicas cadastradas ficam, sem autora; o rascunho só dela sai e o que está no repertório fica');
   check((await one('SELECT created_by FROM public.cultos WHERE id = $1', [culto.a])).created_by, null);
   check((await one('SELECT created_by FROM public.repertorios WHERE id = $1', [rep.a])).created_by, null);
-  check(await count('SELECT count(*) AS n FROM public.repertorio_songs WHERE repertorio_id = $1', [rep.a]), 1, 'repertório intacto');
+  check(await count('SELECT count(*) AS n FROM public.repertorio_songs WHERE repertorio_id = $1', [rep.a]), 2, 'repertório intacto');
   check(await one('SELECT notes, notes_author_id FROM public.culto_songs WHERE id = $1', [sharedSong]),
     { notes: 'Entrar só no refrão', notes_author_id: null });
   check((await one(`SELECT created_by FROM public.channels WHERE name = 'Avisos'`)).created_by, null);
@@ -422,8 +425,10 @@ try {
   check(await rows(`SELECT bucket_id, name, owner FROM storage.objects ORDER BY bucket_id, name`), [
     { bucket_id: 'audio', name: `${team.a}/${song.aBySara}.mp3`, owner: null },
     { bucket_id: 'audio', name: `${team.a}/${song.draftA}0.mp3`, owner: null },
+    { bucket_id: 'audio', name: `${team.a}/${song.draftUsed}.mp3`, owner: null },
     { bucket_id: 'audio', name: '_ytcache/abc123.mp3', owner: null },
     { bucket_id: 'avatars', name: `${user.mel}/avatar.webp`, owner: null },
+    { bucket_id: 'avatars', name: 'legado/sara.png', owner: null },
     { bucket_id: 'chat', name: `${team.a}/3-mel.jpg`, owner: user.mel },
     { bucket_id: 'covers', name: `${team.a}/${song.aBySara}.jpg`, owner: null },
   ], 'arquivos da equipe ficam, sem dono');
@@ -450,6 +455,48 @@ try {
   check(await one('SELECT owner_id FROM public.teams WHERE id = $1', [team.a]), { owner_id: prof.mario });
   check((await one('SELECT created_by FROM public.songs WHERE id = $1', [song.aByOlga])).created_by, null);
   check(await count('SELECT count(*) AS n FROM public.teams'), 2, 'equipes A e B continuam');
+
+  // ----- caminhos gravados pelo cliente não escolhem o arquivo de ninguém -----
+  // Mario (dono da A depois da transferência) aponta mensagens para o anexo da Mel, para
+  // um anexo sem dono que é de uma mensagem da Mel e para um arquivo de outra equipe, e
+  // troca a própria foto pelo endereço da foto da Mel: nada disso entra na lista dele.
+  await db.exec(`
+    INSERT INTO storage.objects(bucket_id, name, owner) VALUES
+      ('chat', '${team.a}/5-mel-sem-dono.jpg', NULL), ('chat', '${team.b}/6-equipe-b.jpg', NULL),
+      ('chat', '${team.a}/7-mario.jpg', '${user.mario}'), ('chat', '${team.a}/8-mario-sem-dono.jpg', NULL);
+    INSERT INTO public.messages(team_id, sender_profile_id, content, message_type, attachment_path) VALUES
+      ('${team.a}', '${prof.mel}', NULL, 'image', '${team.a}/5-mel-sem-dono.jpg'),
+      ('${team.a}', '${prof.mario}', NULL, 'image', '${team.a}/8-mario-sem-dono.jpg'),
+      ('${team.a}', '${prof.mario}', 'oi', 'text', '${team.a}/3-mel.jpg'),
+      ('${team.a}', '${prof.mario}', 'oi', 'text', '${team.a}/5-mel-sem-dono.jpg'),
+      ('${team.a}', '${prof.mario}', 'oi', 'text', '${team.b}/6-equipe-b.jpg');
+    UPDATE public.profiles SET avatar_url = 'https://api.example.test/storage/v1/object/public/avatars/${user.mel}/avatar.webp?t=1'
+      WHERE id = '${prof.mario}';
+  `);
+  check(await service('SELECT public.account_deletion_storage_objects($1) AS r', [user.mario]),
+    [{ bucket: 'chat', path: `${team.a}/7-mario.jpg` }, { bucket: 'chat', path: `${team.a}/8-mario-sem-dono.jpg` }],
+    'só o que o Mario enviou (dono no Storage, ou sem dono e só da mensagem dele, na pasta da equipe)');
+
+  // ----- último membro que não é o dono: sai, e a equipe continua com a dona -----
+  const ana = { user: id(1, 60), prof: id(2, 60), team: id(3, 60) };
+  const beto = { user: id(1, 61), prof: id(2, 61) };
+  await db.exec(`
+    INSERT INTO auth.users(id, email) VALUES ('${ana.user}', 'ana@example.test'), ('${beto.user}', 'beto@example.test');
+    INSERT INTO public.profiles(id, user_id, full_name) VALUES ('${ana.prof}', '${ana.user}', 'Ana'), ('${beto.prof}', '${beto.user}', 'Beto');
+    INSERT INTO public.teams(id, name, owner_id) VALUES ('${ana.team}', 'Equipe da Ana', '${ana.prof}');
+    INSERT INTO public.team_members(team_id, profile_id, role) VALUES ('${ana.team}', '${ana.prof}', 'admin'), ('${ana.team}', '${beto.prof}', 'admin');
+    INSERT INTO public.songs(team_id, title, created_by) VALUES ('${ana.team}', 'Hino da Ana', '${ana.prof}');
+    INSERT INTO storage.objects(bucket_id, name) VALUES ('audio', '${ana.team}/hino.mp3');
+    -- Um líder tira a dona de team_members (a RLS e a aba Membros permitem).
+    DELETE FROM public.team_members WHERE team_id = '${ana.team}' AND profile_id = '${ana.prof}';
+  `);
+  check((await preview(beto.user)).teams.map((t) => [t.team_name, t.is_owner, t.action]), [['Equipe da Ana', false, 'leave']],
+    'quem não é dono não apaga a equipe de outra conta');
+  check(await service('SELECT public.account_deletion_storage_objects($1) AS r', [beto.user]), [], 'nem os arquivos dela');
+  check((await service('SELECT public.delete_account_data($1) AS r', [beto.user])).deleted_team_ids, []);
+  check(await one(`SELECT owner_id, (SELECT count(*)::int FROM public.songs WHERE team_id = $1) AS songs FROM public.teams WHERE id = $1`, [ana.team]),
+    { owner_id: ana.prof, songs: 1 }, 'a equipe fica, vazia, com a dona');
+  check((await preview(ana.user)).teams.map((t) => [t.team_name, t.action]), [['Equipe da Ana', 'delete_team']], 'a dona decide');
 
   // ----- migrações posteriores (chat, termos, consentimento do Asafe, demo...) -----
   // Uma FK nova sem ação de exclusão para o perfil, o usuário, mensagens ou
@@ -494,7 +541,8 @@ try {
     'rascunho e equipe da Nina saíram');
 
   console.log(`${checks} PostgreSQL checks passed: FKs, falha da migração, NOT VALID, idempotência, prévia, transferência, bloqueios, `
-    + 'arquivos depois do banco, Asafe ativo, rascunhos, exclusão atômica, retry, migrações posteriores e permissões.');
+    + 'arquivos depois do banco, Asafe ativo, rascunhos (e os já usados pela equipe), caminhos forjados, último membro que não é dono, '
+    + 'exclusão atômica, retry, migrações posteriores e permissões.');
 } finally {
   await db.close();
 }

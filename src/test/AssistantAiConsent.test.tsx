@@ -76,7 +76,7 @@ describe("aviso de IA", () => {
     expect(text).toContain("Não são enviados à OpenAI");
     expect(text).toContain("30 dias");
     expect(text).toContain("É opcional");
-    expect(text).toContain("Ajustes › Equipe › Assistente no WhatsApp");
+    expect(text).toContain("Usuário › Equipe › Assistente no WhatsApp");
     expect(text).toContain(`versão ${consentVersionLabel()}`);
     expect(within(dialog).getByRole("link", { name: /Política de Privacidade/ }).getAttribute("href")).toMatch(/\/privacidade$/);
 
@@ -118,7 +118,7 @@ describe("aviso de IA", () => {
 
   it("tells leaders that each person still chooses for their own data", () => {
     render(<AssistantAiConsentDialog open variant="team-activate" onAccept={vi.fn()} onDecline={vi.fn()} onClose={vi.fn()} />);
-    expect(screen.getByRole("dialog").textContent).toContain("cada pessoa (inclusive você) escolhe em Ajustes › Meu usuário");
+    expect(screen.getByRole("dialog").textContent).toContain("cada pessoa (inclusive você) escolhe em Usuário › Meu usuário");
   });
 
   it("explains the database errors", () => {
@@ -288,7 +288,8 @@ describe("MyAssistantSettings com o aviso de IA", () => {
 
     fireEvent.click(await screen.findByRole("switch", { name: "Permitir que o Asafe use meus dados" }));
     const dialog = await screen.findByRole("dialog", { name: "Permitir que o Asafe use seus dados?" });
-    expect(dialog.textContent).toContain("Seu nome continua nas escalas da equipe");
+    expect(dialog.textContent).toContain("seu nome não vai para a IA");
+    expect(dialog.textContent).toContain("seu nome continua nas escalas da equipe");
     fireEvent.click(within(dialog).getByRole("button", { name: "Concordo e permitir" }));
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith("give_assistant_consent", {
       p_scope: "member_link", p_team_id: null, p_version: ASSISTANT_AI_CONSENT_VERSION,

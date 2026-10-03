@@ -243,13 +243,13 @@ checks++;
 // ---- Aviso de IA (OpenAI) e quem desligou o uso dos dados --------------------------------
 ok(welcomeMessage('Asafe', 'Louvor Sede').includes(AI_DISCLOSURE_LINE) && helpMessage('Asafe').includes(AI_DISCLOSURE_LINE),
   'boas-vindas e ajuda contam que as respostas vêm da IA da OpenAI');
-ok(AI_DISCLOSURE_LINE.includes('OpenAI (EUA)') && AI_DISCLOSURE_LINE.includes('Ajustes › Meu usuário'), 'diz quem é e como desligar');
+ok(AI_DISCLOSURE_LINE.includes('OpenAI (EUA)') && AI_DISCLOSURE_LINE.includes('Usuário › Meu usuário'), 'diz quem é e como desligar');
 ok(activationErrorMessage('Asafe', 'consent_required').includes('aceitar no app'), 'ativação sem o aceite do líder');
 ok(linkErrorMessage('consent_required').includes('permita no app'), 'vínculo sem o aceite da pessoa');
 const unknownText = unknownSenderMessage('unknown', 'Louvor Sede');
 ok(unknownText.includes('Telefone') && unknownText.includes('só reconheço quem permite no app'), 'desconhecido explica o telefone e a permissão');
 ok(AI_DISCLOSURE_LINE.includes('Cada pessoa escolhe no app'), 'no grupo: cada pessoa decide se o assistente usa os dados dela');
-ok(consentRequiredMessage('Asafe').includes('Ajustes › Equipe › Assistente no WhatsApp'), 'equipe bloqueada pede a confirmação do líder');
+ok(consentRequiredMessage('Asafe').includes('Usuário › Equipe › Assistente no WhatsApp'), 'equipe bloqueada pede a confirmação do líder');
 ok(prompt.includes('nao_compartilham'), 'prompt: não adivinhar quem não compartilha dados');
 
 // Handler com banco simulado: o estado do aceite decide se a pergunta vai para a IA.

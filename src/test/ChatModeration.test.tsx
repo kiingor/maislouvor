@@ -103,9 +103,18 @@ describe("ReportMessageDialog", () => {
         body: "Louvor Alfa · Analise em até 24 horas.",
         link: "/app/settings?aba=membros&equipe=team-1",
       }),
-    ]);
+    // A plataforma também recebe o push (prazo de 24 h): o servidor confere a denúncia e escolhe quem.
+    ], { chatReportId: "rep-1" });
     // O push não leva o conteúdo denunciado.
     expect(JSON.stringify(mocks.firePush.mock.calls)).not.toContain("Mensagem ofensiva");
+  });
+
+  it("still alerts the platform when the report is about the leadership (no leader to notify)", async () => {
+    mocks.rpc.mockResolvedValue({ data: { id: "rep-2", already_reported: false, notify_profile_ids: [], team_name: "Louvor Alfa" }, error: null });
+    withQuery(<ReportMessageDialog open onOpenChange={vi.fn()} message={message} teamId="team-1" />);
+    fireEvent.click(screen.getByRole("radio", { name: /Spam ou golpe/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+    await waitFor(() => expect(mocks.firePush).toHaveBeenCalledWith("team-1", [], { chatReportId: "rep-2" }));
   });
 
   it("also blocks the sender when asked", async () => {

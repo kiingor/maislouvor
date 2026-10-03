@@ -44,6 +44,14 @@ export const INFRA_PROVIDER = "PREENCHER: empresa da VPS (hospedagem) e país do
 export const EMAIL_PROVIDER = "PREENCHER: provedor de envio de e-mails (SMTP)";
 /** Quanto tempo uma cópia de segurança pode guardar dados já excluídos. */
 export const BACKUP_RETENTION = "PREENCHER: prazo de rotação dos backups (ex.: 30 dias)";
+/**
+ * Dados pessoais sensíveis (LGPD, art. 5º, II): participar de uma equipe de louvor
+ * pode revelar convicção religiosa. Base legal do art. 11 para esse tratamento —
+ * decisão do jurídico (ex.: consentimento específico e em destaque no cadastro,
+ * art. 11, I, o que pede uma caixa própria na tela de cadastro).
+ */
+export const SENSITIVE_DATA_LEGAL_BASIS =
+  "PREENCHER: base legal do art. 11 da LGPD para os dados sensíveis (ex.: consentimento específico e em destaque, art. 11, I)";
 
 /**
  * Prazo para atender pedidos de titulares feitos por e-mail, inclusive a
@@ -61,6 +69,8 @@ export const MIN_AGE = 13;
 // Rótulos de telas citados nos documentos (mudou a tela? ajuste aqui).
 /** Aba do app com os ajustes pessoais (barra de abas e menu lateral: "Usuário"). */
 export const MY_SETTINGS_IN_APP = "Usuário › Meu usuário";
+/** Ajustes da equipe, só para líderes (Usuário › Equipe). */
+export const TEAM_SETTINGS_IN_APP = "Usuário › Equipe";
 /** Onde fica a exclusão de conta no app (DeleteAccountSection). */
 export const DELETE_ACCOUNT_IN_APP = `${MY_SETTINGS_IN_APP} › Excluir minha conta`;
 /** Âncora da seção de exclusão em Usuário › Meu usuário (DeleteAccountSection). */

@@ -76,11 +76,21 @@ export interface PushRecipient {
  * Dispara o push (Web Push) para uma lista de destinatários via edge function.
  * Chamado logo após inserir as notificações in-app. À prova de falha: se algo der
  * errado, a notificação in-app continua valendo.
+ *
+ * chatReportId: denúncia que a pessoa acabou de enviar. O send-push também avisa
+ * os administradores da plataforma (o servidor confere e escolhe quem; o app não
+ * sabe quem administra), mesmo sem liderança para avisar.
  */
-export async function firePush(teamId: string, recipients: PushRecipient[]): Promise<void> {
-  if (!recipients.length) return;
+export async function firePush(
+  teamId: string,
+  recipients: PushRecipient[],
+  options: { chatReportId?: string } = {},
+): Promise<void> {
+  if (!recipients.length && !options.chatReportId) return;
   try {
-    await supabase.functions.invoke("send-push", { body: { team_id: teamId, recipients } });
+    await supabase.functions.invoke("send-push", {
+      body: { team_id: teamId, recipients, ...(options.chatReportId ? { chat_report_id: options.chatReportId } : {}) },
+    });
   } catch (e) {
     console.warn("firePush falhou (push opcional):", e);
   }

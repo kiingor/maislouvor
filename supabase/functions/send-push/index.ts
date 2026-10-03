@@ -13,6 +13,8 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 interface Recipient {
   profile_id: string;
   title: string;
@@ -103,8 +105,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { team_id, recipients } = (await req.json()) as { team_id: string; recipients: Recipient[] };
-    if (!team_id || !Array.isArray(recipients) || recipients.length === 0) {
+    const { team_id, recipients: rawRecipients, chat_report_id } = (await req.json()) as {
+      team_id: string;
+      recipients: Recipient[];
+      /** Denúncia que quem chama acabou de enviar: avisa também a plataforma. */
+      chat_report_id?: string;
+    };
+    const recipients = Array.isArray(rawRecipients) ? rawRecipients : [];
+    const chatReportId = typeof chat_report_id === "string" && UUID.test(chat_report_id) ? chat_report_id : null;
+    if (!team_id || (recipients.length === 0 && !chatReportId)) {
       return json({ error: "team_id and recipients are required" }, 400);
     }
 
@@ -119,20 +128,54 @@ Deno.serve(async (req) => {
     // sobre um pedido de entrada (o solicitante ainda não é membro). Caso contrário,
     // exige que o CHAMADOR seja membro da equipe.
     const token = authHeader.replace("Bearer ", "");
+    let callerUserId: string | null = null;
     if (token !== serviceKey) {
       const userClient = createClient(supabaseUrl, anonKey, {
         global: { headers: { Authorization: authHeader } },
       });
       const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
       if (claimsError || !claimsData?.claims) return json({ error: "Unauthorized" }, 401);
-      const callerUserId = claimsData.claims.sub as string;
+      callerUserId = claimsData.claims.sub as string;
       const { data: callerProfile } = await admin
         .from("profiles").select("id").eq("user_id", callerUserId).single();
       if (!callerProfile || !memberIds.has(callerProfile.id)) return json({ error: "Forbidden" }, 403);
     }
 
     const targets = recipients.filter((r) => r.profile_id && memberIds.has(r.profile_id));
+
+    // Denúncia nova no chat: os administradores da plataforma também recebem o push
+    // (prazo de 24 horas), inclusive nas denúncias sobre a liderança, que nenhum
+    // líder vê. O banco confere que a denúncia é de quem chama, recente e ainda sem
+    // esse aviso, e devolve quem administra. Texto fixo, sem nada da mensagem.
+    if (chatReportId && callerUserId) {
+      const { data: platformIds, error: platformError } = await admin.rpc("chat_report_platform_push_targets", {
+        p_report_id: chatReportId,
+        p_user_id: callerUserId,
+      });
+      if (platformError) console.error("chat report platform push", platformError.message);
+      const already = new Set(targets.map((r) => r.profile_id));
+      for (const profileId of (Array.isArray(platformIds) ? platformIds : []) as string[]) {
+        if (already.has(profileId)) continue;
+        targets.push({ profile_id: profileId, title: "Nova denúncia no chat", body: "Analise em até 24 horas.", link: "/admin/denuncias" });
+      }
+    }
     if (targets.length === 0) return json({ success: true, sent: 0 });
+
+    // Mesmo filtro de palavras do chat e dos avisos no app (chat_mask_text, da
+    // moderação do chat): o push não leva o que o banco mascarou. Sem a função no
+    // banco (ou erro), o texto vai como veio.
+    const masked = new Map<string, string>();
+    const mask = async (text: string) => {
+      if (!masked.has(text)) {
+        const { data, error } = await admin.rpc("chat_mask_text", { p_text: text });
+        masked.set(text, !error && typeof data === "string" ? data : text);
+      }
+      return masked.get(text)!;
+    };
+    for (const r of targets) {
+      if (r.title) r.title = await mask(r.title);
+      if (r.body) r.body = await mask(r.body);
+    }
 
     const profileIds = [...new Set(targets.map((r) => r.profile_id))];
 

@@ -49,11 +49,11 @@ vi.stubGlobal("localStorage", {
   get length() { return store.size; },
 });
 
-function renderSection() {
+function renderSection(path = "/app/settings") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/app/settings"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/app/settings" element={<DeleteAccountSection />} />
           <Route path="/login" element={<p>Tela de login</p>} />
@@ -75,6 +75,21 @@ afterEach(() => {
 });
 
 describe("DeleteAccountSection", () => {
+  it("opens the deletion sheet straight from /app/settings#excluir-conta and returns focus to the button", async () => {
+    mocks.rpc.mockResolvedValue({ data: preview([team({})]), error: null });
+    renderSection("/app/settings#excluir-conta");
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Excluir minha conta" })).toBeInTheDocument();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Excluir minha conta" })).toHaveFocus());
+  });
+  it("does not open by itself without the anchor", async () => {
+    renderSection();
+    expect(screen.getByRole("button", { name: "Excluir minha conta" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
   it("shows what happens, requires the typed word and signs out after deleting", async () => {
     localStorage.setItem("louvor_team_cache:user-1", "{}");
     localStorage.setItem("louvor_current_team", "team-a");

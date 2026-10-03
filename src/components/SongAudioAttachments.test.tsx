@@ -119,3 +119,27 @@ describe("additional audio interface", () => {
     expect(HTMLMediaElement.prototype.load).toHaveBeenCalled();
   });
 });
+
+describe("store build (VITE_STORE_BUILD=1)", () => {
+  beforeEach(() => { vi.stubEnv("VITE_STORE_BUILD", "1"); });
+  afterEach(() => { vi.unstubAllEnvs(); });
+  it("adds only files and never offers a YouTube import or retry", async () => {
+    mocks.query.mockReturnValue({ data: [
+      item("1", "Kit importado", { youtube_url: "https://youtu.be/abcdefghijk" }),
+      item("2", "Falhou", { youtube_url: "https://youtu.be/abcdefghijk", status: "error", error: "COOKIE_EXPIRED", audio_path: null }),
+    ], refetch: vi.fn() });
+    render(<SongAudioAttachments songId="song" teamId="team" readOnly={false} />, { wrapper });
+    expect(screen.getByText("Importado")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Tentar novamente/ })).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/YouTube/);
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar" }));
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Link/)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/YouTube/);
+    const file = new File(["audio"], "Kit tenor.mp3", { type: "audio/mpeg" });
+    fireEvent.change(screen.getByLabelText("Arquivo de áudio"), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar áudio" }));
+    await waitFor(() => expect(mocks.upload).toHaveBeenCalledWith("song", "team", "Kit tenor", file));
+    expect(mocks.import).not.toHaveBeenCalled();
+  });
+});

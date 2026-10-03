@@ -25,6 +25,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { MY_SETTINGS_IN_APP } from "@/lib/legal";
 import {
   ASSISTANT_CAPABILITIES,
   NOTIFICATION_OPTIONS,
@@ -182,7 +183,7 @@ function AssistantUsageGuide({ name, initiallyOpen }: { name: string; initiallyO
               Para continuar a brincadeira, responda à mensagem dele ou marque o contato de novo.
             </p>
             <p className="mt-2 text-footnote leading-relaxed text-muted-foreground">
-              Para reconhecer cada pessoa, ele usa o telefone do cadastro ou o vínculo do WhatsApp em Ajustes › Meu usuário.
+              Para reconhecer cada pessoa, ele usa o telefone do cadastro ou o vínculo do WhatsApp em {MY_SETTINGS_IN_APP}.
               Ali mesmo, cada pessoa escolhe se ele pode usar os dados dela; quem não permitir não é reconhecido.
             </p>
             <details className="group/assistant-examples mt-3 overflow-hidden rounded-xl border border-separator">
@@ -605,7 +606,7 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
                 </button>
               </div>
               <p className={GROUP_FOOTER}>
-                Cada pessoa escolhe em Ajustes › Meu usuário se o {name} pode usar os dados dela. Revogar desliga o {name} em
+                Cada pessoa escolhe em {MY_SETTINGS_IN_APP} se o {name} pode usar os dados dela. Revogar desliga o {name} em
                 todos os grupos desta equipe; para voltar, aceite o aviso de novo e gere outro código.
               </p>
             </section>

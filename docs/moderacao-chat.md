@@ -26,7 +26,7 @@ Teste: `supabase/tests/chat_moderation.mjs` (PGlite).
 | Quem | Onde | Recebe aviso |
 |---|---|---|
 | Liderança da equipe (papel `admin`) | Usuário › Membros › **Denúncias do chat** | Notificação no app + push |
-| Administradores da plataforma | Gerenciador › **Denúncias** (`/admin/denuncias`) | Notificação no app |
+| Administradores da plataforma | Gerenciador › **Denúncias** (`/admin/denuncias`) | Notificação no app + push (texto fixo, também nas denúncias sobre a liderança) |
 
 - O aviso traz o nome da equipe, e o link (`/app/settings?aba=membros&equipe=<id>`)
   troca para a equipe da denúncia antes de abrir a aba Membros.
@@ -35,11 +35,22 @@ Teste: `supabase/tests/chat_moderation.mjs` (PGlite).
   nenhum líder vê, é avisado ou fecha — líderes não julgam uns aos outros.
 - Ações: *Em análise*, *Resolver* (anotação interna e, opcionalmente, remover o autor
   da equipe — nunca o responsável pela equipe), *Descartar* e *Apagar mensagem*.
+- Só a plataforma: **Suspender conta** / *Reativar conta* (na denúncia e em
+  Contas › equipe › Membros), pela edge function `platform-suspend-account`: banimento
+  no GoTrue (não entra nem renova a sessão; o token aberto vale até 1 hora), registro
+  em `platform_account_suspensions` e no histórico (`account_suspend`,
+  `account_reactivate`). Para afastar um **responsável** que abusa: suspender e, em
+  Contas › equipe › Membros, **Tornar responsável** outro membro
+  (`platform_transfer_team_ownership`); depois a moderação pode removê-lo da equipe.
+- Push para a plataforma: o app manda `chat_report_id` ao `send-push`, que pergunta ao
+  banco (`chat_report_platform_push_targets`: só a denúncia de quem chama, recente e
+  uma vez) quem administra. O app não sabe quem são os administradores.
 - Ao encerrar, quem denunciou recebe "Sua denúncia foi analisada", sem detalhes. Pela
   tabela, quem denunciou só lê o status das próprias denúncias: anotação, quem resolveu
   e a cópia da mensagem só saem por `list_chat_reports`, para quem modera.
 - Ações da plataforma ficam em `platform_audit_log`
-  (`chat_report_update`, `chat_message_delete`).
+  (`chat_report_update`, `chat_message_delete`, `account_suspend`, `account_reactivate`,
+  `team_ownership_transfer` com `by_platform`).
 - Denúncias abertas há mais de 24 horas aparecem como **Prazo vencido**.
 
 ## Provas
@@ -49,6 +60,18 @@ denúncia estiver aberta ou em análise, o anexo não pode ser apagado nem movid
 Storage — nem pelo autor, nem pela liderança, nem pela plataforma (policy RESTRICTIVE
 em `storage.objects`). Ao resolver ou descartar, o app apaga o arquivo que não for mais
 prova de nada.
+
+As funções dessas policies (`chat_media_team_id`, `chat_media_is_reported`,
+`chat_media_has_open_report`) ficam no schema `private`, fora da API do PostgREST:
+ninguém pergunta por RPC se existe denúncia sobre um arquivo. Quem apaga a própria
+mensagem denunciada recebe a mesma resposta de uma mensagem sem anexo (o arquivo fica
+para a moderação); `keep_attachment` só vai para a liderança e a plataforma.
+
+O caminho do anexo (`messages.attachment_path`) é gravado pelo cliente, então o banco
+(gatilho `chat_guard_attachment_path`) exige a pasta da equipe da mensagem e um
+arquivo por mensagem: ninguém aponta uma mensagem para o arquivo de um colega — que
+seria apagado como se fosse dele (exclusão de conta, Apagar) ou ficaria preso como
+"prova".
 
 Exclusão de conta (`20261003130000_account_deletion.sql`): as denúncias continuam,
 sem a ligação com a conta (`reporter_profile_id`/`reported_profile_id` viram NULL) e
@@ -68,6 +91,10 @@ repetidas e números no lugar de letras). Palavras que só contêm o termo
 (*veado*, *macaco*, *bicha*, *retardado* — "efeito retardado"...). Acentos digitados
 separados (combinantes) também são reconhecidos.
 
+O mesmo filtro vale para os avisos escritos por alguém (`notifications` com
+remetente, como "Enviar aviso ao time"); os do sistema não passam por ele. Avisos de
+quem você bloqueou não aparecem no sino.
+
 Para incluir um termo (sem acento, minúsculo; vale para mensagens novas):
 
 ```sql
@@ -78,5 +105,7 @@ INSERT INTO public.chat_blocked_terms(term) VALUES ('novotermo');
 
 - 10 denúncias por pessoa por hora; denunciar de novo a mesma mensagem não duplica.
 - Só dá para bloquear quem está em alguma equipe em comum.
-- O responsável pela equipe não pode ser removido dela por uma denúncia (nem pela
-  plataforma): a mensagem pode ser apagada, mas suspender a conta ainda não existe.
+- O responsável pela equipe não é removido dela por uma denúncia: a plataforma
+  suspende a conta e passa a propriedade a outro membro (ver "Quem analisa").
+- Avisos ("Enviar aviso ao time") ainda não têm "Denunciar" no sino; o filtro (no
+  aviso e no push, que o `send-push` também mascara) e o bloqueio valem para eles.

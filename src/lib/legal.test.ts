@@ -150,10 +150,14 @@ describe("legal documents content", () => {
     // Apple 5.1.1(i): terceiros com proteção igual à desta política.
     expect(privacy).toMatch(/proteção igual ou superior à descrita nesta Política/);
     // Asafe (opt-in por pessoa): só reconhece quem permite, com a tolerância de
-    // quem já usava, e ainda assim nomes da escala podem ir à OpenAI.
+    // quem já usava; nomes de quem não permite não vão à OpenAI (escala sem nome).
     expect(privacy).toMatch(/só de quem permite o uso dos próprios dados/);
     expect(privacy).toMatch(/Quem já usava o Asafe antes do aviso/);
-    expect(privacy).toMatch(/seu nome pode ser enviado quando um colega consulta uma escala/);
+    expect(privacy).toMatch(/Nomes de outras pessoas só vão quando elas permitem/);
+    expect(privacy).not.toMatch(/seu nome pode ser enviado quando um colega consulta uma escala/);
+    // LGPD art. 11: participar de uma equipe de louvor revela convicção religiosa.
+    expect(privacy).toMatch(/convicção religiosa/);
+    expect(privacy).toMatch(/Não informe dados de saúde/);
     // Exclusão: rascunhos apagados e o que fica (prova de denúncias, sem ligação com a conta).
     expect(privacy).toMatch(/rascunhos de músicas que você não chegou a cadastrar/);
     expect(privacy).toMatch(/denúncias do chat que envolvem você, com a cópia da mensagem denunciada/);

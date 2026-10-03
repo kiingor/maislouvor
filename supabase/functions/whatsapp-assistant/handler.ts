@@ -16,6 +16,7 @@ import type { AiRequest, AiResult } from "./openai.ts";
 import {
   ACTION_DONE_ERROR_MESSAGE,
   activationErrorMessage,
+  AI_DISCLOSURE_LINE,
   AUDIO_MESSAGE,
   buildInstructions,
   consentRequiredMessage,
@@ -266,6 +267,21 @@ export function createHandler(deps: HandlerDeps) {
     }
   }
 
+  /**
+   * Linha de transparência (OpenAI) para grupos ativados antes do aviso de IA: vai
+   * uma vez, junto com a primeira resposta depois do deploy (o boas-vindas de quem
+   * ativa depois já a traz). Banco sem a migração ou erro na consulta: não junta.
+   */
+  async function claimDisclosure(group: GroupContext, msg: InboundMessage): Promise<boolean> {
+    if (group.ai_consent === undefined) return false;
+    try {
+      return (await rpc<boolean>("assistant_claim_ai_disclosure", { p_group_jid: msg.chatJid })) === true;
+    } catch (error) {
+      log("falha ao marcar a linha de transparência", { error: String(error) });
+      return false;
+    }
+  }
+
   async function answer(msg: InboundMessage, text: string, config: RuntimeConfig, group: GroupContext, sender: Member): Promise<Outcome> {
     const name = config.assistant_name || DEFAULT_ASSISTANT_NAME;
     const quota = await rpc<Quota>("assistant_consume_quota", { p_team_id: group.team_id, p_profile_id: sender.profile_id });
@@ -354,8 +370,9 @@ export function createHandler(deps: HandlerDeps) {
     }
 
     const replyText = toWhatsApp(result.text);
+    const disclosure = (await claimDisclosure(group, msg)) ? `\n\n${AI_DISCLOSURE_LINE}` : "";
     try {
-      await reply(msg, replyText);
+      await reply(msg, replyText + disclosure);
     } catch (error) {
       log("falha ao enviar resposta", { error: String(error) });
       await refund();

@@ -15,6 +15,7 @@ import {
   openPrivacyPolicy,
   privacyPolicyUrl,
 } from "@/lib/assistantAiConsent";
+import { MY_SETTINGS_IN_APP, TEAM_SETTINGS_IN_APP } from "@/lib/legal";
 
 /**
  * team-activate .. líder, antes do primeiro código de ativação;
@@ -117,10 +118,10 @@ export function AssistantAiConsentDialog({
 
   // O que acontece sem o aceite: tem de bater com o que o banco faz (assistant_member_ai_allowed).
   const optional = team
-    ? `Sem o ${name}, a equipe usa o +Louvor normalmente. Além do seu aceite como líder, cada pessoa (inclusive você) escolhe em Ajustes › Meu usuário se o ${name} pode usar os dados dela.`
+    ? `Sem o ${name}, a equipe usa o +Louvor normalmente. Além do seu aceite como líder, cada pessoa (inclusive você) escolhe em ${MY_SETTINGS_IN_APP} se o ${name} pode usar os dados dela.`
     : legacy
-      ? `Até você decidir, o ${name} continua reconhecendo você pelo telefone do cadastro, como já fazia${until ? ` (${until})` : ""}. Se não permitir, ele deixa de reconhecer você; o app funciona normalmente e seu nome continua nas escalas da equipe.`
-      : `Sem isso, o ${name} não reconhece você no grupo, mas o app funciona normalmente. Seu nome continua nas escalas da equipe.`;
+      ? `Até você decidir, o ${name} continua reconhecendo você pelo telefone do cadastro, como já fazia${until ? ` (${until})` : ""}. Se não permitir, ele deixa de reconhecer você e seu nome não vai mais para a IA (nas escalas que ele consulta, você aparece sem nome). No app, nada muda: seu nome continua nas escalas da equipe.`
+      : `Sem isso, o ${name} não reconhece você no grupo e seu nome não vai para a IA (nas escalas que ele consulta, você aparece sem nome). No app, nada muda: seu nome continua nas escalas da equipe.`;
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next && !blocking && !busy) onClose(); }}>
@@ -161,8 +162,8 @@ export function AssistantAiConsentDialog({
             <Item icon={ShieldCheck} title="É opcional">{optional}</Item>
             <Item icon={Undo2} title="Como revogar">
               {team
-                ? `Em Ajustes › Equipe › Assistente no WhatsApp. O ${name} é desligado em todos os grupos da equipe.`
-                : `Desligue “Permitir que o ${name} use meus dados” em Ajustes › Meu usuário › Assistente no WhatsApp.`}
+                ? `Em ${TEAM_SETTINGS_IN_APP} › Assistente no WhatsApp. O ${name} é desligado em todos os grupos da equipe.`
+                : `Desligue “Permitir que o ${name} use meus dados” em ${MY_SETTINGS_IN_APP} › Assistente no WhatsApp.`}
             </Item>
           </ul>
 

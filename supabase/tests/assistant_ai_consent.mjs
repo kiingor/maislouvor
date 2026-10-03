@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createAssistantDb, serviceRpc, withRole } from './helpers/assistant_db.mjs';
 import { createHandler } from '../functions/whatsapp-assistant/handler.ts';
+import { AI_DISCLOSURE_LINE } from '../functions/whatsapp-assistant/persona.ts';
 
 const { db } = await createAssistantDb({
   extraMigrations: ['20260929120000_assistant_notifications.sql', '20260930120000_assistant_missions.sql'],
@@ -95,6 +96,16 @@ try {
   // ---- A migração (idempotente) ---------------------------------------------------------
   await db.exec(consentMigration);
   check((await one(`SHOW lock_timeout`)).lock_timeout, '0', 'lock_timeout volta ao padrão no fim da migração');
+  // As tolerâncias têm prazo desde o deploy: 30 dias depois da primeira aplicação.
+  const deadline = await one(`SELECT ai_consent_required_from AS d, ai_consent_required_from > now() + interval '29 days'
+    AND ai_consent_required_from <= now() + interval '30 days' AS ok FROM public.assistant_config`);
+  check(deadline.ok, true, 'prazo padrão de 30 dias');
+  // Grupos que já estavam ativos ainda não receberam a linha da OpenAI.
+  check((await sql(`SELECT ai_disclosure_version FROM public.assistant_groups ORDER BY group_jid`)).map((r) => r.ai_disclosure_version),
+    [null, null], 'grupos antigos sem a linha de transparência');
+  // Opt-out fora de profiles: a equipe lê profiles inteiro.
+  check((await one(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_schema = 'public'
+    AND table_name = 'profiles' AND column_name = 'assistant_ai_opt_out'`)).n, 0, 'profiles sem o opt-out');
   const legacyNames = async () => (await sql(`SELECT p.full_name || '@' || t.name AS who FROM public.assistant_ai_legacy_members l
     JOIN public.profiles p ON p.id = l.profile_id JOIN public.teams t ON t.id = l.team_id ORDER BY 1`)).map((r) => r.who);
   const legacyAtStart = ['Ana Souza@Louvor Sede', 'Bruno Lima@Louvor Sede', 'Carla Dias@Louvor Sede', 'Eva Castro@Louvor Bairro',
@@ -105,6 +116,9 @@ try {
     [lia.member, teamA, lia.profile]);
   await db.exec(consentMigration);
   check(await legacyNames(), legacyAtStart, 'a foto é tirada uma vez só');
+  check((await one('SELECT ai_consent_required_from AS d FROM public.assistant_config')).d, deadline.d, 'rodar de novo não muda o prazo');
+  // O restante começa sem prazo (null) e define o prazo quando precisa.
+  await sql(`UPDATE public.assistant_config SET ai_consent_required_from = null`);
   check((await one(`SELECT public.assistant_ai_consent_version() AS v`)).v, VERSION, 'versão do texto');
   check((await one(`SELECT count(*)::int AS n FROM public.assistant_ai_consents`)).n, 0, 'nenhum consentimento inventado');
 
@@ -164,6 +178,9 @@ try {
   const codeC = await call(gil.user, 'assistant_create_activation_code', [teamC]);
   ok(/^[A-HJ-NP-Z2-9]{6}$/.test(codeC.code), 'código gerado com o aceite');
   check((await rpc('assistant_activate_group', { p_code: codeC.code, p_group_jid: groupC, p_group_name: 'Jovens' })).ok, true, 'ativa');
+  check((await one('SELECT ai_disclosure_version AS v FROM public.assistant_groups WHERE group_jid = $1', [groupC])).v, VERSION,
+    'o boas-vindas da ativação já traz a linha da OpenAI');
+  check(await rpc('assistant_claim_ai_disclosure', { p_group_jid: groupC }), false, 'não repete na primeira resposta');
   overview = await call(gil.user, 'assistant_team_overview', [teamC]);
   check([overview.ai_consent.state, overview.ai_consent.version, overview.ai_consent.accepted_by], ['granted', VERSION, 'Gil Moura']);
   ok(overview.ai_consent.accepted_at, 'data do aceite');
@@ -276,6 +293,31 @@ try {
   const mentions = await rpc('assistant_notice_mentions', { p_team_id: teamA, p_profile_ids: [ana.profile, bruno.profile],
     p_participants: [{ ids: [wa.ana.pn, wa.ana.lid] }, { ids: [wa.bruno.pn, wa.bruno.lid] }] });
   check(Object.keys(mentions), [ana.profile], 'só marca quem permite');
+  // O opt-out é privado: nenhum colega (nem a própria pessoa) lê a tabela; o app usa assistant_my_status.
+  check((await one(`SELECT count(*)::int AS n FROM public.assistant_ai_opt_outs WHERE profile_id = $1`, [bruno.profile])).n, 1);
+  await fails(run('authenticated', ana.user, 'SELECT * FROM public.assistant_ai_opt_outs'), '42501', 'colega não lê o opt-out');
+  await fails(run('authenticated', bruno.user, 'SELECT * FROM public.assistant_ai_opt_outs'), '42501', 'nem pela API');
+
+  // Escala e vozes do roteiro: quem não permite (Bruno desligou; Lia ainda não decidiu)
+  // aparece sem nome — função, confirmação e voz ficam.
+  const [cultoA, songA, cultoSongA] = [uuid(), uuid(), uuid()];
+  await sql(`INSERT INTO public.cultos (id, team_id, name, date) VALUES ($1, $2, 'Culto com escala', $3)`, [cultoA, teamA, later]);
+  await sql(`INSERT INTO public.culto_lineup (culto_id, team_member_id, instrument, status) VALUES
+    ($1, $2, 'Violão', 'accepted'), ($1, $3, 'Violão', 'pending'), ($1, $4, 'Teclado', 'pending')`,
+    [cultoA, ana.member, bruno.member, lia.member]);
+  await sql(`INSERT INTO public.songs (id, team_id, title) VALUES ($1, $2, 'Bondade de Deus')`, [songA, teamA]);
+  await sql(`INSERT INTO public.culto_songs (id, culto_id, song_id) VALUES ($1, $2, $3)`, [cultoSongA, cultoA, songA]);
+  await sql(`INSERT INTO public.culto_song_voices (culto_song_id, team_member_id, voice) VALUES ($1, $2, 1), ($1, $3, 2)`,
+    [cultoSongA, ana.member, bruno.member]);
+  const cultoDetails = async () => (await rpc('assistant_tool_detalhes_culto',
+    { p_team_id: teamA, p_member_id: ana.member, p_args: { culto_id: cultoA } })).cultos[0];
+  const lineupNames = (c) => Object.fromEntries(c.escala.map((e) => [e.funcao, e.pessoas.map((x) => [x.nome, x.confirmacao])]));
+  let details = await cultoDetails();
+  ok(!/Bruno|Lia/.test(JSON.stringify(details)), 'nomes de quem não permite não vão para a IA');
+  check(Object.fromEntries(Object.entries(lineupNames(details)).map(([k, v]) => [k, v.map(([n]) => n)])),
+    { Violão: ['Ana Souza', null], Teclado: [null] }, 'escala sem os nomes');
+  check(details.roteiro[0].vozes.map((v) => [v.voz, v.nome]), [[1, 'Ana Souza'], [2, null]], 'vozes sem os nomes');
+  check(typeof details.aviso, 'string', 'aviso para a IA não adivinhar');
 
   // Dividem o número: quem desligou nunca é trocado pelo outro.
   await call(ines.user, 'revoke_assistant_consent', ['member_link']);
@@ -285,7 +327,8 @@ try {
 
   // Liga de novo.
   check((await call(bruno.user, 'give_assistant_consent', ['member_link', null, VERSION])).state, 'granted');
-  check((await one(`SELECT assistant_ai_opt_out FROM public.profiles WHERE id = $1`, [bruno.profile])).assistant_ai_opt_out, false);
+  check((await one(`SELECT count(*)::int AS n FROM public.assistant_ai_opt_outs WHERE profile_id = $1`, [bruno.profile])).n, 0,
+    'permitir de novo apaga o opt-out');
   who = await rpc('assistant_resolve_sender', { p_team_id: teamA, p_wa_ids: [wa.bruno.pn], p_phones: ['552199990000'] });
   check([who.ok, who.member_id], [true, bruno.member], 'reconhecido de novo');
   check((await rpc('assistant_tool_disponibilidade_equipe', { p_team_id: teamA, p_member_id: ana.member, p_args: { data: later } }))
@@ -298,6 +341,11 @@ try {
   check((await rpc('assistant_tool_disponibilidade_equipe', { p_team_id: teamA, p_member_id: ana.member, p_args: { data: later } }))
     .disponiveis.map((d) => d.nome), ['Ana Souza', 'Bruno Lima', 'Lia Torres']);
   check(await rpc('assistant_quote_author_allowed', { p_team_id: teamA, p_wa_ids: [wa.lia.pn] }), true, 'citação da Lia: vai');
+  details = await cultoDetails();
+  check(Object.fromEntries(Object.entries(lineupNames(details)).map(([k, v]) => [k, v.map(([n]) => n).sort()])),
+    { Violão: ['Ana Souza', 'Bruno Lima'], Teclado: ['Lia Torres'] }, 'quem permitiu volta à escala com o nome');
+  check(details.aviso, undefined, 'sem aviso quando todos aparecem');
+  await sql('DELETE FROM public.cultos WHERE id = $1', [cultoA]);
   check(await rpc('assistant_quote_author_allowed', { p_team_id: teamA, p_wa_ids: ['5511900001111@s.whatsapp.net'] }), false,
     'citação de quem não é da equipe: não vai');
   check(await rpc('assistant_quote_author_allowed', { p_team_id: teamC, p_wa_ids: [wa.hugo.lid] }), true, 'citação pelo @lid vinculado');
@@ -392,10 +440,14 @@ try {
     return { outcomes, replies: sent.slice(before).map((s) => s.text), ai: aiRequests.length - asked };
   };
 
-  // A pendente (Ana ainda não confirmou de novo) continua respondendo.
+  // A pendente (Ana ainda não confirmou de novo) continua respondendo. O grupo, ativado
+  // antes do aviso, recebe uma vez a linha da OpenAI junto com a primeira resposta.
   let r = await deliver(mention(groupA, wa.bruno, 'qual minha escala?'));
   check([r.outcomes, r.ai], [['answered:no_tools'], 1], 'pendente responde com a IA');
-  ok(r.replies[0] === 'ok 🎺');
+  check(r.replies[0], `ok 🎺\n\n${AI_DISCLOSURE_LINE}`, 'linha de transparência na primeira resposta depois do deploy');
+  check((await one(`SELECT body FROM public.assistant_messages WHERE direction = 'out' ORDER BY seq DESC LIMIT 1`)).body, 'ok 🎺',
+    'a linha não entra no histórico da conversa');
+  check(await rpc('assistant_claim_ai_disclosure', { p_group_jid: groupA }), false, 'já marcada');
 
   // Quem desligou: desconhecido, sem IA, com a dica de como ligar.
   await call(bruno.user, 'revoke_assistant_consent', ['member_link']);
@@ -417,6 +469,7 @@ try {
   // Citações: o texto de outra pessoa só vai para a IA se ela permite; nunca fica no histórico.
   r = await deliver(quoting(groupA, wa.carla, 'o que ele quis dizer?', wa.bruno.pn, 'Não vou poder ir domingo, minha mãe está internada.'));
   check([r.outcomes, r.ai], [['answered:no_tools'], 1], 'responde mesmo assim');
+  check(r.replies[0], 'ok 🎺', 'a linha da OpenAI vai uma vez só por grupo');
   let askedMessage = aiRequests.at(-1).message;
   ok(!askedMessage.includes('internada') && askedMessage.includes('não é compartilhado'), askedMessage);
   ok(!(await lastQuestion(carla.profile)).includes('internada'), 'nem no histórico');
@@ -439,7 +492,7 @@ try {
   await call(ana.user, 'give_assistant_consent', ['member_link', null, VERSION]);
   r = await deliver(mention(groupA, wa.ana, 'qual o repertório?'));
   check([r.outcomes, r.ai], [['replied:ai_consent_required'], 0], 'bloqueada não usa a IA');
-  ok(r.replies[0].includes('Ajustes › Equipe › Assistente no WhatsApp'));
+  ok(r.replies[0].includes('Usuário › Equipe › Assistente no WhatsApp'));
   r = await deliver(mention(groupA, wa.ana, 'oi?'));
   check(r.outcomes, ['ignored:ai_consent_required_throttled'], 'não repete o aviso');
   await call(ana.user, 'give_assistant_consent', ['team_activation', teamA, VERSION]);

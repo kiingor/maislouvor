@@ -81,18 +81,21 @@ export function ReportMessageDialog({ open, onOpenChange, message, teamId, alrea
         }
       }
       toast({ title: REPORT_RECEIVED_TITLE, description: REPORT_RECEIVED_DESCRIPTION });
-      // Push para a liderança; o aviso no app já foi criado pela RPC. Sem conteúdo da
-      // mensagem; com o nome da equipe, para quem lidera mais de uma.
-      if (teamId && !result.already_reported && result.notify_profile_ids?.length) {
+      // Push para a liderança e para a plataforma (o servidor escolhe quem
+      // administra, também nas denúncias sobre a liderança); o aviso no app já foi
+      // criado pela RPC. Sem conteúdo da mensagem; com o nome da equipe, para quem
+      // lidera mais de uma.
+      if (teamId && !result.already_reported) {
         const body = result.team_name ? `${result.team_name} · ${REPORT_REVIEW_HINT}` : REPORT_REVIEW_HINT;
         void firePush(
           teamId,
-          result.notify_profile_ids.map((profileId) => ({
+          (result.notify_profile_ids ?? []).map((profileId) => ({
             profile_id: profileId,
             title: "Nova denúncia no chat",
             body,
             link: teamReportsLink(teamId),
           })),
+          { chatReportId: result.id },
         );
       }
       onOpenChange(false);

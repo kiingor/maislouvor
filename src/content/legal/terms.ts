@@ -136,7 +136,7 @@ export const termsOfUse: LegalDocumentContent = {
           "Um filtro automático troca por asteriscos, ao salvar a mensagem, palavras ofensivas de uma lista mantida por nós.",
           `Também é possível denunciar pelo e-mail ${mail(SUPPORT_EMAIL)} ou pela ${link("página de suporte", LEGAL_PATHS.support)}.`,
           `A liderança da equipe e a equipe do ${APP_NAME} analisam as denúncias em até **${REPORT_REVIEW_TIME}**; denúncias sobre alguém da liderança ficam só com a equipe do ${APP_NAME}. A pessoa denunciada não é avisada de quem denunciou.`,
-          "Quando há violação, a mensagem é apagada e, conforme a gravidade, quem a publicou pode ser advertido, retirado da equipe ou ter a conta suspensa ou encerrada.",
+          `Quando há violação, a mensagem é apagada e, conforme a gravidade, quem a publicou pode ser advertido, retirado da equipe ou ter a conta suspensa ou encerrada pela equipe do ${APP_NAME} — inclusive quem é responsável por uma equipe, cuja propriedade pode então passar para outro membro.`,
           "Líderes também podem apagar mensagens e remover membros da própria equipe.",
           "Se discordar de uma decisão de moderação, peça revisão pelo suporte.",
         ],

@@ -13,9 +13,25 @@
 --      apaga qualquer uma da equipe, inclusive o anexo no Storage — menos o
 --      anexo que é prova de denúncia em aberto.
 --
+--   5. Anexos: attachment_path é gravado pelo cliente, então o banco exige a
+--      pasta da equipe da mensagem e um arquivo por mensagem — ninguém aponta
+--      uma mensagem para o arquivo de outra pessoa (que a exclusão de conta ou
+--      a moderação apagariam como se fosse dela).
+--   6. Plataforma: aviso por push a cada denúncia nova (send-push) e suspensão
+--      de contas (edge function platform-suspend-account), com transferência
+--      da propriedade da equipe de quem foi suspenso.
+--
 -- Depende de 20260930010000_platform_admin_and_support.sql (is_platform_admin,
 -- platform_admins, platform_audit_log). Escritas só por RPC: nenhum cliente
--- grava direto nestas tabelas.
+-- grava direto nestas tabelas. As funções usadas pelas policies do Storage
+-- ficam no schema private (fora da API do PostgREST): ninguém as chama como RPC
+-- para descobrir se existe denúncia sobre um arquivo.
+--
+-- Idempotente. Cria policies em storage.objects e gatilhos em messages e
+-- notifications (lock exclusivo rápido): com lock_timeout, se uma transação
+-- longa segurar a tabela, a migração desiste em 3 s. Deu timeout? Rode de novo.
+
+SET lock_timeout = '3s';
 
 -- ---------------------------------------------------------------------------
 -- 1. Filtro de conteúdo
@@ -114,6 +130,23 @@ DROP TRIGGER IF EXISTS chat_filter_message ON public.messages;
 CREATE TRIGGER chat_filter_message BEFORE INSERT OR UPDATE OF content ON public.messages
   FOR EACH ROW EXECUTE FUNCTION public.chat_filter_message();
 
+-- Avisos escritos por alguém ("Enviar aviso ao time" e os demais com remetente)
+-- passam pelo mesmo filtro. Os do sistema (sem remetente) não precisam.
+CREATE OR REPLACE FUNCTION public.notifications_filter_text() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF NEW.sender_profile_id IS NOT NULL THEN
+    NEW.title := public.chat_mask_text(NEW.title);
+    NEW.body := public.chat_mask_text(NEW.body);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS notifications_filter_text ON public.notifications;
+CREATE TRIGGER notifications_filter_text BEFORE INSERT OR UPDATE OF title, body ON public.notifications
+  FOR EACH ROW EXECUTE FUNCTION public.notifications_filter_text();
+
 -- ---------------------------------------------------------------------------
 -- 2. Denúncias
 -- ---------------------------------------------------------------------------
@@ -158,6 +191,8 @@ CREATE INDEX IF NOT EXISTS chat_reports_attachment_idx ON public.chat_reports(me
 -- Uma denúncia por pessoa e mensagem.
 CREATE UNIQUE INDEX IF NOT EXISTS chat_reports_once_idx ON public.chat_reports(reporter_profile_id, message_id)
   WHERE message_id IS NOT NULL AND reporter_profile_id IS NOT NULL;
+-- Quando o push para os administradores da plataforma saiu (uma vez por denúncia).
+ALTER TABLE public.chat_reports ADD COLUMN IF NOT EXISTS platform_alerted_at timestamptz;
 
 ALTER TABLE public.chat_reports ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.chat_reports FROM PUBLIC, anon, authenticated;
@@ -279,9 +314,33 @@ BEGIN
   -- Quem também é administrador da plataforma já recebeu o aviso acima.
   WHERE NOT EXISTS (SELECT 1 FROM public.platform_admins pa JOIN public.profiles p ON p.user_id = pa.user_id WHERE p.id = a);
 
-  -- notify_profile_ids: liderança da equipe, para o push (send-push só entrega a membros).
+  -- notify_profile_ids: liderança da equipe, para o push (send-push só entrega a
+  -- membros). A plataforma recebe o push pelo send-push com chat_report_id
+  -- (chat_report_platform_push_targets), sem o app saber quem administra.
   RETURN jsonb_build_object('id', v_id, 'already_reported', false, 'notify_profile_ids', to_jsonb(v_team_admins),
     'team_name', v_team_name);
+END;
+$$;
+
+-- Push da denúncia para os administradores da plataforma (prazo de 24 horas,
+-- inclusive as denúncias sobre a liderança, que nenhum líder vê). Quem chama é o
+-- send-push (service_role), com o usuário do JWT de quem denunciou: só a própria
+-- denúncia, recém-criada, e uma vez só. Devolve os perfis que recebem o push.
+CREATE OR REPLACE FUNCTION public.chat_report_platform_push_targets(p_report_id uuid, p_user_id uuid)
+RETURNS uuid[] LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE v_report public.chat_reports; v_targets uuid[];
+BEGIN
+  SELECT r.* INTO v_report FROM public.chat_reports r
+  JOIN public.profiles p ON p.id = r.reporter_profile_id
+  WHERE r.id = p_report_id AND p.user_id = p_user_id
+    AND r.platform_alerted_at IS NULL AND r.created_at > now() - interval '15 minutes'
+  FOR UPDATE OF r;
+  IF v_report.id IS NULL THEN RETURN '{}'; END IF;
+  UPDATE public.chat_reports SET platform_alerted_at = now() WHERE id = v_report.id;
+  SELECT coalesce(array_agg(DISTINCT p.id), '{}') INTO v_targets
+  FROM public.platform_admins pa JOIN public.profiles p ON p.user_id = pa.user_id
+  WHERE p.id IS DISTINCT FROM v_report.reported_profile_id AND p.id IS DISTINCT FROM v_report.reporter_profile_id;
+  RETURN v_targets;
 END;
 $$;
 
@@ -320,6 +379,9 @@ BEGIN
       r.reported_profile_id, reported.full_name AS reported_name, reported.avatar_url AS reported_avatar_url,
       EXISTS (SELECT 1 FROM public.team_members tm WHERE tm.team_id = r.team_id AND tm.profile_id = r.reported_profile_id) AS reported_is_member,
       (team.owner_id = r.reported_profile_id) AS reported_is_owner,
+      -- Conta suspensa pela plataforma (só a plataforma vê).
+      (v_platform AND EXISTS (SELECT 1 FROM public.platform_account_suspensions s
+                              WHERE s.profile_id = r.reported_profile_id)) AS reported_suspended,
       resolver.full_name AS resolved_by_name,
       (r.status IN ('aberta', 'em_analise') AND r.created_at < now() - interval '24 hours') AS overdue
     FROM visible r
@@ -399,7 +461,9 @@ BEGIN
   WHERE id = v_report.id
   RETURNING * INTO v_report;
 
+  -- Só arquivo da pasta da própria equipe (o caminho veio da mensagem, gravada pelo cliente).
   IF v_closing AND v_report.message_id IS NULL AND v_report.message_attachment_path IS NOT NULL
+     AND starts_with(v_report.message_attachment_path, v_report.team_id::text || '/')
      AND NOT EXISTS (SELECT 1 FROM public.chat_reports r WHERE r.message_attachment_path = v_report.message_attachment_path
                        AND r.status IN ('aberta', 'em_analise'))
      AND NOT EXISTS (SELECT 1 FROM public.messages m WHERE m.attachment_path = v_report.message_attachment_path) THEN
@@ -514,15 +578,101 @@ DROP TRIGGER IF EXISTS chat_track_reported_message_delete ON public.messages;
 CREATE TRIGGER chat_track_reported_message_delete BEFORE DELETE ON public.messages
   FOR EACH ROW EXECUTE FUNCTION public.chat_track_reported_message_delete();
 
+-- Anexo = arquivo na pasta da equipe da mensagem (chat/<team_id>/<arquivo>),
+-- usado por uma mensagem só. attachment_path vem do cliente: sem esta checagem,
+-- qualquer membro gravaria uma mensagem apontando para o arquivo de um colega
+-- (ou de outra equipe), e esse arquivo seria apagado como se fosse dele — ao
+-- excluir a conta, ao apagar a mensagem — ou ficaria preso como "prova".
+CREATE INDEX IF NOT EXISTS messages_attachment_path_idx ON public.messages(attachment_path)
+  WHERE attachment_path IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.chat_guard_attachment_path() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF NEW.attachment_path IS NULL
+     OR (TG_OP = 'UPDATE' AND NEW.attachment_path IS NOT DISTINCT FROM OLD.attachment_path
+         AND NEW.team_id IS NOT DISTINCT FROM OLD.team_id) THEN
+    RETURN NEW;
+  END IF;
+  IF NOT starts_with(NEW.attachment_path, NEW.team_id::text || '/') OR length(NEW.attachment_path) > 1024 THEN
+    RAISE EXCEPTION 'O anexo precisa estar na pasta da equipe da mensagem.' USING ERRCODE = '42501';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.messages m WHERE m.attachment_path = NEW.attachment_path AND m.id <> NEW.id) THEN
+    RAISE EXCEPTION 'Este anexo já pertence a outra mensagem.' USING ERRCODE = '23505';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS chat_guard_attachment_path ON public.messages;
+CREATE TRIGGER chat_guard_attachment_path BEFORE INSERT OR UPDATE OF attachment_path, team_id ON public.messages
+  FOR EACH ROW EXECUTE FUNCTION public.chat_guard_attachment_path();
+
+-- Funções das policies do Storage, no schema private: o PostgREST só expõe
+-- public (e storage/graphql_public), então ninguém as chama como RPC — por
+-- exemplo, para descobrir se existe denúncia sobre um arquivo. As policies
+-- rodam como o usuário: authenticated precisa de USAGE e EXECUTE.
+-- Versões anteriores deste arquivo as criavam em public: as policies que
+-- dependem delas saem antes (e voltam logo abaixo).
+CREATE SCHEMA IF NOT EXISTS private;
+GRANT USAGE ON SCHEMA private TO authenticated, service_role;
+
+DROP POLICY IF EXISTS "Team leaders can delete chat media" ON storage.objects;
+DROP POLICY IF EXISTS "Platform admins can view reported chat media" ON storage.objects;
+DROP POLICY IF EXISTS "Platform admins can delete reported chat media" ON storage.objects;
+DROP POLICY IF EXISTS "Chat media under open report cannot be deleted" ON storage.objects;
+DROP POLICY IF EXISTS "Chat media under open report cannot be changed" ON storage.objects;
+DROP FUNCTION IF EXISTS public.chat_media_team_id(text);
+DROP FUNCTION IF EXISTS public.chat_media_is_reported(text);
+DROP FUNCTION IF EXISTS public.chat_media_has_open_report(text);
+
+-- Pasta do anexo = id da equipe (chat/<team_id>/<arquivo>). Nulo se não for um uuid,
+-- em vez de derrubar a consulta com erro de conversão.
+CREATE OR REPLACE FUNCTION private.chat_media_team_id(p_name text) RETURNS uuid
+LANGUAGE sql IMMUTABLE PARALLEL SAFE SET search_path = '' AS $$
+  SELECT CASE WHEN split_part(p_name, '/', 1) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    THEN split_part(p_name, '/', 1)::uuid END
+$$;
+
+-- A plataforma só enxerga anexos que viraram prova de alguma denúncia (da
+-- equipe dona da pasta: caminho de outra equipe numa mensagem não conta).
+CREATE OR REPLACE FUNCTION private.chat_media_is_reported(p_name text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT public.is_platform_admin() AND EXISTS (
+    SELECT 1 FROM public.chat_reports r
+    WHERE r.message_attachment_path = p_name AND split_part(p_name, '/', 1) = r.team_id::text
+  )
+$$;
+
+-- Anexo que é prova de denúncia em aberto (aberta ou em análise).
+CREATE OR REPLACE FUNCTION private.chat_media_has_open_report(p_name text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.chat_reports r
+    WHERE r.message_attachment_path = p_name AND r.status IN ('aberta', 'em_analise')
+      AND split_part(p_name, '/', 1) = r.team_id::text
+  )
+$$;
+
+REVOKE ALL ON FUNCTION private.chat_media_team_id(text), private.chat_media_is_reported(text),
+  private.chat_media_has_open_report(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION private.chat_media_team_id(text), private.chat_media_is_reported(text),
+  private.chat_media_has_open_report(text) TO authenticated, service_role;
+
 -- O autor apaga as suas; a liderança apaga qualquer uma da equipe; a plataforma
--- apaga qualquer uma. keep_attachment = o arquivo ainda é prova de denúncia em
--- aberto e deve ficar no Storage até a denúncia ser encerrada.
+-- apaga qualquer uma. O arquivo fica no Storage (keep_attachment) quando é prova
+-- de denúncia em aberto (sai quando a moderação fechar), quando outra mensagem
+-- ainda aponta para ele ou quando não está na pasta da equipe da mensagem.
+-- Quem é denunciado nunca fica sabendo: para quem apaga a própria mensagem, o
+-- arquivo que fica volta sem caminho (o app não tenta apagá-lo), igual a uma
+-- mensagem sem anexo; keep_attachment só vai para a moderação.
 CREATE OR REPLACE FUNCTION public.delete_chat_message(p_message_id uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
   v_profile uuid := public.get_my_profile_id();
   v_msg public.messages;
   v_leader boolean;
+  v_moderating boolean;
   v_keep boolean := false;
 BEGIN
   IF auth.uid() IS NULL OR v_profile IS NULL THEN RAISE EXCEPTION 'Entre para continuar.' USING ERRCODE = '42501'; END IF;
@@ -531,70 +681,183 @@ BEGIN
   IF v_msg.id IS NULL OR NOT (v_msg.sender_profile_id = v_profile OR v_leader OR public.is_platform_admin()) THEN
     RAISE EXCEPTION 'Mensagem não encontrada ou sem permissão para apagar.' USING ERRCODE = '42501';
   END IF;
+  -- Apagando a mensagem de outra pessoa, como liderança ou plataforma.
+  v_moderating := v_msg.sender_profile_id <> v_profile;
   DELETE FROM public.messages WHERE id = v_msg.id;
   IF v_msg.attachment_path IS NOT NULL THEN
-    v_keep := EXISTS (SELECT 1 FROM public.chat_reports r WHERE r.message_attachment_path = v_msg.attachment_path
-                        AND r.status IN ('aberta', 'em_analise'));
+    v_keep := NOT starts_with(v_msg.attachment_path, v_msg.team_id::text || '/')
+      OR EXISTS (SELECT 1 FROM public.messages m WHERE m.attachment_path = v_msg.attachment_path)
+      OR private.chat_media_has_open_report(v_msg.attachment_path);
   END IF;
-  IF v_msg.sender_profile_id <> v_profile AND NOT v_leader THEN
+  IF v_moderating AND NOT v_leader THEN
     INSERT INTO public.platform_audit_log(actor_user_id, action, entity_id, details)
     VALUES (auth.uid(), 'chat_message_delete', v_msg.id::text, jsonb_build_object('team_id', v_msg.team_id));
   END IF;
-  RETURN jsonb_build_object('deleted', true, 'attachment_path', v_msg.attachment_path, 'keep_attachment', v_keep);
+  RETURN jsonb_build_object('deleted', true,
+    'attachment_path', CASE WHEN v_keep AND NOT v_moderating THEN NULL ELSE v_msg.attachment_path END,
+    'keep_attachment', v_keep AND v_moderating);
 END;
-$$;
-
--- Pasta do anexo = id da equipe (chat/<team_id>/<arquivo>). Nulo se não for um uuid,
--- em vez de derrubar a consulta com erro de conversão.
-CREATE OR REPLACE FUNCTION public.chat_media_team_id(p_name text) RETURNS uuid
-LANGUAGE sql IMMUTABLE PARALLEL SAFE SET search_path = '' AS $$
-  SELECT CASE WHEN split_part(p_name, '/', 1) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-    THEN split_part(p_name, '/', 1)::uuid END
-$$;
-
--- A plataforma só enxerga anexos que viraram prova de alguma denúncia.
-CREATE OR REPLACE FUNCTION public.chat_media_is_reported(p_name text) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
-  SELECT public.is_platform_admin() AND EXISTS (
-    SELECT 1 FROM public.chat_reports WHERE message_attachment_path = p_name
-  )
-$$;
-
--- Anexo que é prova de denúncia em aberto (aberta ou em análise).
-CREATE OR REPLACE FUNCTION public.chat_media_has_open_report(p_name text) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.chat_reports
-    WHERE message_attachment_path = p_name AND status IN ('aberta', 'em_analise')
-  )
 $$;
 
 -- Storage: o autor já apaga os próprios arquivos ("Authenticated can delete own
 -- chat media"). Agora a liderança apaga os da pasta da equipe e a plataforma vê e
 -- apaga os anexos denunciados.
-DROP POLICY IF EXISTS "Team leaders can delete chat media" ON storage.objects;
 CREATE POLICY "Team leaders can delete chat media" ON storage.objects
   FOR DELETE TO authenticated
-  USING (bucket_id = 'chat' AND public.has_team_role(auth.uid(), public.chat_media_team_id(name), 'admin'));
-DROP POLICY IF EXISTS "Platform admins can view reported chat media" ON storage.objects;
+  USING (bucket_id = 'chat' AND public.has_team_role(auth.uid(), private.chat_media_team_id(name), 'admin'));
 CREATE POLICY "Platform admins can view reported chat media" ON storage.objects
   FOR SELECT TO authenticated
-  USING (bucket_id = 'chat' AND public.chat_media_is_reported(name));
-DROP POLICY IF EXISTS "Platform admins can delete reported chat media" ON storage.objects;
+  USING (bucket_id = 'chat' AND private.chat_media_is_reported(name));
 CREATE POLICY "Platform admins can delete reported chat media" ON storage.objects
   FOR DELETE TO authenticated
-  USING (bucket_id = 'chat' AND public.chat_media_is_reported(name));
+  USING (bucket_id = 'chat' AND private.chat_media_is_reported(name));
 -- Prova não some: enquanto a denúncia estiver em aberto, ninguém apaga nem move
 -- o anexo direto pelo Storage — nem o autor, nem a liderança, nem a plataforma.
 -- RESTRICTIVE: vale por cima das policies acima (e das antigas do autor).
-DROP POLICY IF EXISTS "Chat media under open report cannot be deleted" ON storage.objects;
 CREATE POLICY "Chat media under open report cannot be deleted" ON storage.objects
   AS RESTRICTIVE FOR DELETE TO authenticated
-  USING (bucket_id IS DISTINCT FROM 'chat' OR NOT public.chat_media_has_open_report(name));
-DROP POLICY IF EXISTS "Chat media under open report cannot be changed" ON storage.objects;
+  USING (bucket_id IS DISTINCT FROM 'chat' OR NOT private.chat_media_has_open_report(name));
 CREATE POLICY "Chat media under open report cannot be changed" ON storage.objects
   AS RESTRICTIVE FOR UPDATE TO authenticated
-  USING (bucket_id IS DISTINCT FROM 'chat' OR NOT public.chat_media_has_open_report(name));
+  USING (bucket_id IS DISTINCT FROM 'chat' OR NOT private.chat_media_has_open_report(name));
+
+-- ---------------------------------------------------------------------------
+-- 5. Suspensão de contas pela plataforma
+-- ---------------------------------------------------------------------------
+
+-- Os Termos preveem suspender a conta de quem abusa (App Store 1.2: remover o
+-- conteúdo e afastar quem o publicou), inclusive o dono de uma equipe, que a
+-- moderação não remove. Quem suspende é a edge function platform-suspend-account:
+-- confere que quem chama administra a plataforma, bane o usuário no GoTrue (não
+-- entra nem renova a sessão) e grava aqui. Reativar desfaz o banimento e apaga a
+-- linha; o histórico fica em platform_audit_log. A propriedade das equipes de
+-- quem foi suspenso passa para outro membro com platform_transfer_team_ownership
+-- (depois disso, a moderação também pode remover a pessoa da equipe).
+CREATE TABLE IF NOT EXISTS public.platform_account_suspensions (
+  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  profile_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
+  reason text CHECK (reason IS NULL OR length(reason) <= 500),
+  report_id uuid REFERENCES public.chat_reports(id) ON DELETE SET NULL,
+  suspended_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  suspended_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS platform_account_suspensions_profile_idx ON public.platform_account_suspensions(profile_id);
+CREATE INDEX IF NOT EXISTS platform_account_suspensions_report_idx ON public.platform_account_suspensions(report_id);
+CREATE INDEX IF NOT EXISTS platform_account_suspensions_by_idx ON public.platform_account_suspensions(suspended_by);
+ALTER TABLE public.platform_account_suspensions ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.platform_account_suspensions FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.platform_account_suspensions TO service_role;
+
+-- Quem a plataforma pode suspender: uma conta que existe, que não é a de quem
+-- pede nem a de outro administrador da plataforma. p_actor_user_id vem do JWT
+-- (a edge function) e é conferido de novo aqui. Devolve as equipes de que a
+-- pessoa é dona, para transferir a propriedade depois.
+CREATE OR REPLACE FUNCTION public.platform_account_suspension_target(p_actor_user_id uuid, p_profile_id uuid)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DECLARE v_user uuid; v_name text;
+BEGIN
+  IF p_actor_user_id IS NULL OR NOT EXISTS (SELECT 1 FROM public.platform_admins WHERE user_id = p_actor_user_id) THEN
+    RAISE EXCEPTION 'Acesso restrito ao administrador da plataforma.' USING ERRCODE = '42501';
+  END IF;
+  SELECT user_id, full_name INTO v_user, v_name FROM public.profiles WHERE id = p_profile_id;
+  IF v_user IS NULL THEN
+    RAISE EXCEPTION 'Conta não encontrada.' USING ERRCODE = 'P0002';
+  ELSIF v_user = p_actor_user_id THEN
+    RAISE EXCEPTION 'Você não pode suspender a própria conta.' USING ERRCODE = '22023';
+  ELSIF EXISTS (SELECT 1 FROM public.platform_admins WHERE user_id = v_user) THEN
+    RAISE EXCEPTION 'Contas de administradores da plataforma não são suspensas por aqui.' USING ERRCODE = '22023';
+  END IF;
+  RETURN jsonb_build_object('user_id', v_user, 'profile_id', p_profile_id, 'full_name', v_name,
+    'suspended', EXISTS (SELECT 1 FROM public.platform_account_suspensions WHERE user_id = v_user),
+    'owned_teams', coalesce((
+      SELECT jsonb_agg(jsonb_build_object('team_id', t.id, 'team_name', t.name, 'other_members',
+          (SELECT count(*) FROM public.team_members m WHERE m.team_id = t.id AND m.profile_id <> p_profile_id))
+        ORDER BY lower(t.name), t.id)
+      FROM public.teams t WHERE t.owner_id = p_profile_id), '[]'::jsonb));
+END;
+$$;
+
+-- Grava a suspensão (ou a reativação) depois que o GoTrue confirmou o banimento.
+-- Ao suspender, encerra também as sessões guardadas quando o banco permite (o
+-- token de acesso já emitido vale até expirar, no máximo uma hora).
+CREATE OR REPLACE FUNCTION public.platform_record_account_suspension(
+  p_actor_user_id uuid, p_profile_id uuid, p_suspended boolean, p_reason text DEFAULT NULL, p_report_id uuid DEFAULT NULL
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_target jsonb := public.platform_account_suspension_target(p_actor_user_id, p_profile_id);
+  v_user uuid := (v_target->>'user_id')::uuid;
+  v_reason text := nullif(btrim(p_reason), '');
+  v_sessions boolean := false;
+BEGIN
+  IF p_suspended IS NULL THEN RAISE EXCEPTION 'Escolha suspender ou reativar.' USING ERRCODE = '22023'; END IF;
+  IF length(v_reason) > 500 THEN RAISE EXCEPTION 'O motivo pode ter até 500 caracteres.' USING ERRCODE = '22023'; END IF;
+  IF p_suspended THEN
+    INSERT INTO public.platform_account_suspensions(user_id, profile_id, reason, report_id, suspended_by)
+    VALUES (v_user, p_profile_id, v_reason, (SELECT r.id FROM public.chat_reports r WHERE r.id = p_report_id), p_actor_user_id)
+    ON CONFLICT (user_id) DO UPDATE SET reason = coalesce(EXCLUDED.reason, platform_account_suspensions.reason),
+      report_id = coalesce(EXCLUDED.report_id, platform_account_suspensions.report_id);
+    BEGIN
+      EXECUTE 'DELETE FROM auth.sessions WHERE user_id = $1' USING v_user;
+      EXECUTE 'DELETE FROM auth.refresh_tokens WHERE user_id = $1' USING v_user::text;
+      v_sessions := true;
+    EXCEPTION WHEN insufficient_privilege OR undefined_table OR undefined_column THEN
+      RAISE WARNING 'Sessões do usuário % não encerradas pelo banco: %', v_user, SQLERRM;
+    END;
+  ELSE
+    DELETE FROM public.platform_account_suspensions WHERE user_id = v_user;
+  END IF;
+  INSERT INTO public.platform_audit_log(actor_user_id, action, entity_id, details)
+  VALUES (p_actor_user_id, CASE WHEN p_suspended THEN 'account_suspend' ELSE 'account_reactivate' END, v_user::text,
+    jsonb_build_object('profile_id', p_profile_id, 'report_id', p_report_id, 'sessions_revoked', v_sessions));
+  RETURN jsonb_build_object('suspended', p_suspended, 'sessions_revoked', v_sessions, 'owned_teams', v_target->'owned_teams');
+END;
+$$;
+
+-- A plataforma passa a propriedade de uma equipe para outro membro (ex.: o dono
+-- foi suspenso). O novo dono vira líder, como em transfer_team_ownership.
+CREATE OR REPLACE FUNCTION public.platform_transfer_team_ownership(p_team_id uuid, p_new_owner_member_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE v_team public.teams; v_member public.team_members;
+BEGIN
+  PERFORM public.platform_require_admin();
+  SELECT * INTO v_team FROM public.teams WHERE id = p_team_id FOR UPDATE;
+  IF v_team.id IS NULL THEN RAISE EXCEPTION 'Equipe não encontrada.' USING ERRCODE = 'P0002'; END IF;
+  SELECT * INTO v_member FROM public.team_members WHERE id = p_new_owner_member_id AND team_id = p_team_id FOR UPDATE;
+  IF v_member.id IS NULL THEN
+    RAISE EXCEPTION 'A pessoa escolhida não faz parte desta equipe.' USING ERRCODE = '22023';
+  ELSIF v_member.profile_id = v_team.owner_id THEN
+    RAISE EXCEPTION 'Essa pessoa já é a dona da equipe.' USING ERRCODE = '22023';
+  ELSIF EXISTS (SELECT 1 FROM public.platform_account_suspensions s WHERE s.profile_id = v_member.profile_id) THEN
+    RAISE EXCEPTION 'Essa conta está suspensa. Escolha outra pessoa.' USING ERRCODE = '22023';
+  END IF;
+
+  UPDATE public.team_members SET role = 'admin', permissions = '{}'::jsonb WHERE id = v_member.id;
+  UPDATE public.teams SET owner_id = v_member.profile_id WHERE id = p_team_id;
+
+  INSERT INTO public.platform_audit_log(actor_user_id, action, entity_id, details)
+  VALUES (auth.uid(), 'team_ownership_transfer', p_team_id::text, jsonb_build_object(
+    'from_profile_id', v_team.owner_id, 'to_profile_id', v_member.profile_id, 'previous_role', v_member.role,
+    'by_platform', true));
+  INSERT INTO public.notifications(profile_id, type, title, body, link, team_id)
+  VALUES (v_member.profile_id, 'team_ownership', 'Você agora é dono(a) da equipe',
+    'A equipe de suporte do +Louvor transferiu a propriedade de ' || v_team.name || ' para você, que agora também é líder.',
+    '/app/settings', p_team_id);
+  RETURN jsonb_build_object('team_id', p_team_id, 'owner_profile_id', v_member.profile_id);
+END;
+$$;
+
+-- Situação das contas dos membros de uma equipe (tela da conta no painel).
+CREATE OR REPLACE FUNCTION public.platform_team_member_suspensions(p_team_id uuid)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  PERFORM public.platform_require_admin();
+  RETURN coalesce((
+    SELECT jsonb_agg(jsonb_build_object('member_id', m.id, 'profile_id', m.profile_id,
+        'suspended', s.user_id IS NOT NULL, 'suspended_at', s.suspended_at, 'reason', s.reason) ORDER BY m.created_at, m.id)
+    FROM public.team_members m LEFT JOIN public.platform_account_suspensions s ON s.profile_id = m.profile_id
+    WHERE m.team_id = p_team_id), '[]'::jsonb);
+END;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- Permissões das funções (os default privileges do Supabase dão EXECUTE a todos)
@@ -602,22 +865,32 @@ CREATE POLICY "Chat media under open report cannot be changed" ON storage.object
 
 REVOKE ALL ON FUNCTION
   public.chat_fold_text(text), public.chat_term_key(text), public.chat_mask_text(text),
-  public.chat_filter_message(), public.chat_track_reported_message_delete(),
+  public.chat_filter_message(), public.notifications_filter_text(), public.chat_track_reported_message_delete(),
+  public.chat_guard_attachment_path(),
   public.chat_can_moderate(uuid, uuid, boolean), public.chat_report_reason_label(text),
-  public.chat_media_team_id(text), public.chat_media_is_reported(text), public.chat_media_has_open_report(text),
   public.report_chat_message(uuid, text, text), public.list_chat_reports(uuid, text, text, integer, integer),
   public.moderate_chat_report(uuid, text, text, boolean), public.delete_chat_message(uuid),
-  public.block_user(uuid), public.unblock_user(uuid), public.list_blocked_users()
+  public.chat_report_platform_push_targets(uuid, uuid),
+  public.block_user(uuid), public.unblock_user(uuid), public.list_blocked_users(),
+  public.platform_account_suspension_target(uuid, uuid),
+  public.platform_record_account_suspension(uuid, uuid, boolean, text, uuid),
+  public.platform_transfer_team_ownership(uuid, uuid), public.platform_team_member_suspensions(uuid)
   FROM PUBLIC, anon, authenticated;
--- As três primeiras são usadas pelas policies do Storage (avaliadas como o usuário).
+-- (As funções das policies do Storage estão no schema private, com as permissões acima.)
 GRANT EXECUTE ON FUNCTION
-  public.chat_media_team_id(text), public.chat_media_is_reported(text), public.chat_media_has_open_report(text),
   public.report_chat_message(uuid, text, text), public.list_chat_reports(uuid, text, text, integer, integer),
   public.moderate_chat_report(uuid, text, text, boolean), public.delete_chat_message(uuid),
-  public.block_user(uuid), public.unblock_user(uuid), public.list_blocked_users()
+  public.block_user(uuid), public.unblock_user(uuid), public.list_blocked_users(),
+  public.platform_transfer_team_ownership(uuid, uuid), public.platform_team_member_suspensions(uuid)
   TO authenticated;
+-- Só a edge function (service_role) chama estas: send-push e platform-suspend-account.
 GRANT EXECUTE ON FUNCTION
-  public.chat_fold_text(text), public.chat_term_key(text), public.chat_mask_text(text)
+  public.chat_fold_text(text), public.chat_term_key(text), public.chat_mask_text(text),
+  public.chat_report_platform_push_targets(uuid, uuid),
+  public.platform_account_suspension_target(uuid, uuid),
+  public.platform_record_account_suspension(uuid, uuid, boolean, text, uuid)
   TO service_role;
+
+RESET lock_timeout;
 
 NOTIFY pgrst, 'reload schema';

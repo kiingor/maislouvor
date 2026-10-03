@@ -1,7 +1,10 @@
 #!/usr/bin/env node
-// Checklist de release (lojas): os documentos jurídicos não podem ir ao ar com
-// valores pendentes. Procura o marcador em src/lib/legal.ts e src/content/legal/
-// e sai com erro enquanto restar algum. Não faz parte dos testes automatizados.
+// Trava de release (lojas): os documentos jurídicos não podem ir ao ar com
+// valores pendentes — o site pediria a todos o aceite de Termos e de uma Política
+// sem o responsável identificado (LGPD, art. 9º, III). Procura o marcador em
+// src/lib/legal.ts e src/content/legal/ e sai com erro enquanto restar algum.
+// Roda sozinho antes de `npm run build` (prebuild) e de `npm run build:store`;
+// não faz parte dos testes automatizados. Build de teste local: `npx vite build`.
 //
 //   node scripts/check-legal-placeholders.mjs
 //

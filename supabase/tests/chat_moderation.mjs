@@ -33,6 +33,11 @@ const fails = async (sql, code, params = []) => {
 const asUser = (uid) => db.exec(`RESET ROLE; SET ROLE authenticated; SELECT set_config('test.uid', '${uid}', false)`);
 const asAnon = () => db.exec(`RESET ROLE; SET ROLE anon; SELECT set_config('test.uid', '', false)`);
 const asSystem = () => db.exec(`RESET ROLE; SELECT set_config('test.uid', '', false)`);
+/** Como a edge function (service_role); volta ao papel do sistema no fim. */
+const withService = async (fn) => {
+  await db.exec(`RESET ROLE; SET ROLE service_role; SELECT set_config('test.uid', '', false)`);
+  try { return await fn(); } finally { await asSystem(); }
+};
 const sorted = (list) => [...list].sort();
 
 const send = async (uid, content, extra = {}) => {
@@ -152,10 +157,23 @@ try {
   await fails(`DELETE FROM public.user_blocks`, '42501');
   await fails(`SELECT public.chat_mask_text('porra')`, '42501');
   await fails(`SELECT public.chat_can_moderate('${team}', NULL, false)`, '42501');
+  // Funções das policies do Storage fora da API (schema private): não há como
+  // perguntar por RPC se existe denúncia sobre um arquivo.
+  await asSystem();
+  check(await value(`SELECT to_regprocedure('public.chat_media_has_open_report(text)') IS NULL
+    AND to_regprocedure('public.chat_media_is_reported(text)') IS NULL AND to_regprocedure('public.chat_media_team_id(text)') IS NULL AS result`), true);
+  check(await value(`SELECT to_regprocedure('private.chat_media_has_open_report(text)') IS NOT NULL AS result`), true);
+  await asUser(U.reporter);
+  for (const fn of [`chat_report_platform_push_targets('${team}', '${U.reporter}')`,
+    `platform_account_suspension_target('${U.reporter}', '${P.author}')`,
+    `platform_record_account_suspension('${U.reporter}', '${P.author}', true)`]) {
+    await fails(`SELECT public.${fn}`, '42501');
+  }
   await asAnon();
   await fails(`SELECT public.report_chat_message('${team}', 'spam')`, '42501');
   await fails('SELECT public.list_chat_reports()', '42501');
   await fails(`SELECT public.block_user('${P.author}')`, '42501');
+  await fails(`SELECT private.chat_media_has_open_report('${team}/x.png')`, '42501');
   await fails('SELECT * FROM public.chat_reports', '42501');
   await fails('SELECT * FROM public.user_blocks', '42501');
 
@@ -187,6 +205,17 @@ try {
   await asSystem();
   await db.exec(`DELETE FROM public.chat_blocked_terms WHERE term = 'tosco'`);
   check((await send(U.author, 'que tosco')).content, 'que tosco');
+
+  // Avisos com remetente ("Enviar aviso ao time") passam pelo mesmo filtro; os do sistema, não.
+  await asSystem();
+  check(await rows(`INSERT INTO public.notifications(profile_id, type, title, body, team_id, sender_profile_id) VALUES
+      ('${P.reporter}', 'manual', 'Ensaio, porra!', 'Chega de merda', '${team}', '${P.leader}'),
+      ('${P.reporter}', 'manual', 'Ensaio às 19h', NULL, '${team}', '${P.leader}'),
+      ('${P.reporter}', 'sistema', 'porra', NULL, '${team}', NULL)
+    RETURNING title, body`),
+    [{ title: 'Ensaio, *****!', body: 'Chega de *****' }, { title: 'Ensaio às 19h', body: null }, { title: 'porra', body: null }]);
+  check(await rows(`UPDATE public.notifications SET body = 'que bosta' WHERE title = 'Ensaio às 19h' RETURNING body`), [{ body: 'que *****' }]);
+  await db.exec(`DELETE FROM public.notifications WHERE type IN ('manual', 'sistema')`);
 
   // Tamanho: até 4.000 caracteres; o filtro roda em tempo linear (antes era quadrático).
   const longText = `${'ab '.repeat(1331)}x porra`;
@@ -234,6 +263,13 @@ try {
   // Quem foi denunciado não vê nada, nem pela própria caixa de notificações.
   await asUser(U.author);
   check((await rows(`SELECT * FROM public.notifications WHERE type = 'chat_report'`)).length, 0);
+
+  // Push para a plataforma: só pelo send-push (service_role), com o usuário de quem
+  // denunciou, uma vez por denúncia e só logo depois dela.
+  const pushTargets = (reportId, uid) => withService(() => value('SELECT public.chat_report_platform_push_targets($1, $2) AS result', [reportId, uid]));
+  check(await pushTargets(r1.id, U.leader), [], 'outra pessoa não dispara o push da denúncia');
+  check(await pushTargets(r1.id, U.reporter), [P.platform]);
+  check(await pushTargets(r1.id, U.reporter), [], 'uma vez só');
 
   await asUser(U.reporter);
   const again = await report(m1.id, 'spam');
@@ -475,8 +511,10 @@ try {
   check(await storageRows(U.author, `UPDATE storage.objects SET name = '${ownPhoto}' WHERE name = '${ownPhoto}' RETURNING name`), [ownPhoto]);
   check(await storageRows(U.author, `DELETE FROM storage.objects WHERE name = '${ownPhoto}' RETURNING name`), [ownPhoto]);
 
+  // Quem foi denunciado apaga a própria mensagem: o arquivo fica, mas a resposta é
+  // igual à de uma mensagem sem anexo (não revela a denúncia).
   await asUser(U.author);
-  check(await del(image.id), { deleted: true, attachment_path: photo, keep_attachment: true });
+  check(await del(image.id), { deleted: true, attachment_path: null, keep_attachment: false });
   check(await storageRows(U.author, `DELETE FROM storage.objects WHERE name = '${photo}' RETURNING name`), []);
   await asUser(U.leader);
   moderated = await moderate(r6.id, 'resolvida', 'Imagem removida.');
@@ -506,12 +544,98 @@ try {
   await asUser(U.reporter);
   check((await value('SELECT public.list_blocked_users() AS result')).map((b) => b.profile_id), [P.author]);
 
+  // ---------------------------------------------------------------- anexos gravados pelo cliente
+  // Fora da pasta da equipe ou já usado por outra mensagem: o banco recusa (ninguém
+  // aponta uma mensagem para o arquivo de um colega ou de outra equipe).
+  const leaderFile = `${team}/1700000000005-lider.jpg`;
+  await send(U.leader, null, { type: 'image', attachment: leaderFile });
+  await asUser(U.editor);
+  const forge = (path) => `INSERT INTO public.messages(team_id, sender_profile_id, content, message_type, attachment_path)
+    VALUES ('${team}', '${P.editor}', 'oi', 'text', '${path}')`;
+  await fails(forge(leaderFile), '23505');
+  await fails(forge(betaPhoto), '42501');
+  await fails(forge(`../${team}/x.png`), '42501');
+  await asSystem();
+  await fails(`UPDATE public.messages SET attachment_path = '${leaderFile}' WHERE content = 'mensagem extra 2'`, '23505');
+
+  // A liderança apaga a mensagem denunciada de outra pessoa: o anexo fica (prova) e
+  // ela sabe por quê; fecha a denúncia e o anexo pode sair.
+  const evidenceFile = `${team}/1700000000006-prova.jpg`;
+  const evidenceMsg = await send(U.editor, null, { type: 'image', attachment: evidenceFile });
+  await asUser(U.leader2);
+  const r9 = await report(evidenceMsg.id, 'ofensivo');
+  await asUser(U.leader);
+  check(await del(evidenceMsg.id), { deleted: true, attachment_path: evidenceFile, keep_attachment: true });
+
+  // ---------------------------------------------------------------- suspensão pela plataforma
+  const target = (actor, profile) => withService(() =>
+    value('SELECT public.platform_account_suspension_target($1, $2) AS result', [actor, profile]));
+  const record = (actor, profile, suspended, reason = null, reportId = null) => withService(() =>
+    value('SELECT public.platform_record_account_suspension($1, $2, $3, $4, $5) AS result', [actor, profile, suspended, reason, reportId]));
+  const rejects = async (promise, code) => { await assert.rejects(promise, (e) => e.code === code || assert.fail(`${code}: ${e.code} ${e.message}`)); checks++; };
+  await rejects(target(U.leader, P.editor), '42501');
+  await rejects(target(U.platform, P.platform), '22023');
+  await rejects(target(U.platform, id(2, 99)), 'P0002');
+  await asSystem();
+  const othersInTeam = await value(`SELECT count(*)::int AS result FROM public.team_members WHERE team_id = '${team}' AND profile_id <> '${P.leader}'`);
+  const leaderTarget = await target(U.platform, P.leader);
+  check([leaderTarget.user_id, leaderTarget.suspended, leaderTarget.owned_teams.map((t) => [t.team_name, t.other_members])],
+    [U.leader, false, [['Louvor Alfa', othersInTeam]]], 'o dono pode ser suspenso; a equipe dele aparece para transferir');
+
+  const suspendedLeader = await record(U.platform, P.leader, true, '  Ofensas repetidas no chat.  ', r9.id);
+  // Sem auth.sessions neste banco de teste: a suspensão grava mesmo assim (o GoTrue já baniu).
+  check([suspendedLeader.suspended, suspendedLeader.sessions_revoked], [true, false]);
+  check((await record(U.platform, P.leader, true)).suspended, true, 'repetir é inofensivo');
+  await asSystem();
+  check(await rows(`SELECT user_id, profile_id, reason, report_id, suspended_by FROM public.platform_account_suspensions`),
+    [{ user_id: U.leader, profile_id: P.leader, reason: 'Ofensas repetidas no chat.', report_id: r9.id, suspended_by: U.platform }]);
+  check(await value(`SELECT count(*)::int AS result FROM public.platform_audit_log WHERE action = 'account_suspend' AND entity_id = '${U.leader}'`), 2);
+  await rejects(record(U.platform, P.leader, true, 'x'.repeat(501)), '22023');
+
+  await asUser(U.platform);
+  check((await value(`SELECT public.platform_team_member_suspensions('${team}') AS result`)).filter((m) => m.suspended).map((m) => m.profile_id),
+    [P.leader]);
+  await asUser(U.leader2);
+  await fails(`SELECT public.platform_team_member_suspensions('${team}')`, '42501');
+
+  // A propriedade da equipe sai do dono suspenso (só a plataforma; nunca para outra conta suspensa).
+  await asSystem();
+  const memberId = async (profile) => value(`SELECT id AS result FROM public.team_members WHERE team_id = '${team}' AND profile_id = '${profile}'`);
+  const [leaderMember, leader2Member, editorMember] = [await memberId(P.leader), await memberId(P.leader2), await memberId(P.editor)];
+  await asUser(U.leader2);
+  await fails(`SELECT public.platform_transfer_team_ownership('${team}', '${leader2Member}')`, '42501');
+  check((await record(U.platform, P.editor, true)).suspended, true);
+  await asUser(U.platform);
+  await fails(`SELECT public.platform_transfer_team_ownership('${team}', '${editorMember}')`, '22023');
+  await fails(`SELECT public.platform_transfer_team_ownership('${team}', '${leaderMember}')`, '22023');
+  check(await value(`SELECT public.platform_transfer_team_ownership('${team}', '${leader2Member}') AS result`),
+    { team_id: team, owner_profile_id: P.leader2 });
+  // A plataforma vê quem está suspenso na fila; a liderança, não.
+  const reportItem = async (uid, reportId) => {
+    await asUser(uid);
+    return (await value(`SELECT public.list_chat_reports(${uid === U.platform ? 'NULL' : `'${team}'`}, '', '', 1, 100) AS result`))
+      .items.find((item) => item.id === reportId);
+  };
+  check((await reportItem(U.platform, r9.id)).reported_suspended, true);
+  check((await reportItem(U.leader2, r9.id)).reported_suspended, false);
+  await asSystem();
+  check(await value(`SELECT owner_id AS result FROM public.teams WHERE id = '${team}'`), P.leader2);
+  check(await rows(`SELECT details->>'by_platform' AS by_platform, details->>'from_profile_id' AS from_profile
+    FROM public.platform_audit_log WHERE action = 'team_ownership_transfer'`), [{ by_platform: 'true', from_profile: P.leader }]);
+  check(await value(`SELECT count(*)::int AS result FROM public.notifications WHERE profile_id = '${P.leader2}' AND type = 'team_ownership'`), 1);
+  // Reativar desfaz e fica no histórico.
+  check((await record(U.platform, P.leader, false)).suspended, false);
+  check((await record(U.platform, P.editor, false)).suspended, false);
+  await asSystem();
+  check(await value('SELECT count(*)::int AS result FROM public.platform_account_suspensions'), 0);
+  check(await value(`SELECT count(*)::int AS result FROM public.platform_audit_log WHERE action = 'account_reactivate'`), 2);
+
   // ---------------------------------------------------------------- exclusão de contas e equipes
   await asSystem();
   const reportsBefore = await value(`SELECT count(*)::int AS result FROM public.chat_reports WHERE team_id = '${team}'`);
   await db.exec(`DELETE FROM public.profiles WHERE id = '${P.author}'`);
   check(await value(`SELECT count(*)::int AS result FROM public.chat_reports WHERE team_id = '${team}'`), reportsBefore);
-  check(await value(`SELECT count(*)::int AS result FROM public.chat_reports WHERE reported_profile_id IS NULL AND team_id = '${team}' AND id <> '${r3.id}' AND id <> '${r5.id}'`), reportsBefore - 2);
+  check(await value(`SELECT count(*)::int AS result FROM public.chat_reports WHERE reported_profile_id IS NULL AND team_id = '${team}' AND id NOT IN ('${r3.id}', '${r5.id}', '${r9.id}')`), reportsBefore - 3);
   check(await value(`SELECT count(*)::int AS result FROM public.chat_reports WHERE message_id IS NULL AND message_deleted_role = 'sistema'`) > 0, true);
   check(await value(`SELECT count(*)::int AS result FROM public.user_blocks`), 0);
   await db.exec(`DELETE FROM public.profiles WHERE id = '${P.reporter}'`);
@@ -519,7 +643,7 @@ try {
   await db.exec(`DELETE FROM public.teams WHERE id = '${team}'`);
   check(await value('SELECT count(*)::int AS result FROM public.chat_reports'), 0);
 
-  console.log(`${checks} PostgreSQL checks passed: privileges, content filter (incl. length cap and linear time), reports, notifications, rate limit, RLS isolation, column privileges, leadership reports routed to the platform, moderation, blocks, deletion, storage evidence and cascades.`);
+  console.log(`${checks} PostgreSQL checks passed: privileges, content filter (incl. length cap and linear time), reports, notifications, rate limit, RLS isolation, column privileges, leadership reports routed to the platform, moderation, blocks, deletion, storage evidence, forged attachment paths, notice filter, platform push, account suspension, platform ownership transfer and cascades.`);
 } finally {
   await db.close();
 }

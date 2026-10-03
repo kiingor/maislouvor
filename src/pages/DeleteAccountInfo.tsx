@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { ChevronRight, Clock, Mail, Smartphone, Trash2, Users, AlertTriangle } from "lucide-react";
+import { Clock, Mail, Smartphone, Trash2, Users, AlertTriangle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
+import { LegalPageLayout } from "@/components/legal/LegalPage";
 import { LegalInline } from "@/components/legal/LegalText";
 import { value } from "@/content/legal/types";
 import { DELETE_CONFIRMATION } from "@/lib/accountDeletion";
@@ -10,7 +11,6 @@ import {
   BACKUP_RETENTION,
   DELETE_ACCOUNT_SETTINGS_PATH,
   isLegalPlaceholder,
-  LEGAL_PATHS,
   MY_SETTINGS_IN_APP,
   PRIVACY_EMAIL,
   PRIVACY_REQUEST_RESPONSE_DAYS,
@@ -40,12 +40,14 @@ function Card({ icon: Icon, title, children }: { icon: LucideIcon; title: string
 
 /**
  * Página pública (sem login) sobre a exclusão de conta — exigida pelo Google Play e
- * útil para a App Store. Também abre dentro do app nativo (Usuário › Meu usuário › Como funciona).
+ * útil para a App Store. Também abre dentro do app nativo (Usuário › Meu usuário › Como
+ * funciona, e o rodapé das páginas legais): por isso usa a mesma moldura das páginas
+ * legais, com "Voltar" (no iOS não há botão voltar do sistema) e o rodapé com os documentos.
  */
 export default function DeleteAccountInfo() {
   return (
-    <div className="min-h-[100dvh] bg-background text-foreground">
-      <main className="mx-auto w-full max-w-md px-4 min-[430px]:px-5 pt-[calc(max(env(safe-area-inset-top),12px)+28px)] pb-[calc(max(env(safe-area-inset-bottom),16px)+24px)] animate-in-up">
+    <LegalPageLayout title="Excluir conta">
+      <div className="mx-auto w-full max-w-md pt-4 animate-in-up">
         <header className="flex flex-col items-center text-center">
           <div className="flex h-[72px] w-[72px] items-center justify-center rounded-[18px] bg-prominent text-prominent-foreground dark:bg-card dark:ring-1 dark:ring-inset dark:ring-white/10">
             <BrandMark className="h-10 w-10" />
@@ -70,7 +72,7 @@ export default function DeleteAccountInfo() {
             </ol>
             <p>
               Se você é dono(a) ou o único líder de uma equipe com outros membros, o app pede para passar a
-              equipe para outra pessoa antes. Equipes em que você é o único membro são excluídas junto.
+              equipe para outra pessoa antes. Equipes de que você é dono(a) e o único membro são excluídas junto.
             </p>
           </Card>
 
@@ -86,10 +88,10 @@ export default function DeleteAccountInfo() {
               <li>Perfil: nome, foto, e-mail, telefone e preferências de notificação.</li>
               <li>Escalas, disponibilidade, funções e loops de ensaio.</li>
               <li>Mensagens que você enviou no chat e os arquivos anexados.</li>
-              <li>Rascunhos de músicas que você começou e não cadastrou, com os arquivos deles.</li>
+              <li>Rascunhos de músicas que você começou e não cadastrou, com os arquivos deles (o que já entrou num repertório ou culto fica com a equipe).</li>
               <li>Vínculo com o assistente no WhatsApp e as conversas com ele.</li>
               <li>Notificações, aparelhos cadastrados para avisos, tickets de suporte e convites para o seu e-mail.</li>
-              <li>Equipes em que você é o único membro, com tudo o que há nelas.</li>
+              <li>Equipes de que você é dono(a) e o único membro, com tudo o que há nelas.</li>
             </ul>
           </Card>
 
@@ -137,23 +139,7 @@ export default function DeleteAccountInfo() {
           </p>
         </div>
 
-        <nav aria-label="Mais informações" className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-          {[
-            { to: LEGAL_PATHS.privacy, label: "Política de Privacidade" },
-            { to: LEGAL_PATHS.terms, label: "Termos de Uso" },
-            { to: LEGAL_PATHS.support, label: "Suporte" },
-          ].map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className="inline-flex min-h-[44px] items-center gap-0.5 rounded-[10px] px-1 text-subhead font-medium text-primary"
-            >
-              {item.label}
-              <ChevronRight className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
-            </Link>
-          ))}
-        </nav>
-      </main>
-    </div>
+      </div>
+    </LegalPageLayout>
   );
 }

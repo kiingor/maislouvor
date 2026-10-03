@@ -166,18 +166,22 @@ try {
     'accept_terms(text,text)', 'legal_current_versions()',
     'report_chat_message(uuid,text,text)', 'list_chat_reports(uuid,text,text,integer,integer)',
     'moderate_chat_report(uuid,text,text,boolean)', 'delete_chat_message(uuid)', 'block_user(uuid)', 'unblock_user(uuid)',
-    'list_blocked_users()', 'chat_media_has_open_report(text)',
+    'list_blocked_users()', 'chat_report_platform_push_targets(uuid,uuid)', 'platform_transfer_team_ownership(uuid,uuid)',
+    'platform_account_suspension_target(uuid,uuid)', 'platform_record_account_suspension(uuid,uuid,boolean,text,uuid)',
     'give_assistant_consent(text,uuid,text)', 'revoke_assistant_consent(text,uuid)', 'assistant_consent_prompts()',
-    'assistant_member_ai_allowed(uuid,uuid)', 'assistant_ai_consent_version()',
+    'assistant_member_ai_allowed(uuid,uuid)', 'assistant_ai_consent_version()', 'assistant_claim_ai_disclosure(text)',
   ];
   for (const fn of fns) ok((await one(`SELECT to_regprocedure($1) IS NOT NULL AS ok`, [`public.${fn}`])).ok, `função ${fn}`);
+  // As das policies do Storage ficam fora da API (schema private).
+  ok((await one(`SELECT to_regprocedure('private.chat_media_has_open_report(text)') IS NOT NULL
+    AND to_regprocedure('public.chat_media_has_open_report(text)') IS NULL AS ok`)).ok, 'chat_media_* em private');
   for (const table of ['account_deletion_storage_queue', 'chat_blocked_terms', 'chat_reports', 'user_blocks',
-    'assistant_ai_consents', 'assistant_ai_legacy_members']) {
+    'assistant_ai_consents', 'assistant_ai_legacy_members', 'assistant_ai_opt_outs', 'platform_account_suspensions']) {
     ok((await one(`SELECT to_regclass($1) IS NOT NULL AS ok`, [`public.${table}`])).ok, `tabela ${table}`);
   }
   check((await rows(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles'
     AND column_name IN ('terms_accepted_at', 'terms_version', 'privacy_version', 'assistant_ai_opt_out') ORDER BY column_name`))
-    .map((r) => r.column_name), ['assistant_ai_opt_out', 'privacy_version', 'terms_accepted_at', 'terms_version']);
+    .map((r) => r.column_name), ['privacy_version', 'terms_accepted_at', 'terms_version'], 'o opt-out do Asafe fica fora de profiles');
   check(await fkAction('public.teams', 'owner_id'), 'r', 'teams.owner_id RESTRICT (o dono não apaga a equipe)');
   check(await fkAction('public.songs', 'created_by'), 'n', 'songs.created_by SET NULL');
   check(await rows('SELECT * FROM public.account_deletion_blocking_references()'), [], 'nenhuma FK trava a exclusão com tudo aplicado');

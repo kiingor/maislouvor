@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseAdditionalAudioRequest } from "../../supabase/functions/import-song-audio/request";
-import { importSongAudio, removeSongAudio, uploadSongAudio, validateAudioFile, type SongAudioAttachment } from "./songAudioAttachments";
+import { audioImportError, importSongAudio, removeSongAudio, uploadSongAudio, validateAudioFile, type SongAudioAttachment } from "./songAudioAttachments";
 
 const mocks = vi.hoisted(() => ({
   upload: vi.fn(), remove: vi.fn(), insert: vi.fn(), single: vi.fn(),
@@ -70,6 +70,19 @@ describe("additional audio persistence", () => {
     expect(() => validateAudioFile(new File(["script"], "script.html", { type: "text/html" }))).toThrow("arquivo de áudio");
     expect(() => validateAudioFile({ name: "big.wav", type: "audio/wav", size: 50 * 1024 * 1024 + 1 } as File)).toThrow("50 MB");
     expect(mocks.upload).not.toHaveBeenCalled();
+  });
+});
+
+describe("store build (VITE_STORE_BUILD=1)", () => {
+  beforeEach(() => { vi.stubEnv("VITE_STORE_BUILD", "1"); });
+  afterEach(() => { vi.unstubAllEnvs(); });
+  it("never asks the server to download from YouTube", async () => {
+    await expect(importSongAudio(songId, "Tenor", "https://youtu.be/abcdefghijk", attachmentId)).rejects.toThrow("arquivo");
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+  it("explains failed imports without mentioning YouTube or its access", () => {
+    expect(audioImportError("COOKIE_EXPIRED")).not.toMatch(/YouTube|administrador/);
+    expect(audioImportError(null)).toMatch(/envie o arquivo/);
   });
 });
 
