@@ -334,6 +334,10 @@ bot = fakeAssistant({ consent: 'granted' });
 await bot.ask('confere?', undefined, { author: '10002@lid', text: 'Eu levo o violão.' });
 ok(bot.asked[0].message.includes('Eu levo o violão.') && !bot.calls.includes('assistant_quote_author_allowed'), 'a própria mensagem vai');
 await bot.ask('e agora?', undefined, { author: BOT_LID, text: 'Domingo às 18h.' });
-check([bot.asked[1].message, bot.calls.includes('assistant_quote_author_allowed')], ['e agora?', false], 'resposta do assistente: só a pergunta');
+// Resposta do próprio assistente (release asafe-interacao): vai como contexto da
+// conversa, sem consulta de autor, e não fica guardada no histórico.
+check([bot.asked[1].message.startsWith('e agora?\n\n(Contexto: está respondendo a esta mensagem anterior de Asafe'),
+  bot.asked[1].message.includes('Domingo às 18h.'), bot.calls.includes('assistant_quote_author_allowed'), bot.logged.at(-1)],
+  [true, true, false, 'e agora?'], 'resposta do assistente: contexto sem consulta de autor e fora do histórico');
 
 console.log(`${checks} unit checks passed: Evolution payloads, mentions, commands, formatting, prompt, tools, the OpenAI tool loop, the AI consent gate and quoted messages.`);
