@@ -7,7 +7,11 @@ import { addressedVia, cleanText, findLinkCode, parseCommand, wantsAction } from
 import { todayInBrazil, toWhatsApp, upcomingDays } from '../functions/whatsapp-assistant/format.ts';
 import { AiError, createOpenAi } from '../functions/whatsapp-assistant/openai.ts';
 import { ACTION_TOOL_NAMES, ASSISTANT_TOOLS, READ_ONLY_TOOLS, runTool } from '../functions/whatsapp-assistant/tools.ts';
-import { buildInstructions, capabilitiesList, welcomeMessage } from '../functions/whatsapp-assistant/persona.ts';
+import {
+  activationErrorMessage, AI_DISCLOSURE_LINE, buildInstructions, capabilitiesList, consentRequiredMessage, helpMessage,
+  linkErrorMessage, unknownSenderMessage, welcomeMessage,
+} from '../functions/whatsapp-assistant/persona.ts';
+import { createHandler } from '../functions/whatsapp-assistant/handler.ts';
 import { ASSISTANT_CAPABILITIES } from '../functions/whatsapp-assistant/capabilities.ts';
 
 let checks = 0;
@@ -226,4 +230,62 @@ fake = fakeFetch([{ body: { status: 'incomplete', output: [], usage: usage(1, 15
 await assert.rejects(createOpenAi({ apiKey: 'k', baseUrl: 'https://x/v1' }, fake.fn)(baseRequest()), AiError);
 checks++;
 
-console.log(`${checks} unit checks passed: Evolution payloads, mentions, commands, formatting, prompt, tools and the OpenAI tool loop.`);
+// ---- Aviso de IA (OpenAI) e quem desligou o uso dos dados --------------------------------
+ok(welcomeMessage('Asafe', 'Louvor Sede').includes(AI_DISCLOSURE_LINE) && helpMessage('Asafe').includes(AI_DISCLOSURE_LINE),
+  'boas-vindas e ajuda contam que as respostas vêm da IA da OpenAI');
+ok(AI_DISCLOSURE_LINE.includes('OpenAI (EUA)') && AI_DISCLOSURE_LINE.includes('Ajustes › Meu usuário'), 'diz quem é e como desligar');
+ok(activationErrorMessage('Asafe', 'consent_required').includes('aceitar no app'), 'ativação sem o aceite do líder');
+ok(linkErrorMessage('consent_required').includes('permita no app'), 'vínculo sem o aceite da pessoa');
+const unknownText = unknownSenderMessage('unknown', 'Louvor Sede');
+ok(unknownText.includes('Telefone') && unknownText.includes('desligou'), 'desconhecido explica o telefone e o desligamento');
+ok(consentRequiredMessage('Asafe').includes('Ajustes › Equipe › Assistente no WhatsApp'), 'equipe bloqueada pede a confirmação do líder');
+ok(prompt.includes('nao_compartilham'), 'prompt: não adivinhar quem não compartilha dados');
+
+// Handler com banco simulado: o estado do aceite decide se a pergunta vai para a IA.
+function fakeAssistant({ consent, sender = { ok: true, member_id: 'M', profile_id: 'P', full_name: 'Ana Souza', role: 'viewer', instruments: [] } }) {
+  const calls = [];
+  const replies = [];
+  const asked = [];
+  const rpc = async (fn) => {
+    calls.push(fn);
+    switch (fn) {
+      case 'assistant_runtime_config':
+        return { enabled: true, assistant_name: 'Asafe', bot_phone: '5511955554444', bot_ids: [BOT_LID], model: 'm',
+          reasoning_effort: 'none', history_turns: 0, history_minutes: 0 };
+      case 'assistant_claim_message': case 'assistant_should_notify': return true;
+      case 'assistant_group_context':
+        return { group_id: 'G', team_id: 'T', team_name: 'Louvor Sede', group_name: 'Louvor', active: true, team_enabled: true,
+          instructions: null, ...(consent ? { ai_consent: consent } : {}) };
+      case 'assistant_resolve_sender': return sender;
+      case 'assistant_consume_quota': return { allowed: true, day: '2026-10-03' };
+      case 'assistant_history': return [];
+      default: return null;
+    }
+  };
+  const whatsapp = {
+    async sendText(_to, text) { replies.push(text); },
+    async sendPresence() {},
+    async groupInfo() { return null; },
+  };
+  const handle = createHandler({ rpc, whatsapp, log: () => {},
+    ask: async (request) => { asked.push(request); return { text: 'ok', inputTokens: 1, outputTokens: 1, cachedTokens: 0, toolCalls: [] }; } });
+  const ask = async (text, from = { lid: '10002@lid', pn: '552199990000@s.whatsapp.net' }) => (await handle({
+    event: 'messages.upsert', instance: 'maislouvor', sender: BOT_PN, data: {
+      key: { remoteJid: GROUP, fromMe: false, id: `U${Math.random()}`, participant: from.lid, participantAlt: from.pn },
+      message: { extendedTextMessage: { text: `@88001 ${text}`, contextInfo: { mentionedJid: [BOT_LID] } } },
+      messageTimestamp: Math.floor(Date.now() / 1000) } })).map((o) => `${o.action}:${o.detail}`);
+  return { ask, calls, replies, asked };
+}
+for (const consent of [undefined, 'granted', 'pending']) {
+  const bot = fakeAssistant({ consent });
+  check([await bot.ask('qual minha escala?'), bot.asked.length], [['answered:no_tools'], 1], `aceite ${consent ?? 'ausente (banco anterior)'}: responde`);
+}
+let bot = fakeAssistant({ consent: 'blocked' });
+check([await bot.ask('qual minha escala?'), bot.asked.length], [['replied:ai_consent_required'], 0], 'bloqueada: nada vai para a IA');
+check([bot.replies, bot.calls.includes('assistant_consume_quota')], [[consentRequiredMessage('Asafe')], false], 'nem gasta o limite');
+// Quem desligou "Permitir que o Asafe use meus dados" volta do banco como desconhecido.
+bot = fakeAssistant({ consent: 'granted', sender: { ok: false, error: 'unknown' } });
+check([await bot.ask('qual minha escala?'), bot.asked.length], [['replied:sender_unknown'], 0], 'desligado: sem IA');
+check(bot.replies, [unknownText], 'com a dica de como religar');
+
+console.log(`${checks} unit checks passed: Evolution payloads, mentions, commands, formatting, prompt, tools, the OpenAI tool loop and the AI consent gate.`);

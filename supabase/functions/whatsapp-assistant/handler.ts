@@ -18,6 +18,7 @@ import {
   activationErrorMessage,
   AUDIO_MESSAGE,
   buildInstructions,
+  consentRequiredMessage,
   DEACTIVATE_FORBIDDEN_MESSAGE,
   deactivatedMessage,
   DEFAULT_ASSISTANT_NAME,
@@ -60,6 +61,12 @@ interface GroupContext {
   active: boolean;
   team_enabled: boolean;
   instructions: string | null;
+  /**
+   * Aviso de IA aceito por um líder (20261003133000). "pending" = equipe que já
+   * usava o Asafe e ainda não confirmou: continua funcionando. "blocked" = passou
+   * do prazo da plataforma: nada vai para a IA. Ausente = banco anterior.
+   */
+  ai_consent?: "granted" | "pending" | "blocked" | "none";
 }
 
 type Sender =
@@ -437,6 +444,10 @@ export function createHandler(deps: HandlerDeps) {
         return replied("deactivated");
       }
       return await notify(msg, `deactivate:${senderKey}`, 10, DEACTIVATE_FORBIDDEN_MESSAGE, "deactivate_forbidden");
+    }
+
+    if (group.ai_consent === "blocked") {
+      return await notify(msg, `consent:${msg.chatJid}`, 6 * 60, consentRequiredMessage(name), "ai_consent_required");
     }
 
     return await answer(msg, text, config, group, sender);

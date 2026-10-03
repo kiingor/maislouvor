@@ -5,7 +5,8 @@ import { readFile } from 'node:fs/promises';
 
 export const MIGRATION = '20260928120000_whatsapp_assistant.sql';
 
-export async function createAssistantDb() {
+/** extraMigrations: arquivos de supabase/migrations aplicados depois do assistente, em ordem. */
+export async function createAssistantDb({ extraMigrations = [] } = {}) {
   const { PGlite } = await import(process.env.PGLITE_MODULE || '@electric-sql/pglite');
   const db = new PGlite();
   await db.exec(`
@@ -21,6 +22,9 @@ export async function createAssistantDb() {
   await db.exec(await readFile(new URL('../fixtures/core_schema_20260927.sql', import.meta.url), 'utf8'));
   const migration = await readFile(new URL(`../../migrations/${MIGRATION}`, import.meta.url), 'utf8');
   await db.exec(migration);
+  for (const file of extraMigrations) {
+    await db.exec(await readFile(new URL(`../../migrations/${file}`, import.meta.url), 'utf8'));
+  }
   return { db, migration };
 }
 

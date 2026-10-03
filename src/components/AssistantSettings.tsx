@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Capacitor } from "@capacitor/core";
 import { format, parseISO } from "date-fns";
-import { BookOpen, Bot, Check, ChevronRight, Copy, KeyRound, Link2, Loader2, MessageCircle, ShieldCheck, TriangleAlert, Unlink, Users } from "lucide-react";
+import { BookOpen, Bot, Check, ChevronRight, Copy, FileText, KeyRound, Link2, Loader2, MessageCircle, PowerOff, ShieldCheck, TriangleAlert, Unlink, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { AssistantMissions } from "@/components/AssistantMissions";
+import { AssistantAiConsentDialog, type AssistantConsentVariant } from "@/components/assistant/AssistantAiConsentDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +36,14 @@ import {
   type AssistantMyStatus,
   type AssistantOverview,
 } from "@/lib/whatsappAssistant";
+import {
+  ASSISTANT_AI_PROVIDER,
+  ASSISTANT_CONSENT_PROMPTS_KEY as CONSENT_PROMPTS_KEY,
+  consentErrorMessage,
+  giveAssistantConsent,
+  isConsentRequiredError,
+  revokeAssistantConsent,
+} from "@/lib/assistantAiConsent";
 
 /* Lista agrupada no estilo do app Ajustes (mesmas medidas de TeamSettings). */
 const GROUP = "overflow-hidden rounded-card bg-card";
@@ -44,6 +53,9 @@ const ROW_BODY =
   "flex min-h-[52px] min-w-0 flex-1 items-center gap-3 border-t border-separator py-2 pr-4 group-first/row:border-t-0";
 const CIRCLE_BUTTON =
   "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-fill-tertiary text-foreground transition-[background-color,transform] hover:bg-fill-secondary active:scale-95";
+/** Linha inteira tocável (ação dentro de um grupo). */
+const ROW_BUTTON =
+  "group/row flex w-full items-center gap-3 pl-4 text-left transition-colors active:bg-fill-quaternary disabled:opacity-60";
 
 const INSTRUCTIONS_PLACEHOLDER =
   "Ex.: Ensaio toda quinta às 20h no templo sede.\nChegar 30 minutos antes dos cultos.\nNa Santa Ceia a equipe usa roupa preta.";
@@ -113,6 +125,8 @@ async function openExternal(url: string) {
 
 const shortDate = (iso: string) => format(parseISO(iso), "dd/MM");
 const dateTime = (iso: string) => format(parseISO(iso), "dd/MM 'às' HH:mm");
+const fullDate = (iso: string) => format(parseISO(iso), "dd/MM/yyyy");
+const firstName = (fullName: string) => fullName.trim().split(/\s+/)[0];
 
 /** Guia junto da ativação, com exemplos copiáveis e os mesmos comandos do assistente. */
 function AssistantUsageGuide({ name, initiallyOpen }: { name: string; initiallyOpen: boolean }) {
@@ -249,6 +263,10 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [savingInstructions, setSavingInstructions] = useState(false);
   const [generating, setGenerating] = useState(false);
+  // Aviso de IA: qual diálogo está aberto e o que está em andamento.
+  const [consentDialog, setConsentDialog] = useState<Extract<AssistantConsentVariant, "team-activate" | "team-confirm" | "team-review"> | null>(null);
+  const [consentBusy, setConsentBusy] = useState<"accept" | "decline" | null>(null);
+  const [deactivateOpen, setDeactivateOpen] = useState(false);
 
   if (isError) return null;
 
@@ -258,16 +276,64 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
   const instructions = draft ?? saved;
   const dirty = draft !== null && draft.trim() !== saved.trim();
   const refresh = () => qc.invalidateQueries({ queryKey });
+  // Ausente = banco ainda sem a migração do aviso: fluxo antigo, sem diálogo.
+  const consent = data?.ai_consent;
+  const needsDecision = consent?.state === "pending" || consent?.state === "blocked";
+  // Código gerado antes do aceite não ativa mais (o banco recusa): não mostra.
+  const pendingCode = !consent || consent.state === "granted" ? data?.pending_code ?? null : null;
 
-  const handleGenerateCode = async () => {
+  const generateCode = async () => {
     setGenerating(true);
     try {
       await callRpc("assistant_create_activation_code", { p_team_id: teamId });
       await refresh();
     } catch (error) {
-      toast({ title: "Não foi possível gerar o código", description: errorMessage(error), variant: "destructive" });
+      if (isConsentRequiredError(error)) setConsentDialog("team-activate");
+      toast({ title: "Não foi possível gerar o código", description: consentErrorMessage(error), variant: "destructive" });
     } finally {
       setGenerating(false);
+    }
+  };
+
+  // O primeiro código só sai depois do aviso aceito (o banco também confere).
+  const handleGenerateCode = () => {
+    if (consent && consent.state !== "granted") setConsentDialog("team-activate");
+    else void generateCode();
+  };
+
+  const handleAcceptConsent = async () => {
+    const activating = consentDialog === "team-activate";
+    setConsentBusy("accept");
+    try {
+      await giveAssistantConsent("team_activation", teamId);
+      setConsentDialog(null);
+      qc.invalidateQueries({ queryKey: CONSENT_PROMPTS_KEY });
+      if (activating) await generateCode();
+      else {
+        toast({ title: "Uso de IA confirmado", description: `O ${name} continua ativo nos grupos da equipe.` });
+        await refresh();
+      }
+    } catch (error) {
+      toast({ title: "Não foi possível registrar o aceite", description: consentErrorMessage(error), variant: "destructive" });
+    } finally {
+      setConsentBusy(null);
+    }
+  };
+
+  // Recusar/revogar pela equipe: o banco desliga o assistente em todos os grupos.
+  const handleRevokeConsent = async () => {
+    setConsentBusy("decline");
+    try {
+      await revokeAssistantConsent("team_activation", teamId);
+      setConsentDialog(null);
+      setDeactivateOpen(false);
+      qc.invalidateQueries({ queryKey: CONSENT_PROMPTS_KEY });
+      toast({ title: `${name} desativado`, description: "Ele não responde nem envia avisos nos grupos desta equipe." });
+      await refresh();
+    } catch (error) {
+      toast({ title: "Não foi possível desativar", description: consentErrorMessage(error), variant: "destructive" });
+    } finally {
+      setConsentBusy(null);
     }
   };
 
@@ -333,6 +399,33 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
           </div>
           <p className={GROUP_FOOTER}>Você já pode escrever as instruções do ministério abaixo.</p>
         </div>
+      ) : needsDecision ? (
+        // Equipe que já usava o assistente antes do aviso: só segue com uma decisão.
+        <section aria-labelledby="assistant-consent-pending-title" className={cn(GROUP, "px-4 py-4")}>
+          <div className="flex items-start gap-3">
+            <IconTile icon={TriangleAlert} className="bg-ios-orange text-white" />
+            <div className="min-w-0 flex-1">
+              <h3 id="assistant-consent-pending-title" className="text-body font-semibold">
+                Confirme o uso de IA da OpenAI
+              </h3>
+              <p className="mt-1 text-subhead leading-relaxed text-muted-foreground">
+                {consent?.state === "blocked"
+                  ? `O ${name} está em pausa nesta equipe até um líder confirmar. `
+                  : `O ${name} está ativo em ${data.groups.length === 1 ? "1 grupo" : `${data.groups.length} grupos`} desta equipe. `}
+                As respostas dele são geradas pela {ASSISTANT_AI_PROVIDER} com mensagens e dados da equipe.
+                Revise o aviso e confirme, ou desative o {name}.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-col gap-2">
+            <Button className="w-full" onClick={() => setConsentDialog("team-confirm")} disabled={consentBusy !== null}>
+              Revisar e confirmar
+            </Button>
+            <Button variant="ghost" className="w-full text-ios-red" onClick={() => setDeactivateOpen(true)} disabled={consentBusy !== null}>
+              Desativar o {name}
+            </Button>
+          </div>
+        </section>
       ) : (
         <>
           {!data.team_enabled && (
@@ -367,17 +460,17 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
           <section aria-labelledby="assistant-code-title">
             <h3 id="assistant-code-title" className={GROUP_LABEL}>2. Ative no grupo</h3>
             <div className={GROUP}>
-              {data.pending_code ? (
+              {pendingCode ? (
                 <Row leading={<IconTile icon={Link2} />} className="gap-2 py-2.5 pr-2">
                   <span className="min-w-0 flex-1">
                     <span className="block break-words font-mono text-body">
-                      {activationMessage(name, data.pending_code.code)}
+                      {activationMessage(name, pendingCode.code)}
                     </span>
                     <span className="block text-footnote text-muted-foreground">
-                      Vale uma vez, até {dateTime(data.pending_code.expires_at)}.
+                      Vale uma vez, até {dateTime(pendingCode.expires_at)}.
                     </span>
                   </span>
-                  <CopyButton value={activationMessage(name, data.pending_code.code)} label="Copiar mensagem" />
+                  <CopyButton value={activationMessage(name, pendingCode.code)} label="Copiar mensagem" />
                 </Row>
               ) : null}
               <button
@@ -389,7 +482,7 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
                 <IconTile icon={generating ? Loader2 : KeyRound} className={generating ? "[&>svg]:animate-spin" : undefined} />
                 <span className={ROW_BODY}>
                   <span className="min-w-0 flex-1 text-body text-primary">
-                    {data.pending_code ? "Gerar outro código" : "Gerar código de ativação"}
+                    {pendingCode ? "Gerar outro código" : "Gerar código de ativação"}
                   </span>
                   <ChevronRight className="h-[18px] w-[18px] text-label-tertiary" strokeWidth={2.5} aria-hidden="true" />
                 </span>
@@ -397,10 +490,11 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
             </div>
             <p className={GROUP_FOOTER}>
               Mande a mensagem no grupo marcando o @{name}. Ele se apresenta e lista tudo o que sabe fazer.
+              {consent && consent.state !== "granted" && ` Antes do primeiro código, você lê e aceita o aviso sobre o uso de IA da ${ASSISTANT_AI_PROVIDER}.`}
             </p>
           </section>
 
-          <AssistantUsageGuide name={name} initiallyOpen={data.groups.length === 0 || Boolean(data.pending_code)} />
+          <AssistantUsageGuide name={name} initiallyOpen={data.groups.length === 0 || Boolean(pendingCode)} />
 
           {/* Grupos conectados */}
           <section aria-labelledby="assistant-groups-title">
@@ -471,6 +565,42 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
               A contagem recomeça à meia-noite. Ajuda e ativação não contam.
             </p>
           </section>
+
+          {/* Privacidade e IA: aceite do líder e revogação */}
+          {consent?.state === "granted" && (
+            <section aria-labelledby="assistant-privacy-title">
+              <h3 id="assistant-privacy-title" className={GROUP_LABEL}>Privacidade e IA</h3>
+              <div className={GROUP}>
+                <Row leading={<IconTile icon={ShieldCheck} />}>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-body">IA da {ASSISTANT_AI_PROVIDER}</span>
+                    <span className="block text-footnote text-muted-foreground">
+                      Autorizada
+                      {consent.accepted_at ? ` em ${fullDate(consent.accepted_at)}` : ""}
+                      {consent.accepted_by ? ` por ${firstName(consent.accepted_by)}` : ""}
+                    </span>
+                  </span>
+                </Row>
+                <button type="button" onClick={() => setConsentDialog("team-review")} className={ROW_BUTTON}>
+                  <IconTile icon={FileText} />
+                  <span className={ROW_BODY}>
+                    <span className="min-w-0 flex-1 text-body">Ver o aviso de privacidade</span>
+                    <ChevronRight className="h-[18px] w-[18px] text-label-tertiary" strokeWidth={2.5} aria-hidden="true" />
+                  </span>
+                </button>
+                <button type="button" onClick={() => setDeactivateOpen(true)} disabled={consentBusy !== null} className={ROW_BUTTON}>
+                  <IconTile icon={PowerOff} />
+                  <span className={ROW_BODY}>
+                    <span className="min-w-0 flex-1 text-body text-ios-red">Revogar e desativar o {name}</span>
+                  </span>
+                </button>
+              </div>
+              <p className={GROUP_FOOTER}>
+                Cada membro pode desligar o uso dos próprios dados em Ajustes › Meu usuário. Revogar desliga o {name} em
+                todos os grupos desta equipe; para voltar, aceite o aviso de novo e gere outro código.
+              </p>
+            </section>
+          )}
         </>
       )}
 
@@ -512,8 +642,44 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
         </section>
       )}
 
-      {data?.platform_enabled && <AutomaticNoticeSettings key={teamId} teamId={teamId} disabled={!data.team_enabled} />}
-      {data?.platform_enabled && <AssistantMissions key={`missions-${teamId}`} teamId={teamId} name={name} disabled={!data.team_enabled} />}
+      {data?.platform_enabled && !needsDecision && <AutomaticNoticeSettings key={teamId} teamId={teamId} disabled={!data.team_enabled} />}
+      {data?.platform_enabled && !needsDecision && <AssistantMissions key={`missions-${teamId}`} teamId={teamId} name={name} disabled={!data.team_enabled} />}
+
+      {consent && (
+        <AssistantAiConsentDialog
+          open={consentDialog !== null}
+          variant={consentDialog ?? "team-review"}
+          assistantName={name}
+          groups={data?.groups.length ?? 0}
+          busy={consentBusy}
+          blocking={false}
+          onAccept={handleAcceptConsent}
+          onDecline={consentDialog === "team-confirm" ? handleRevokeConsent : () => setConsentDialog(null)}
+          onClose={() => setConsentDialog(null)}
+        />
+      )}
+      <AlertDialog open={deactivateOpen} onOpenChange={(open) => { if (!consentBusy) setDeactivateOpen(open); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desativar o {name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Ele para de responder e de enviar avisos em todos os grupos desta equipe, e o aceite do uso de IA é revogado.
+              Para voltar, aceite o aviso de novo e gere outro código.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={consentBusy !== null}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-ios-red text-white hover:bg-ios-red/90"
+              disabled={consentBusy !== null}
+              onClick={(e) => { e.preventDefault(); void handleRevokeConsent(); }}
+            >
+              {consentBusy === "decline" && <Loader2 className="animate-spin" aria-hidden="true" />}
+              Desativar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </section>
   );
@@ -577,6 +743,10 @@ export function MyAssistantSettings() {
   const qc = useQueryClient();
   const [code, setCode] = useState<{ code: string; expires_at: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // Aviso de IA: "member" ao ligar o uso dos dados, "member-link" antes do código de vínculo.
+  const [consentDialog, setConsentDialog] = useState<Extract<AssistantConsentVariant, "member" | "member-link" | "member-review"> | null>(null);
+  const [consentBusy, setConsentBusy] = useState<"accept" | "decline" | null>(null);
+  const [optOutOpen, setOptOutOpen] = useState(false);
 
   const { data, isError } = useQuery({
     queryKey: ["assistant-my-status"],
@@ -586,21 +756,81 @@ export function MyAssistantSettings() {
   if (isError || !data?.enabled) return null;
   const name = data.assistant_name;
   const chatLink = code ? whatsAppLink(data.bot_phone, linkMessage(code.code)) : null;
+  // Ausente = banco ainda sem a migração do aviso: fluxo antigo, sem diálogo.
+  const consent = data.ai_consent;
+  const optedOut = consent?.state === "opted_out";
 
-  const status = data.linked
-    ? { label: "Reconhece você", className: "text-ios-green" }
-    : data.has_phone
-      ? { label: "Pelo seu telefone", className: "text-muted-foreground" }
-      : { label: "Cadastre seu telefone", className: "text-ios-orange" };
+  const status = optedOut
+    ? { label: "Desligado", className: "text-muted-foreground" }
+    : consent && !consent.allowed
+      ? { label: "Falta autorizar", className: "text-ios-orange" }
+      : data.linked
+        ? { label: "Reconhece você", className: "text-ios-green" }
+        : data.has_phone
+          ? { label: "Pelo seu telefone", className: "text-muted-foreground" }
+          : { label: "Cadastre seu telefone", className: "text-ios-orange" };
 
-  const handleGenerate = async () => {
+  const consentStatus = !consent
+    ? null
+    : consent.state === "granted"
+      ? `Autorizado${consent.accepted_at ? ` em ${fullDate(consent.accepted_at)}` : ""}. A IA da OpenAI responde suas perguntas no grupo.`
+      : optedOut
+        ? `Desligado: o ${name} não reconhece você nem usa seus dados nas respostas.`
+        : consent.allowed
+          ? `Você ainda não decidiu. Por enquanto, o ${name} reconhece você pelo telefone do cadastro.`
+          : `Desligado até você autorizar.`;
+
+  const refreshStatus = async () => {
+    qc.invalidateQueries({ queryKey: CONSENT_PROMPTS_KEY });
+    await qc.invalidateQueries({ queryKey: ["assistant-my-status"] });
+  };
+
+  const generateLinkCode = async () => {
     setBusy(true);
     try {
       setCode(await callRpc<{ code: string; expires_at: string }>("assistant_create_link_code"));
     } catch (error) {
-      toast({ title: "Não foi possível gerar o código", description: errorMessage(error), variant: "destructive" });
+      if (isConsentRequiredError(error)) setConsentDialog("member-link");
+      toast({ title: "Não foi possível gerar o código", description: consentErrorMessage(error), variant: "destructive" });
     } finally {
       setBusy(false);
+    }
+  };
+
+  // Vincular por código pede o aceite antes (o banco também confere).
+  const handleGenerate = () => {
+    if (consent && consent.state !== "granted") setConsentDialog("member-link");
+    else void generateLinkCode();
+  };
+
+  const handleAcceptConsent = async () => {
+    const linking = consentDialog === "member-link";
+    setConsentBusy("accept");
+    try {
+      await giveAssistantConsent("member_link");
+      setConsentDialog(null);
+      await refreshStatus();
+      if (linking) await generateLinkCode();
+      else toast({ title: "Uso dos dados permitido", description: `O ${name} reconhece você nos grupos da equipe.` });
+    } catch (error) {
+      toast({ title: "Não foi possível registrar o aceite", description: consentErrorMessage(error), variant: "destructive" });
+    } finally {
+      setConsentBusy(null);
+    }
+  };
+
+  const handleOptOut = async () => {
+    setConsentBusy("decline");
+    try {
+      await revokeAssistantConsent("member_link");
+      setCode(null);
+      setOptOutOpen(false);
+      toast({ title: "Uso dos dados desligado", description: `O ${name} não reconhece mais você no grupo.` });
+      await refreshStatus();
+    } catch (error) {
+      toast({ title: "Não foi possível desligar", description: consentErrorMessage(error), variant: "destructive" });
+    } finally {
+      setConsentBusy(null);
     }
   };
 
@@ -618,8 +848,6 @@ export function MyAssistantSettings() {
     }
   };
 
-  const rowButton = "group/row flex w-full items-center gap-3 pl-4 text-left transition-colors active:bg-fill-quaternary disabled:opacity-60";
-
   return (
     <section aria-labelledby="settings-assistant">
       <h2 id="settings-assistant" className={GROUP_LABEL}>Assistente no WhatsApp</h2>
@@ -628,6 +856,32 @@ export function MyAssistantSettings() {
           <span className="min-w-0 flex-1 text-body">{name}</span>
           <span className={cn("shrink-0 text-subhead", status.className)}>{status.label}</span>
         </Row>
+
+        {consent && (
+          <Row leading={<IconTile icon={ShieldCheck} />} className="py-2.5">
+            <span className="min-w-0 flex-1">
+              <span id="assistant-allow-label" className="block text-body">Permitir que o {name} use meus dados</span>
+              <span id="assistant-allow-status" className="block text-footnote text-muted-foreground">{consentStatus}</span>
+            </span>
+            <Switch
+              checked={consent.allowed}
+              disabled={consentBusy !== null}
+              aria-labelledby="assistant-allow-label"
+              aria-describedby="assistant-allow-status"
+              onCheckedChange={(on) => (on ? setConsentDialog("member") : setOptOutOpen(true))}
+            />
+          </Row>
+        )}
+
+        {consent && consent.state === "pending" && consent.allowed && (
+          <button type="button" onClick={() => setConsentDialog("member")} className={ROW_BUTTON}>
+            <IconTile icon={FileText} />
+            <span className={ROW_BODY}>
+              <span className="min-w-0 flex-1 text-body text-primary">Ler o aviso e confirmar</span>
+              <ChevronRight className="h-[18px] w-[18px] text-label-tertiary" strokeWidth={2.5} aria-hidden="true" />
+            </span>
+          </button>
+        )}
 
         {code ? (
           <Row leading={<IconTile icon={Link2} />} className="gap-2 py-2.5 pr-2">
@@ -650,7 +904,7 @@ export function MyAssistantSettings() {
             )}
           </Row>
         ) : (
-          <button type="button" onClick={handleGenerate} disabled={busy} className={rowButton}>
+          <button type="button" onClick={handleGenerate} disabled={busy} className={ROW_BUTTON}>
             <IconTile icon={busy ? Loader2 : MessageCircle} className={busy ? "[&>svg]:animate-spin" : undefined} />
             <span className={ROW_BODY}>
               <span className="min-w-0 flex-1 text-body text-primary">
@@ -664,7 +918,7 @@ export function MyAssistantSettings() {
         {data.linked && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <button type="button" disabled={busy} className={rowButton}>
+              <button type="button" disabled={busy} className={ROW_BUTTON}>
                 <IconTile icon={Unlink} />
                 <span className={ROW_BODY}>
                   <span className="min-w-0 flex-1 text-body text-ios-red">Desvincular meu WhatsApp</span>
@@ -689,7 +943,47 @@ export function MyAssistantSettings() {
       <p className={GROUP_FOOTER}>
         No grupo do ministério, marque @{name} e pergunte sua escala, o repertório ou o tom de uma música. Ele reconhece
         você pelo telefone acima. Se o WhatsApp esconder seu número, use o código: ele abre uma conversa privada com o {name}.
+        {consent && ` As respostas são geradas pela IA da ${ASSISTANT_AI_PROVIDER}. `}
+        {consent && (
+          <button type="button" onClick={() => setConsentDialog("member-review")} className="font-medium text-primary underline-offset-2 hover:underline">
+            Ver o aviso de privacidade
+          </button>
+        )}
       </p>
+
+      {consent && (
+        <AssistantAiConsentDialog
+          open={consentDialog !== null}
+          variant={consentDialog ?? "member-review"}
+          assistantName={name}
+          busy={consentBusy}
+          onAccept={handleAcceptConsent}
+          onDecline={() => setConsentDialog(null)}
+          onClose={() => setConsentDialog(null)}
+        />
+      )}
+      <AlertDialog open={optOutOpen} onOpenChange={(open) => { if (!consentBusy) setOptOutOpen(open); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desligar o uso dos seus dados?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O {name} deixa de reconhecer você no grupo, esquece o WhatsApp vinculado e apaga o histórico das suas
+              conversas com ele. Seu nome continua nas escalas da equipe. Dá para ligar de novo quando quiser.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={consentBusy !== null}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-ios-red text-white hover:bg-ios-red/90"
+              disabled={consentBusy !== null}
+              onClick={(e) => { e.preventDefault(); void handleOptOut(); }}
+            >
+              {consentBusy === "decline" && <Loader2 className="animate-spin" aria-hidden="true" />}
+              Desligar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }
