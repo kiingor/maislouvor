@@ -1,0 +1,62 @@
+{
+  "title": "Baby Bird",
+  "artist": "Admiral Bob",
+  "copyright": "2010 Admiral Bob",
+  "source": "https://ccmixter.org/files/admiralbob77/25039",
+  "license": "CC BY 3.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+  "startSeconds": 34.285714285714285,
+  "durationSeconds": 27.428571428571427,
+  "bpm": 70,
+  "key": "C",
+  "changes": "Excerpt, fades, gain balance and encoding. Five source stems, no source separation.",
+  "files": {
+    "keys": {
+      "file": "keys.m4a",
+      "sourceFile": "piano.mp3",
+      "gainDb": 6,
+      "bytes": 555740,
+      "sha256": "8973d8cfef75c0d0fa429089b7907e117c066214f1240974689760698fe00783"
+    },
+    "guitar": {
+      "file": "guitar.m4a",
+      "sourceFile": "acousticguitar.mp3",
+      "gainDb": 0,
+      "bytes": 562588,
+      "sha256": "18694771ca876deafb312c75969bc1647e7942e38588e4ab0d4103daa42fcaa6"
+    },
+    "bass": {
+      "file": "bass.m4a",
+      "sourceFile": "bass.mp3",
+      "gainDb": 7,
+      "bytes": 553674,
+      "sha256": "1d52e22c48d82e4e007fcff750df0407660c267362f21218c953f964933402d3"
+    },
+    "drums": {
+      "file": "drums.m4a",
+      "sourceFile": "drums.mp3",
+      "gainDb": -2,
+      "bytes": 588392,
+      "sha256": "45ac2d416fcd0902e6f92e8ecd78a33d16ff66712fed3e57daa52fae43e1df17"
+    },
+    "vocals": {
+      "file": "vocals.m4a",
+      "sourceFile": "vocal.mp3",
+      "gainDb": 2,
+      "bytes": 554888,
+      "sha256": "c8cd8a3217b4ad964a794f0d2154da222f8d4fdb9a0bfb25b58dd8454e2ee2df"
+    }
+  },
+  "sourceArchives": [
+    {
+      "name": "Stems",
+      "url": "https://ccmixter.org/content/admiralbob77/admiralbob77_-_Baby_Bird_(vocals_and_stems).zip"
+    },
+    {
+      "name": "A Cappella",
+      "url": "https://ccmixter.org/content/admiralbob77/admiralbob77_-_Baby_Bird_(vocals_and_stems)_1.zip"
+    }
+  ],
+  "masterGain": 0.56,
+  "sourceVerifiedOn": "2026-09-29"
+}
