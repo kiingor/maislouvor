@@ -2,9 +2,11 @@
 // a edge function (index.ts) injeta as chamadas reais e o vitest testa a ordem,
 // os erros e as repetições (src/lib/accountDeletion.test.ts).
 //
-// Ordem: prévia (bloqueios) -> arquivos pessoais no Storage -> banco (uma
-// transação) -> usuário do Auth. Cada passo é seguro de repetir: se um falha,
-// a pessoa tenta de novo e os passos já feitos viram operações vazias.
+// Ordem: prévia (bloqueios) -> banco (uma transação, que também lista os
+// arquivos numa fila) -> arquivos no Storage -> usuário do Auth. Arquivo só sai
+// depois que o banco confirmou: se o banco falhar, nada foi apagado. Cada passo
+// é seguro de repetir: numa nova tentativa o banco devolve os arquivos que ainda
+// estão na fila e os passos já feitos viram operações vazias.
 
 /** Palavra que a pessoa digita para confirmar. */
 export const DELETE_CONFIRMATION = "EXCLUIR";
@@ -34,7 +36,7 @@ export interface DeletionPreview {
   has_profile: boolean;
   can_delete: boolean;
   teams: DeletionTeam[];
-  personal: { chat_messages: number; support_tickets: number };
+  personal: { chat_messages: number; support_tickets: number; draft_songs: number };
 }
 
 export interface StorageObjectRef {
@@ -47,13 +49,16 @@ export interface DeleteDataResult {
   already_deleted: boolean;
   deleted_team_ids: string[];
   left_team_count: number;
+  /** Arquivos ainda na fila (account_deletion_storage_queue) para remover. */
+  storage_objects: StorageObjectRef[];
 }
 
 export interface DeletionDeps {
   preview(userId: string): Promise<DeletionPreview>;
-  listStorage(userId: string): Promise<StorageObjectRef[]>;
-  removeStorage(bucket: string, paths: string[]): Promise<void>;
   deleteData(userId: string): Promise<DeleteDataResult>;
+  removeStorage(bucket: string, paths: string[]): Promise<void>;
+  /** Tira da fila os arquivos já removidos (account_deletion_storage_done). */
+  storageDone(userId: string, objects: StorageObjectRef[]): Promise<void>;
   /** Deve terminar sem erro também quando o usuário já não existe. */
   deleteAuthUser(userId: string): Promise<void>;
   log?(step: string, error: unknown): void;
@@ -91,6 +96,52 @@ export function storageBatches(objects: unknown, size = STORAGE_BATCH_SIZE): Arr
   return batches;
 }
 
+/**
+ * O GoTrue diz que o usuário do token não existe mais: código user_not_found
+ * (ou, em versões sem código, "User from sub claim in JWT does not exist").
+ * Sessão revogada ("Session from session_id claim in JWT does not exist",
+ * session_not_found) NÃO conta: a conta continua lá.
+ */
+export function isMissingUserError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  return code === "user_not_found" || (typeof message === "string" && /user from sub claim in jwt does not exist/i.test(message));
+}
+
+/** sub do JWT do cabeçalho Authorization (só leitura; quem valida é o GoTrue). */
+export function jwtSubject(authorization: string | null | undefined): string | null {
+  const token = authorization?.replace(/^Bearer\s+/i, "") ?? "";
+  const payload = token.split(".")[1];
+  if (!payload) return null;
+  try {
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
+    const sub = JSON.parse(atob(base64))?.sub;
+    return typeof sub === "string" && sub ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * getUser() falhou. Só responde "conta já excluída" quando o GoTrue disse que o
+ * usuário do token não existe E a Admin API confirma; qualquer outro erro
+ * (sessão revogada, token inválido, falha de rede) pede para entrar de novo.
+ */
+export async function isCallerAlreadyDeleted(
+  authError: unknown,
+  authorization: string | null | undefined,
+  userExists: (userId: string) => Promise<boolean>,
+): Promise<boolean> {
+  if (!isMissingUserError(authError)) return false;
+  const sub = jwtSubject(authorization);
+  if (!sub) return false;
+  try {
+    return !(await userExists(sub));
+  } catch {
+    return false;
+  }
+}
+
 /** delete_account_data recusa com 55000 quando uma equipe ainda depende da pessoa. */
 export function isBlockedError(error: unknown): boolean {
   return !!error && typeof error === "object" && (error as { code?: unknown }).code === "55000";
@@ -120,16 +171,7 @@ export async function runAccountDeletion(userId: string, deps: DeletionDeps): Pr
     return failure(409, "blocked", BLOCKED_MESSAGE, { teams: blockingTeams(preview) });
   }
 
-  // Antes do banco: se o Storage falhar, a conta continua inteira e a pessoa tenta de novo.
-  try {
-    for (const [bucket, paths] of storageBatches(await deps.listStorage(userId))) {
-      await deps.removeStorage(bucket, paths);
-    }
-  } catch (error) {
-    log("storage", error);
-    return failure(502, "storage_failed", "Não foi possível apagar seus arquivos agora. Sua conta continua ativa; tente novamente.");
-  }
-
+  // Banco primeiro, numa transação: se falhar, nada foi apagado (nem arquivo).
   let result: DeleteDataResult;
   try {
     result = await deps.deleteData(userId);
@@ -140,7 +182,21 @@ export async function runAccountDeletion(userId: string, deps: DeletionDeps): Pr
       return failure(409, "blocked", BLOCKED_MESSAGE, { teams: blockingTeams(latest) });
     }
     log("database", error);
-    return failure(500, "database_failed", "Não foi possível excluir sua conta agora. Nada foi apagado do banco; tente novamente.");
+    return failure(500, "database_failed", "Não foi possível excluir sua conta agora. Nada foi apagado; tente novamente.");
+  }
+
+  // Depois do banco: o que não sair agora continua na fila e sai na próxima tentativa.
+  try {
+    const batches = storageBatches(result?.storage_objects);
+    for (const [bucket, paths] of batches) {
+      await deps.removeStorage(bucket, paths);
+    }
+    if (batches.length) {
+      await deps.storageDone(userId, batches.flatMap(([bucket, paths]) => paths.map((path) => ({ bucket, path }))));
+    }
+  } catch (error) {
+    log("storage", error);
+    return failure(502, "storage_failed", "Seus dados foram apagados, mas alguns arquivos ainda não. Tente novamente para concluir.");
   }
 
   try {

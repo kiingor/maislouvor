@@ -64,6 +64,7 @@ export function parseDeletionPreview(value: unknown): DeletionPreview {
     personal: {
       chat_messages: Number(personal.chat_messages) || 0,
       support_tickets: Number(personal.support_tickets) || 0,
+      draft_songs: Number(personal.draft_songs) || 0,
     },
   };
 }

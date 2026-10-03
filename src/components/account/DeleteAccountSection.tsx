@@ -219,12 +219,16 @@ function DeleteAccountDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                   Suas mensagens no chat
                   {data?.personal.chat_messages ? ` (${data.personal.chat_messages})` : ""} e os arquivos que você enviou
                 </li>
+                <li>
+                  Rascunhos de músicas que você ainda não cadastrou
+                  {data?.personal.draft_songs ? ` (${data.personal.draft_songs})` : ""} e os arquivos deles
+                </li>
                 <li>O vínculo com o assistente no WhatsApp e as conversas com ele</li>
                 <li>Notificações, aparelhos cadastrados para avisos e seus tickets de suporte</li>
                 <li>Convites pendentes enviados para o seu e-mail</li>
               </ul>
               <p className={GROUP_FOOTER}>
-                Músicas, repertórios e cultos que você criou continuam com as equipes, sem o seu nome.
+                Músicas já cadastradas, repertórios e cultos que você criou continuam com as equipes, sem o seu nome.
               </p>
             </section>
 

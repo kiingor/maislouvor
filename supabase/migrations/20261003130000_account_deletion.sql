@@ -3,9 +3,13 @@
 -- (App Store 5.1.1(v) e política de exclusão de conta do Google Play)
 --
 -- Quem chama: a edge function delete-account (service_role), depois de
--- autenticar o usuário pelo JWT, conferir a confirmação digitada e apagar os
--- arquivos pessoais do storage. O app só usa as duas RPCs de usuário:
--- get_account_deletion_preview() e transfer_team_ownership().
+-- autenticar o usuário pelo JWT e conferir a confirmação digitada. O app só usa
+-- as duas RPCs de usuário: get_account_deletion_preview() e transfer_team_ownership().
+--
+-- Ordem: banco primeiro (uma transação), arquivos depois. delete_account_data
+-- lista os arquivos ANTES de apagar as linhas e os guarda numa fila
+-- (account_deletion_storage_queue) na mesma transação; a edge function remove
+-- os arquivos e tira da fila. Se o banco falhar, nada foi apagado — nem arquivo.
 --
 -- Plano de exclusão (o que acontece com cada referência ao perfil):
 --
@@ -14,7 +18,7 @@
 --     team_members, member_availability, culto_lineup,
 --       culto_song_voices ........................... CASCADE (via team_members)
 --     messages do chat enviadas pela pessoa ......... CASCADE (sender_profile_id)
---       e os anexos (bucket chat) ................... removidos pela edge function
+--       e os anexos (bucket chat) ................... fila de arquivos
 --     notifications recebidas ....................... CASCADE (profile_id)
 --     device_tokens, push_subscriptions ............. CASCADE
 --     song_loop_points (loops de ensaio da pessoa) .. CASCADE
@@ -25,8 +29,12 @@
 --                                                     SET NULL e manteria o texto)
 --     support_tickets da pessoa (+ mensagens) ....... CASCADE
 --     team_invites para o e-mail da pessoa .......... DELETE explícito (sem FK)
+--     rascunhos de músicas da pessoa (is_draft) ..... DELETE explícito (só quem
+--       criou enxerga um rascunho) + arquivos ....... fila de arquivos
 --     equipes em que a pessoa é o ÚNICO membro ...... DELETE explícito da equipe
---       (músicas, cultos, repertórios, chat e arquivos da equipe vão junto)
+--       (músicas, cultos, repertórios, chat e arquivos da equipe vão junto;
+--        os grupos do Asafe saem antes, para os avisos de "culto removido"
+--        não tentarem entrar na fila de uma equipe que está sumindo)
 --     auth.users (sessões, identidades) ............. auth.admin.deleteUser()
 --
 --   ANONIMIZADO (conteúdo da equipe, continua com a equipe)
@@ -53,8 +61,73 @@
 --         membro a líder antes (o app usa o mesmo update de papel da aba Membros);
 --       * único membro -> a equipe é excluída junto com a conta.
 --
+-- FKs que travariam a exclusão: a migração FALHA (em vez de só avisar) quando
+-- encontra uma que não sabe decidir sozinha. Depois de TODAS as migrações,
+-- SELECT * FROM public.account_deletion_blocking_references() tem de voltar vazio.
+--
 -- Idempotente: seguro rodar mais de uma vez.
 -- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 0) Conferência: FKs que fariam a exclusão de uma conta falhar.
+--    Parte de tudo o que a exclusão apaga (usuário, perfil, equipes de membro
+--    único, rascunhos, grupos e conversas do Asafe, convites) e segue as
+--    cascatas. Bloqueia: NO ACTION/RESTRICT, ou SET NULL numa coluna NOT NULL.
+--    Fica de fora: teams.owner_id (RESTRICT de propósito, tratado antes) e os
+--    schemas auth/storage (do GoTrue e do Storage; o dono dos arquivos é
+--    desvinculado por account_deletion_release_storage_owner).
+--    can_set_null: referência anulável a profiles/auth.users que esta migração
+--    corrige sozinha (vira ON DELETE SET NULL).
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.account_deletion_blocking_references()
+RETURNS TABLE (constraint_name text, table_name text, column_names text, referenced_table text,
+               on_delete text, not_null boolean, can_set_null boolean)
+LANGUAGE sql STABLE SET search_path = '' AS $$
+  WITH RECURSIVE removed(rel) AS (
+    SELECT r::oid FROM unnest(ARRAY[
+      to_regclass('auth.users'), to_regclass('public.profiles'), to_regclass('public.teams'),
+      to_regclass('public.songs'), to_regclass('public.assistant_groups'),
+      to_regclass('public.assistant_messages'), to_regclass('public.team_invites')]) AS r
+    WHERE r IS NOT NULL
+    UNION
+    SELECT c.conrelid FROM pg_catalog.pg_constraint c JOIN removed ON c.confrelid = removed.rel
+    WHERE c.contype = 'f' AND c.confdeltype = 'c'
+  )
+  SELECT c.conname::text, c.conrelid::regclass::text, cols.names, c.confrelid::regclass::text,
+         CASE c.confdeltype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT'
+           WHEN 'n' THEN 'SET NULL' ELSE 'SET DEFAULT' END,
+         cols.not_null,
+         c.confdeltype IN ('a', 'r') AND NOT cols.not_null AND cardinality(c.conkey) = 1
+           AND c.connamespace = 'public'::regnamespace
+           AND c.confrelid IN (to_regclass('public.profiles'), to_regclass('auth.users'))
+  FROM pg_catalog.pg_constraint c
+  CROSS JOIN LATERAL (
+    SELECT string_agg(a.attname::text, ', ' ORDER BY a.attnum) AS names, bool_or(a.attnotnull) AS not_null
+    FROM pg_catalog.pg_attribute a WHERE a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+  ) cols
+  WHERE c.contype = 'f'
+    AND c.confrelid IN (SELECT rel FROM removed)
+    AND c.connamespace NOT IN (SELECT n.oid FROM pg_catalog.pg_namespace n WHERE n.nspname IN ('auth', 'storage'))
+    AND (c.confdeltype IN ('a', 'r') OR (c.confdeltype IN ('n', 'd') AND cols.not_null))
+    AND NOT (c.conrelid = 'public.teams'::regclass AND c.confrelid = 'public.profiles'::regclass)
+  ORDER BY 2, 1
+$$;
+
+-- Antes de mudar qualquer coisa: o que esta migração não corrige sozinha faz
+-- tudo parar aqui (produção com tabelas a mais, como filas de importação).
+DO $$
+DECLARE v_list text;
+BEGIN
+  SELECT string_agg(format('%s em %s (%s) -> %s [%s%s]', b.constraint_name, b.table_name, b.column_names,
+           b.referenced_table, b.on_delete, CASE WHEN b.not_null THEN ', NOT NULL' ELSE '' END), E'\n  ')
+    INTO v_list
+  FROM public.account_deletion_blocking_references() b
+  WHERE NOT b.can_set_null;
+  IF v_list IS NOT NULL THEN
+    RAISE EXCEPTION E'Exclusão de conta: estas FKs fariam a exclusão falhar e precisam de decisão:\n  %', v_list
+      USING HINT = 'Troque cada uma para ON DELETE CASCADE ou SET NULL (ou apague as linhas em delete_account_data) e rode de novo. Lista: supabase/setup/account-deletion-preflight.sql';
+  END IF;
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- 1) FKs para profiles: conteúdo da equipe sobrevive sem o autor; a equipe
@@ -64,7 +137,10 @@ DO $$
 DECLARE
   v record;
   v_con record;
+  v_rule "char";
+  v_keep boolean;
   v_found boolean;
+  v_valid boolean;
 BEGIN
   FOR v IN SELECT * FROM (VALUES
     ('songs', 'created_by', 'SET NULL'),
@@ -87,72 +163,65 @@ BEGIN
       RAISE EXCEPTION 'public.%.% é NOT NULL e não pode virar ON DELETE SET NULL.', v.table_name, v.column_name;
     END IF;
 
-    v_found := false;
+    v_rule := CASE v.on_delete WHEN 'SET NULL' THEN 'n' ELSE 'r' END;
+    v_keep := false; v_found := false; v_valid := true;
     FOR v_con IN
-      SELECT c.conname
+      SELECT c.conname, c.confdeltype, c.convalidated
       FROM pg_catalog.pg_constraint c
       JOIN pg_catalog.pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
       WHERE c.contype = 'f' AND cardinality(c.conkey) = 1
         AND c.conrelid = ('public.' || v.table_name)::regclass
         AND c.confrelid = 'public.profiles'::regclass
         AND a.attname = v.column_name
+      ORDER BY (c.confdeltype = v_rule) DESC, c.conname
     LOOP
+      -- Já com a regra certa (segunda execução): fica como está, validada ou não.
+      IF NOT v_keep AND v_con.confdeltype = v_rule THEN v_keep := true; CONTINUE; END IF;
       EXECUTE format('ALTER TABLE public.%I DROP CONSTRAINT %I', v.table_name, v_con.conname);
       v_found := true;
+      v_valid := v_valid AND v_con.convalidated;
     END LOOP;
+    CONTINUE WHEN v_keep;
 
-    -- Com a FK original os dados já são consistentes; sem ela (deriva), a nova
-    -- entra NOT VALID para não travar a migração por linhas antigas órfãs.
+    -- Com a FK original validada os dados já são consistentes; sem ela (deriva)
+    -- ou com ela NOT VALID, a nova entra NOT VALID para não travar a migração
+    -- por linhas antigas órfãs.
     EXECUTE format(
       'ALTER TABLE public.%I ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES public.profiles(id) ON DELETE %s%s',
       v.table_name, v.table_name || '_' || v.column_name || '_fkey', v.column_name, v.on_delete,
-      CASE WHEN v_found THEN '' ELSE ' NOT VALID' END);
+      CASE WHEN v_found AND v_valid THEN '' ELSE ' NOT VALID' END);
     IF NOT v_found THEN
       RAISE NOTICE 'FK de public.%.% não existia; criada NOT VALID.', v.table_name, v.column_name;
     END IF;
   END LOOP;
 END $$;
 
--- Rede de segurança para deriva de produção: qualquer outra FK de public para
--- profiles ou auth.users sem ação de exclusão bloquearia a exclusão de contas.
--- Coluna anulável -> SET NULL (a linha fica, sem o vínculo com a pessoa).
--- Coluna NOT NULL -> só avisa: precisa de decisão (CASCADE ou exclusão explícita).
+-- Rede de segurança para deriva de produção: outra FK anulável de public para
+-- profiles ou auth.users sem ação de exclusão vira SET NULL (a linha fica, sem
+-- o vínculo com a pessoa). As que não dá para decidir sozinho já pararam a
+-- migração na conferência acima.
 DO $$
 DECLARE v record;
 BEGIN
   FOR v IN
-    SELECT c.conname, c.conrelid::regclass AS tbl, a.attname, a.attnotnull,
+    SELECT c.conname, c.conrelid::regclass AS tbl, a.attname, c.convalidated,
            c.confrelid::regclass AS ref, ra.attname AS ref_column
     FROM pg_catalog.pg_constraint c
     JOIN pg_catalog.pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
     JOIN pg_catalog.pg_attribute ra ON ra.attrelid = c.confrelid AND ra.attnum = c.confkey[1]
-    WHERE c.contype = 'f' AND cardinality(c.conkey) = 1 AND c.confdeltype IN ('a', 'r')
+    WHERE c.contype = 'f' AND cardinality(c.conkey) = 1 AND c.confdeltype IN ('a', 'r') AND NOT a.attnotnull
       AND c.connamespace = 'public'::regnamespace
       AND (c.confrelid = 'public.profiles'::regclass OR c.confrelid = to_regclass('auth.users'))
       AND NOT (c.conrelid = 'public.teams'::regclass AND a.attname = 'owner_id')
   LOOP
-    IF v.attnotnull THEN
-      RAISE WARNING 'A FK % (%.%) bloqueia a exclusão de contas e é NOT NULL: revise manualmente.', v.conname, v.tbl, v.attname;
-    ELSE
-      EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I, ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES %s(%I) ON DELETE SET NULL',
-        v.tbl, v.conname, v.conname, v.attname, v.ref, v.ref_column);
-      RAISE NOTICE 'FK % (%.%) passou a ON DELETE SET NULL.', v.conname, v.tbl, v.attname;
-    END IF;
+    EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I, ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES %s(%I) ON DELETE SET NULL%s',
+      v.tbl, v.conname, v.conname, v.attname, v.ref, v.ref_column, CASE WHEN v.convalidated THEN '' ELSE ' NOT VALID' END);
+    RAISE NOTICE 'FK % (%.%) passou a ON DELETE SET NULL.', v.conname, v.tbl, v.attname;
   END LOOP;
 
-  -- Excluir uma equipe de membro único apaga tudo em cascata a partir dela.
-  -- FKs sem ação para essas tabelas (filas que só existem em produção, por
-  -- exemplo) fariam a exclusão falhar; aqui só avisamos.
-  FOR v IN
-    SELECT c.conname, c.conrelid::regclass AS tbl, c.confrelid::regclass AS ref
-    FROM pg_catalog.pg_constraint c
-    WHERE c.contype = 'f' AND c.confdeltype IN ('a', 'r')
-      AND c.confrelid IN (SELECT to_regclass('public.' || t) FROM unnest(ARRAY[
-        'teams', 'team_members', 'songs', 'cultos', 'culto_songs', 'repertorios', 'messages', 'channels'
-      ]) AS t)
-  LOOP
-    RAISE WARNING 'A FK % (% -> %) não tem ação de exclusão: excluir uma equipe de membro único vai falhar.', v.conname, v.tbl, v.ref;
-  END LOOP;
+  IF EXISTS (SELECT 1 FROM public.account_deletion_blocking_references()) THEN
+    RAISE EXCEPTION 'Exclusão de conta: ainda há FKs bloqueando. Veja SELECT * FROM public.account_deletion_blocking_references().';
+  END IF;
 END $$;
 
 -- As exclusões em cascata/SET NULL procuram pelo autor; sem índice viram varreduras.
@@ -163,11 +232,42 @@ CREATE INDEX IF NOT EXISTS messages_sender_profile_id_idx ON public.messages(sen
 CREATE INDEX IF NOT EXISTS notifications_sender_profile_id_idx ON public.notifications(sender_profile_id) WHERE sender_profile_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS team_invites_email_lower_idx ON public.team_invites(lower(email));
 
+-- Arquivos a remover depois que a parte do banco foi confirmada. Sem FK para
+-- auth.users de propósito: a linha sobrevive ao usuário até o arquivo sumir.
+-- O que sobrar aqui (a pessoa não tentou de novo) é para remover à mão.
+CREATE TABLE IF NOT EXISTS public.account_deletion_storage_queue (
+  user_id uuid NOT NULL,
+  bucket text NOT NULL,
+  path text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, bucket, path)
+);
+ALTER TABLE public.account_deletion_storage_queue ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.account_deletion_storage_queue FROM PUBLIC, anon, authenticated;
+GRANT SELECT, DELETE ON public.account_deletion_storage_queue TO service_role;
+
 -- ----------------------------------------------------------------------------
 -- 2) Prévia: o que acontece com cada equipe da pessoa.
 --    action: delete_team (único membro) | leave | transfer_required (dono com
 --    outros membros) | promote_required (único líder, sem ser dono).
 -- ----------------------------------------------------------------------------
+
+-- Rascunhos de música da pessoa. is_draft vem do cadastro de músicas
+-- (20260930200000); sem a coluna, não há rascunho.
+CREATE OR REPLACE FUNCTION public.account_deletion_draft_song_ids(p_profile_id uuid)
+RETURNS uuid[] LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DECLARE v_ids uuid[];
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid = 'public.songs'::regclass
+                 AND attname = 'is_draft' AND NOT attisdropped) THEN
+    RETURN '{}';
+  END IF;
+  EXECUTE 'SELECT COALESCE(array_agg(id ORDER BY id), ''{}'') FROM public.songs WHERE created_by = $1 AND is_draft'
+    INTO v_ids USING p_profile_id;
+  RETURN v_ids;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.account_deletion_preview_for(p_user_id uuid)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
 DECLARE v_profile uuid; v_teams jsonb;
@@ -176,7 +276,7 @@ BEGIN
   SELECT id INTO v_profile FROM public.profiles WHERE user_id = p_user_id;
   IF v_profile IS NULL THEN
     RETURN jsonb_build_object('has_profile', false, 'can_delete', true, 'teams', '[]'::jsonb,
-      'personal', jsonb_build_object('chat_messages', 0, 'support_tickets', 0));
+      'personal', jsonb_build_object('chat_messages', 0, 'support_tickets', 0, 'draft_songs', 0));
   END IF;
 
   WITH mine AS (
@@ -216,7 +316,8 @@ BEGIN
     'teams', v_teams,
     'personal', jsonb_build_object(
       'chat_messages', (SELECT count(*) FROM public.messages WHERE sender_profile_id = v_profile),
-      'support_tickets', (SELECT count(*) FROM public.support_tickets WHERE requester_profile_id = v_profile)));
+      'support_tickets', (SELECT count(*) FROM public.support_tickets WHERE requester_profile_id = v_profile),
+      'draft_songs', cardinality(public.account_deletion_draft_song_ids(v_profile))));
 END;
 $$;
 
@@ -268,15 +369,18 @@ END;
 $$;
 
 -- ----------------------------------------------------------------------------
--- 4) Arquivos pessoais a remover pela edge function (Storage API, service_role).
---    avatars/<user_id>/... (o líder também pode ter enviado a foto); anexos do
---    chat enviados pela pessoa; e todos os arquivos das equipes que serão
---    excluídas (audio, covers e chat usam <team_id>/ como primeira pasta).
---    Áudios e capas das equipes que continuam NÃO entram: são da equipe.
+-- 4) Arquivos da pessoa no Storage (removidos pela edge function, pela Storage
+--    API, depois do banco). avatars/<user_id>/... (o líder também pode ter
+--    enviado a foto); anexos do chat enviados pela pessoa; arquivos dos
+--    rascunhos dela (<team_id>/<song_id>.* e <team_id>/<song_id>/...); e todos
+--    os arquivos das equipes que serão excluídas (audio, covers e chat usam
+--    <team_id>/ como primeira pasta). Áudios e capas das músicas cadastradas
+--    das equipes que continuam NÃO entram: são da equipe.
+--    Precisa rodar antes das exclusões (usa o perfil, as mensagens e as equipes).
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.account_deletion_storage_objects(p_user_id uuid)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
-DECLARE v_profile uuid; v_avatar text; v_teams text[]; v_owner_id text := ''; v_result jsonb;
+DECLARE v_profile uuid; v_avatar text; v_teams text[]; v_drafts text[]; v_owner_id text := ''; v_result jsonb;
 BEGIN
   IF p_user_id IS NULL THEN RAISE EXCEPTION 'Usuário não informado.' USING ERRCODE = '22023'; END IF;
   IF to_regclass('storage.objects') IS NULL THEN RETURN '[]'::jsonb; END IF;
@@ -285,6 +389,8 @@ BEGIN
   SELECT COALESCE(array_agg(e->>'team_id'), '{}') INTO v_teams
   FROM jsonb_array_elements(public.account_deletion_preview_for(p_user_id)->'teams') e
   WHERE e->>'action' = 'delete_team';
+  SELECT COALESCE(array_agg(s.team_id::text || '/' || s.id::text), '{}') INTO v_drafts
+  FROM public.songs s WHERE s.id = ANY (public.account_deletion_draft_song_ids(v_profile));
   -- Versões novas do Storage gravam o dono também em owner_id (texto).
   IF EXISTS (SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid = 'storage.objects'::regclass
              AND attname = 'owner_id' AND NOT attisdropped) THEN
@@ -298,7 +404,9 @@ BEGIN
              SELECT m.attachment_path FROM public.messages m
              WHERE m.sender_profile_id = $2 AND m.attachment_path IS NOT NULL)))
        OR (o.bucket_id IN ('audio', 'covers', 'chat') AND split_part(o.name, '/', 1) = ANY ($3))
-  $q$, v_owner_id) INTO v_result USING p_user_id, v_profile, v_teams, v_avatar;
+       OR (o.bucket_id IN ('audio', 'covers') AND EXISTS (SELECT 1 FROM unnest($5) AS d(prefix)
+             WHERE starts_with(o.name, d.prefix || '.') OR starts_with(o.name, d.prefix || '/')))
+  $q$, v_owner_id) INTO v_result USING p_user_id, v_profile, v_teams, v_avatar, v_drafts;
   RETURN v_result;
 END;
 $$;
@@ -322,12 +430,15 @@ END;
 $$;
 
 -- ----------------------------------------------------------------------------
--- 5) Parte do banco da exclusão, numa transação só. Repetir é inofensivo:
---    sem perfil, só desvincula o storage e devolve already_deleted.
+-- 5) Parte do banco da exclusão, numa transação só. Devolve em storage_objects
+--    os arquivos que ainda faltam remover (da fila). Repetir é inofensivo: sem
+--    perfil, só desvincula o storage e devolve already_deleted com a fila.
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.delete_account_data(p_user_id uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
-DECLARE v_profile uuid; v_email text; v_preview jsonb; v_delete_teams uuid[]; v_left integer;
+DECLARE
+  v_profile uuid; v_email text; v_preview jsonb; v_delete_teams uuid[]; v_left integer;
+  v_drafts integer := 0; v_result jsonb;
 BEGIN
   IF p_user_id IS NULL THEN RAISE EXCEPTION 'Usuário não informado.' USING ERRCODE = '22023'; END IF;
   -- Duas chamadas simultâneas da mesma pessoa rodam uma depois da outra.
@@ -335,47 +446,80 @@ BEGIN
   SELECT id INTO v_profile FROM public.profiles WHERE user_id = p_user_id FOR UPDATE;
   IF v_profile IS NULL THEN
     PERFORM public.account_deletion_release_storage_owner(p_user_id);
-    RETURN jsonb_build_object('deleted', false, 'already_deleted', true, 'deleted_team_ids', '[]'::jsonb, 'left_team_count', 0);
+    v_result := jsonb_build_object('deleted', false, 'already_deleted', true, 'deleted_team_ids', '[]'::jsonb, 'left_team_count', 0);
+  ELSE
+    SELECT email INTO v_email FROM auth.users WHERE id = p_user_id;
+
+    -- Trava as equipes envolvidas: entradas e transferências em andamento esperam
+    -- (a FK de team_members precisa da linha da equipe) e a prévia abaixo vale até o fim.
+    PERFORM 1 FROM public.teams t
+    WHERE t.owner_id = v_profile
+       OR EXISTS (SELECT 1 FROM public.team_members m WHERE m.team_id = t.id AND m.profile_id = v_profile)
+    ORDER BY t.id FOR UPDATE;
+
+    v_preview := public.account_deletion_preview_for(p_user_id);
+    IF NOT (v_preview->>'can_delete')::boolean THEN
+      RAISE EXCEPTION 'Transfira a propriedade ou a liderança das suas equipes antes de excluir a conta.'
+        USING ERRCODE = '55000', HINT = 'account_deletion_blocked';
+    END IF;
+    SELECT COALESCE(array_agg((e->>'team_id')::uuid) FILTER (WHERE e->>'action' = 'delete_team'), '{}'),
+           count(*) FILTER (WHERE e->>'action' = 'leave')
+      INTO v_delete_teams, v_left
+    FROM jsonb_array_elements(v_preview->'teams') e;
+
+    -- Arquivos: listados agora (ainda há perfil, mensagens e equipes) e removidos
+    -- pela edge function só depois que esta transação confirmar.
+    INSERT INTO public.account_deletion_storage_queue(user_id, bucket, path)
+    SELECT p_user_id, o->>'bucket', o->>'path'
+    FROM jsonb_array_elements(public.account_deletion_storage_objects(p_user_id)) o
+    ON CONFLICT DO NOTHING;
+
+    -- Equipes de membro único: o Asafe sai primeiro (os gatilhos de aviso de
+    -- culto/escala não enfileiram nada para uma equipe que está sumindo) e a
+    -- cascata da equipe leva músicas, cultos, chat...
+    DELETE FROM public.assistant_groups WHERE team_id = ANY (v_delete_teams);
+    DELETE FROM public.teams WHERE id = ANY (v_delete_teams);
+    -- Rascunhos: só quem criou enxerga; sem a pessoa, ninguém mais chegaria neles.
+    DELETE FROM public.songs WHERE id = ANY (public.account_deletion_draft_song_ids(v_profile));
+    GET DIAGNOSTICS v_drafts = ROW_COUNT;
+    -- Conversas com o Asafe: a FK é SET NULL (estatística), aqui o texto sai.
+    DELETE FROM public.assistant_messages WHERE profile_id = v_profile;
+    -- Convites para o e-mail da pessoa (aceitos ou não) guardam o endereço.
+    IF v_email IS NOT NULL THEN
+      DELETE FROM public.team_invites WHERE lower(email) = lower(v_email);
+    END IF;
+    PERFORM public.account_deletion_release_storage_owner(p_user_id);
+    -- O resto sai em cascata a partir do perfil (ver o plano no topo do arquivo).
+    -- teams.owner_id é RESTRICT: se sobrar equipe da pessoa, tudo volta atrás.
+    DELETE FROM public.profiles WHERE id = v_profile;
+
+    -- Registro de que a exclusão aconteceu, sem dados pessoais.
+    INSERT INTO public.platform_audit_log(actor_user_id, action, entity_id, details)
+    VALUES (NULL, 'account_deleted', p_user_id::text,
+      jsonb_build_object('deleted_teams', cardinality(v_delete_teams), 'left_teams', v_left, 'draft_songs', v_drafts));
+
+    v_result := jsonb_build_object('deleted', true, 'already_deleted', false,
+      'deleted_team_ids', to_jsonb(v_delete_teams), 'left_team_count', v_left);
   END IF;
-  SELECT email INTO v_email FROM auth.users WHERE id = p_user_id;
 
-  -- Trava as equipes envolvidas: entradas e transferências em andamento esperam
-  -- (a FK de team_members precisa da linha da equipe) e a prévia abaixo vale até o fim.
-  PERFORM 1 FROM public.teams t
-  WHERE t.owner_id = v_profile
-     OR EXISTS (SELECT 1 FROM public.team_members m WHERE m.team_id = t.id AND m.profile_id = v_profile)
-  ORDER BY t.id FOR UPDATE;
+  RETURN v_result || jsonb_build_object('storage_objects', COALESCE((
+    SELECT jsonb_agg(jsonb_build_object('bucket', q.bucket, 'path', q.path) ORDER BY q.bucket, q.path)
+    FROM public.account_deletion_storage_queue q WHERE q.user_id = p_user_id), '[]'::jsonb));
+END;
+$$;
 
-  v_preview := public.account_deletion_preview_for(p_user_id);
-  IF NOT (v_preview->>'can_delete')::boolean THEN
-    RAISE EXCEPTION 'Transfira a propriedade ou a liderança das suas equipes antes de excluir a conta.'
-      USING ERRCODE = '55000', HINT = 'account_deletion_blocked';
-  END IF;
-  SELECT COALESCE(array_agg((e->>'team_id')::uuid) FILTER (WHERE e->>'action' = 'delete_team'), '{}'),
-         count(*) FILTER (WHERE e->>'action' = 'leave')
-    INTO v_delete_teams, v_left
-  FROM jsonb_array_elements(v_preview->'teams') e;
-
-  -- Equipes de membro único: vão junto (cascata leva músicas, cultos, chat...).
-  DELETE FROM public.teams WHERE id = ANY (v_delete_teams);
-  -- Conversas com o Asafe: a FK é SET NULL (estatística), aqui o texto sai.
-  DELETE FROM public.assistant_messages WHERE profile_id = v_profile;
-  -- Convites para o e-mail da pessoa (aceitos ou não) guardam o endereço.
-  IF v_email IS NOT NULL THEN
-    DELETE FROM public.team_invites WHERE lower(email) = lower(v_email);
-  END IF;
-  PERFORM public.account_deletion_release_storage_owner(p_user_id);
-  -- O resto sai em cascata a partir do perfil (ver o plano no topo do arquivo).
-  -- teams.owner_id é RESTRICT: se sobrar equipe da pessoa, tudo volta atrás.
-  DELETE FROM public.profiles WHERE id = v_profile;
-
-  -- Registro de que a exclusão aconteceu, sem dados pessoais.
-  INSERT INTO public.platform_audit_log(actor_user_id, action, entity_id, details)
-  VALUES (NULL, 'account_deleted', p_user_id::text,
-    jsonb_build_object('deleted_teams', cardinality(v_delete_teams), 'left_teams', v_left));
-
-  RETURN jsonb_build_object('deleted', true, 'already_deleted', false,
-    'deleted_team_ids', to_jsonb(v_delete_teams), 'left_team_count', v_left);
+-- A edge function tira da fila o que já removeu do Storage.
+CREATE OR REPLACE FUNCTION public.account_deletion_storage_done(p_user_id uuid, p_objects jsonb)
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE v_count integer;
+BEGIN
+  IF p_user_id IS NULL THEN RAISE EXCEPTION 'Usuário não informado.' USING ERRCODE = '22023'; END IF;
+  IF jsonb_typeof(p_objects) IS DISTINCT FROM 'array' THEN RETURN 0; END IF;
+  DELETE FROM public.account_deletion_storage_queue q
+  USING jsonb_array_elements(p_objects) o
+  WHERE q.user_id = p_user_id AND q.bucket = o->>'bucket' AND q.path = o->>'path';
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
 END;
 $$;
 
@@ -385,14 +529,18 @@ $$;
 -- ----------------------------------------------------------------------------
 REVOKE ALL ON FUNCTION public.account_deletion_preview_for(uuid), public.account_deletion_storage_objects(uuid),
   public.account_deletion_release_storage_owner(uuid), public.delete_account_data(uuid),
-  public.get_account_deletion_preview(), public.transfer_team_ownership(uuid, uuid)
+  public.get_account_deletion_preview(), public.transfer_team_ownership(uuid, uuid),
+  public.account_deletion_blocking_references(), public.account_deletion_draft_song_ids(uuid),
+  public.account_deletion_storage_done(uuid, jsonb)
   FROM PUBLIC, anon, authenticated;
--- Só usada de dentro de delete_account_data (roda como dono da função).
-REVOKE ALL ON FUNCTION public.account_deletion_release_storage_owner(uuid) FROM service_role;
+-- Só usadas de dentro das outras (rodam como dono da função).
+REVOKE ALL ON FUNCTION public.account_deletion_release_storage_owner(uuid), public.account_deletion_draft_song_ids(uuid)
+  FROM service_role;
 GRANT EXECUTE ON FUNCTION public.get_account_deletion_preview(), public.transfer_team_ownership(uuid, uuid)
   TO authenticated;
 GRANT EXECUTE ON FUNCTION public.account_deletion_preview_for(uuid), public.account_deletion_storage_objects(uuid),
-  public.delete_account_data(uuid)
+  public.delete_account_data(uuid), public.account_deletion_storage_done(uuid, jsonb),
+  public.account_deletion_blocking_references()
   TO service_role;
 
 NOTIFY pgrst, 'reload schema';

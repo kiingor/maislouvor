@@ -12,7 +12,8 @@ describe("public account deletion page", () => {
     expect(screen.getByText("Ajustes › Meu usuário")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Entrar e excluir minha conta" }))
       .toHaveAttribute("href", "/login?redirect=%2Fapp%2Fsettings%23excluir-conta");
-    expect(screen.getByRole("heading", { name: "O que é apagado" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "O que é apagado" }).parentElement)
+      .toHaveTextContent("Rascunhos de músicas que você começou e não cadastrou");
     expect(screen.getByRole("heading", { name: "O que continua com a equipe" }).parentElement)
       .toHaveTextContent("sem o seu nome");
     expect(screen.getByRole("heading", { name: "Prazo" }).parentElement).toHaveTextContent("A exclusão é imediata.");

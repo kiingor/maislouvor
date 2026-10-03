@@ -1,13 +1,16 @@
 // Exclusão de conta: FKs, prévia, transferência de propriedade, exclusão atômica e permissões.
 // Roda num PostgreSQL em memória (PGlite), nunca na produção:
 //   PGLITE_MODULE=/caminho/@electric-sql/pglite/dist/index.js node supabase/tests/account_deletion.mjs
+// No fim aplica também as migrações com data posterior a esta (as das outras
+// frentes, depois da integração) e confere que nenhuma voltou a travar a exclusão.
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 
 const { PGlite } = await import(process.env.PGLITE_MODULE || '@electric-sql/pglite');
 const db = new PGlite();
 const file = (path) => readFile(new URL(path, import.meta.url), 'utf8');
-const MIGRATION = await file('../migrations/20261003130000_account_deletion.sql');
+const MIGRATION_NAME = '20261003130000_account_deletion.sql';
+const MIGRATION = await file(`../migrations/${MIGRATION_NAME}`);
 
 const id = (prefix, n) => `${prefix}0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 // Pessoas: dono da equipe A (Olga), líder sem ser dono da equipe B (Lia), dono rebaixado
@@ -16,10 +19,11 @@ const names = ['olga', 'mario', 'mel', 'sara', 'lia', 'xavier', 'vera', 'ulisses
 const user = Object.fromEntries(names.map((n, i) => [n, id(1, i + 1)]));
 const prof = Object.fromEntries(names.map((n, i) => [n, id(2, i + 1)]));
 const team = { a: id(3, 1), b: id(3, 2), c: id(3, 3) };
-const song = { aBySara: id(4, 1), cBySara: id(4, 2), aByOlga: id(4, 3) };
+const song = { aBySara: id(4, 1), cBySara: id(4, 2), aByOlga: id(4, 3), draftA: id(4, 4) };
 const culto = { a: id(5, 1), c: id(5, 2) };
 const rep = { a: id(6, 1) };
 const sharedSong = id(7, 1);
+const legacy = { user: id(1, 90), prof: id(2, 90), team: id(3, 90) };
 
 let checks = 0;
 const check = (actual, expected, label = 'valor diferente') => { assert.deepEqual(actual, expected, label); checks++; };
@@ -48,6 +52,16 @@ const fkAction = async (table, column) => (await one(`
   SELECT c.confdeltype AS action FROM pg_constraint c
   JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
   WHERE c.contype = 'f' AND c.conrelid = $1::regclass AND a.attname = $2`, [table, column]))?.action;
+const blocking = () => service('SELECT COALESCE(jsonb_agg(b), \'[]\') AS r FROM public.account_deletion_blocking_references() b');
+/** Roda fn numa transação e desfaz tudo no fim (devolve o que fn devolveu). */
+const ROLLBACK = Symbol('rollback');
+const tryAndUndo = async (fn) => {
+  let result;
+  await db.transaction(async (tx) => { result = await fn(tx); throw ROLLBACK; }).catch((error) => {
+    if (error !== ROLLBACK) throw error;
+  });
+  return result;
+};
 
 try {
   await db.exec(`
@@ -80,9 +94,12 @@ try {
       team_id uuid NOT NULL REFERENCES public.teams(id) ON DELETE CASCADE, email text NOT NULL,
       role public.team_role NOT NULL DEFAULT 'viewer', token uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
       accepted boolean NOT NULL DEFAULT false, created_at timestamptz NOT NULL DEFAULT now());
+    -- Deriva simulada: channels.created_by sem FK (e com linha órfã antes da migração).
     CREATE TABLE public.channels (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       team_id uuid NOT NULL REFERENCES public.teams(id) ON DELETE CASCADE, name text NOT NULL,
-      created_by uuid REFERENCES public.profiles(id), created_at timestamptz NOT NULL DEFAULT now());
+      created_by uuid, created_at timestamptz NOT NULL DEFAULT now());
+    -- Do cadastro de músicas (20260930200000), que o recorte ainda não traz.
+    ALTER TABLE public.songs ADD COLUMN is_draft boolean NOT NULL DEFAULT false;
     CREATE TABLE public.messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       team_id uuid NOT NULL REFERENCES public.teams(id) ON DELETE CASCADE,
       culto_id uuid REFERENCES public.cultos(id) ON DELETE CASCADE,
@@ -122,9 +139,32 @@ try {
   await db.exec(preflight);
   check(await snapshot(), before, 'preflight não altera nada');
 
+  // FK que a migração não sabe decidir: ela falha antes de mudar qualquer coisa (e não só avisa).
+  for (const [ddl, name] of [
+    ['CREATE TABLE public.votos_legados (id serial PRIMARY KEY, voter uuid NOT NULL REFERENCES public.profiles(id))', 'votos_legados'],
+    ['CREATE TABLE public.yt_import_jobs_legado (id serial PRIMARY KEY, song_id uuid REFERENCES public.songs(id))', 'yt_import_jobs_legado'],
+    ['CREATE TABLE public.lineup_extra (id serial PRIMARY KEY, team_member_id uuid NOT NULL REFERENCES public.team_members(id) ON DELETE SET NULL)', 'lineup_extra'],
+  ]) {
+    await assert.rejects(db.transaction(async (tx) => { await tx.exec(ddl); await tx.exec(MIGRATION); }),
+      (error) => error.message.includes(`public.${name}`) && /precisam de decisão/.test(error.message), name);
+    checks++;
+  }
+  check(await snapshot(), before, 'migração que falhou não deixou nada pela metade');
+
+  // Linha órfã de antes (deriva): a FK nova entra NOT VALID e continua assim na segunda execução.
+  await db.exec(`
+    INSERT INTO auth.users(id, email) VALUES ('${legacy.user}', 'legado@example.test');
+    INSERT INTO public.profiles(id, user_id, full_name) VALUES ('${legacy.prof}', '${legacy.user}', 'Legado');
+    INSERT INTO public.teams(id, name, owner_id) VALUES ('${legacy.team}', 'Equipe antiga', '${legacy.prof}');
+    INSERT INTO public.channels(team_id, name, created_by) VALUES ('${legacy.team}', 'Órfão', '${id(2, 99)}');
+  `);
   await db.exec(MIGRATION);
-  await db.exec(MIGRATION); // idempotente
+  await db.exec(MIGRATION); // idempotente, mesmo com a FK NOT VALID
+  check(await one(`SELECT convalidated FROM pg_constraint WHERE conname = 'channels_created_by_fkey'`), { convalidated: false },
+    'FK criada sobre dados órfãos fica NOT VALID');
   await db.exec(preflight); checks++;
+  check(await blocking(), [], 'nenhuma FK trava a exclusão');
+  await db.exec(`DELETE FROM public.teams WHERE id = '${legacy.team}'; DELETE FROM auth.users WHERE id = '${legacy.user}';`);
   for (const [table, column] of [['songs', 'created_by'], ['repertorios', 'created_by'], ['cultos', 'created_by'],
     ['channels', 'created_by'], ['culto_songs', 'notes_author_id'], ['notifications', 'sender_profile_id'],
     ['team_join_requests', 'decided_by'], ['legacy_song_reviews', 'reviewer'], ['legacy_song_reviews', 'reviewer_user']]) {
@@ -150,10 +190,11 @@ try {
       ('${team.b}', '${prof.lia}', 'admin', '{}'), ('${team.b}', '${prof.xavier}', 'viewer', '{}'),
       ('${team.b}', '${prof.vera}', 'editor', '{}'),
       ('${team.c}', '${prof.sara}', 'admin', '{}');
-    INSERT INTO public.songs(id, team_id, title, created_by) VALUES
-      ('${song.aBySara}', '${team.a}', 'Bondade de Deus', '${prof.sara}'),
-      ('${song.aByOlga}', '${team.a}', 'Grande é o Senhor', '${prof.olga}'),
-      ('${song.cBySara}', '${team.c}', 'Rascunho da Sara', '${prof.sara}');
+    INSERT INTO public.songs(id, team_id, title, created_by, is_draft) VALUES
+      ('${song.aBySara}', '${team.a}', 'Bondade de Deus', '${prof.sara}', false),
+      ('${song.aByOlga}', '${team.a}', 'Grande é o Senhor', '${prof.olga}', false),
+      ('${song.cBySara}', '${team.c}', 'Música do projeto', '${prof.sara}', false),
+      ('${song.draftA}', '${team.a}', 'Rascunho da Sara', '${prof.sara}', true);
     INSERT INTO public.cultos(id, team_id, name, date, created_by) VALUES
       ('${culto.a}', '${team.a}', 'Culto de domingo', current_date + 3, '${prof.sara}'),
       ('${culto.c}', '${team.c}', 'Ensaio solo', current_date + 3, '${prof.sara}');
@@ -161,8 +202,11 @@ try {
     INSERT INTO public.repertorio_songs(repertorio_id, song_id) VALUES ('${rep.a}', '${song.aBySara}');
     INSERT INTO public.culto_songs(id, culto_id, song_id, notes, notes_author_id) VALUES
       ('${sharedSong}', '${culto.a}', '${song.aBySara}', 'Entrar só no refrão', '${prof.sara}');
+    INSERT INTO public.culto_songs(culto_id, song_id) VALUES ('${culto.c}', '${song.cBySara}');
     INSERT INTO public.culto_lineup(culto_id, team_member_id, instrument)
       SELECT '${culto.a}', id, 'Voz' FROM public.team_members WHERE team_id = '${team.a}' AND profile_id IN ('${prof.sara}', '${prof.mel}');
+    INSERT INTO public.culto_lineup(culto_id, team_member_id, instrument)
+      SELECT '${culto.c}', id, 'Violão' FROM public.team_members WHERE team_id = '${team.c}' AND profile_id = '${prof.sara}';
     INSERT INTO public.member_availability(team_member_id, available_date)
       SELECT id, current_date + 3 FROM public.team_members WHERE profile_id IN ('${prof.sara}', '${prof.mel}');
     INSERT INTO public.channels(team_id, name, created_by) VALUES ('${team.a}', 'Avisos', '${prof.sara}');
@@ -187,8 +231,10 @@ try {
       ('${team.b}', 'sara@example.TEST', false), ('${team.a}', 'sara@example.test', true),
       ('${team.b}', 'novo@example.test', false);
     INSERT INTO public.legacy_song_reviews(song_id, reviewer, reviewer_user) VALUES ('${song.aByOlga}', '${prof.sara}', '${user.sara}');
+    -- Asafe ativo nas duas equipes da Sara (a C, de membro único, some com a conta).
     INSERT INTO public.assistant_groups(id, group_jid, team_id, activated_by) VALUES
-      ('${id(8, 1)}', '120363000000000001@g.us', '${team.a}', '${prof.sara}');
+      ('${id(8, 1)}', '120363000000000001@g.us', '${team.a}', '${prof.sara}'),
+      ('${id(8, 2)}', '120363000000000002@g.us', '${team.c}', '${prof.sara}');
     INSERT INTO public.assistant_wa_identities(wa_id, profile_id, source) VALUES ('5511999990003', '${prof.sara}', 'phone');
     INSERT INTO public.assistant_link_codes(code, profile_id, expires_at) VALUES ('K7Q2PD', '${prof.sara}', now() + interval '1 hour');
     INSERT INTO public.assistant_member_usage_daily(team_id, profile_id, day, requests) VALUES ('${team.a}', '${prof.sara}', current_date, 3);
@@ -212,16 +258,27 @@ try {
       ('audio', '${team.c}/${song.cBySara}/tracks/voz.mp3', NULL),
       ('audio', '_ytcache/abc123.mp3', NULL),
       ('covers', '${team.c}/${song.cBySara}.jpg', '${user.sara}'),
-      ('covers', '${team.a}/${song.aBySara}.jpg', '${user.sara}');
+      ('covers', '${team.a}/${song.aBySara}.jpg', '${user.sara}'),
+      ('audio', '${team.a}/${song.draftA}.mp3', '${user.sara}'),
+      ('audio', '${team.a}/${song.draftA}/additional/${id(9, 1)}.mp3', NULL),
+      ('covers', '${team.a}/${song.draftA}.png', '${user.sara}'),
+      ('audio', '${team.a}/${song.draftA}0.mp3', NULL);
   `);
 
   // ----- permissões -----
   const allFns = ['get_account_deletion_preview()', `transfer_team_ownership('${team.a}', '${prof.mel}')`,
     `account_deletion_preview_for('${user.sara}')`, `account_deletion_storage_objects('${user.sara}')`,
-    `delete_account_data('${user.sara}')`, `account_deletion_release_storage_owner('${user.sara}')`];
+    `delete_account_data('${user.sara}')`, `account_deletion_release_storage_owner('${user.sara}')`,
+    `account_deletion_storage_done('${user.sara}', '[]')`, `account_deletion_draft_song_ids('${prof.sara}')`,
+    'account_deletion_blocking_references()'];
   for (const fn of allFns) await fails(call('anon', null, `SELECT public.${fn} AS r`), '42501', `anon ${fn}`);
   for (const fn of allFns.slice(2)) await fails(call('authenticated', user.sara, `SELECT public.${fn} AS r`), '42501', `authenticated ${fn}`);
-  await fails(call('service_role', null, `SELECT public.account_deletion_release_storage_owner('${user.sara}') AS r`), '42501', 'release só interno');
+  for (const fn of [`account_deletion_release_storage_owner('${user.sara}')`, `account_deletion_draft_song_ids('${prof.sara}')`]) {
+    await fails(call('service_role', null, `SELECT public.${fn} AS r`), '42501', `${fn} só interno`);
+  }
+  for (const role of ['anon', 'authenticated']) {
+    await fails(call(role, user.sara, 'SELECT count(*) AS r FROM public.account_deletion_storage_queue'), '42501', `${role} não lê a fila`);
+  }
   await fails(call('authenticated', null, 'SELECT public.get_account_deletion_preview() AS r'), '42501', 'sem sessão');
 
   // ----- prévia -----
@@ -232,7 +289,7 @@ try {
   check(mine.teams.map((t) => [t.team_name, t.action, t.role, t.is_owner, t.member_count]),
     [['Louvor Sede', 'leave', 'editor', false, 4], ['Projeto da Sara', 'delete_team', 'admin', true, 1]]);
   check(mine.teams.every((t) => t.candidates.length === 0), true, 'sem candidatos quando não bloqueia');
-  check(mine.personal, { chat_messages: 4, support_tickets: 1 });
+  check(mine.personal, { chat_messages: 4, support_tickets: 1, draft_songs: 1 });
 
   const olga = await preview(user.olga);
   check([olga.can_delete, olga.teams.length, olga.teams[0].action], [false, 1, 'transfer_required']);
@@ -246,7 +303,7 @@ try {
     [false, 'transfer_required', true, 'viewer'], 'dono rebaixado ainda precisa transferir');
   check((await preview(user.vera)).teams.map((t) => t.action), ['leave']);
   check(await preview(user.semperfil), { has_profile: false, can_delete: true, teams: [],
-    personal: { chat_messages: 0, support_tickets: 0 } }, 'sem perfil');
+    personal: { chat_messages: 0, support_tickets: 0, draft_songs: 0 } }, 'sem perfil');
   check((await preview(user.ulisses)).teams, [], 'sem equipe');
 
   // ----- transferência de propriedade -----
@@ -275,13 +332,16 @@ try {
   await fails(service('SELECT public.delete_account_data($1) AS r', [user.lia]), '55000', 'único líder bloqueado');
   await fails(service('SELECT public.delete_account_data($1) AS r', [user.xavier]), '55000', 'dono bloqueado');
   check(await count('SELECT count(*) AS n FROM public.profiles WHERE id IN ($1, $2)', [prof.lia, prof.xavier]), 2, 'nada apagado');
+  check(await count('SELECT count(*) AS n FROM public.account_deletion_storage_queue'), 0, 'nenhum arquivo na fila');
   // A FK sozinha também protege a equipe: apagar o usuário dono direto no auth falha.
   await fails(db.query('DELETE FROM auth.users WHERE id = $1', [user.xavier]), '23503', 'RESTRICT no dono');
   check(await count('SELECT count(*) AS n FROM public.team_members WHERE team_id = $1', [team.b]), 3, 'equipe B intacta');
 
-  // ----- arquivos a remover (o que a edge function apaga antes) -----
+  // ----- arquivos a remover (listados pelo banco, removidos depois pela edge function) -----
   const objects = await service('SELECT public.account_deletion_storage_objects($1) AS r', [user.sara]);
   check(objects, [
+    { bucket: 'audio', path: `${team.a}/${song.draftA}.mp3` },
+    { bucket: 'audio', path: `${team.a}/${song.draftA}/additional/${id(9, 1)}.mp3` },
     { bucket: 'audio', path: `${team.c}/${song.cBySara}.mp3` },
     { bucket: 'audio', path: `${team.c}/${song.cBySara}/tracks/voz.mp3` },
     { bucket: 'avatars', path: `${user.sara}/avatar.webp` },
@@ -290,22 +350,51 @@ try {
     { bucket: 'chat', path: `${team.a}/2-cifra.jpg` },
     { bucket: 'chat', path: `${team.b}/9-avulso.jpg` },
     { bucket: 'chat', path: `${team.c}/4-solo.jpg` },
+    { bucket: 'covers', path: `${team.a}/${song.draftA}.png` },
     { bucket: 'covers', path: `${team.c}/${song.cBySara}.jpg` },
-  ].sort((x, y) => (x.bucket + x.path < y.bucket + y.path ? -1 : 1)), 'só arquivos pessoais e da equipe que some');
+  ].sort((x, y) => (x.bucket + x.path < y.bucket + y.path ? -1 : 1)),
+  'arquivos pessoais, dos rascunhos e da equipe que some (não o de outra música com o mesmo começo)');
   await db.exec('ALTER TABLE storage.objects DROP COLUMN owner_id');
   check(await service('SELECT public.account_deletion_storage_objects($1) AS r', [user.sara]), objects, 'Storage sem owner_id');
-  // A edge function remove pela Storage API; aqui, direto na tabela.
-  for (const o of objects) await db.query('DELETE FROM storage.objects WHERE bucket_id = $1 AND name = $2', [o.bucket, o.path]);
+
+  // Asafe ligado na produção: os gatilhos de aviso rodam durante a cascata da equipe C.
+  await db.exec('UPDATE public.assistant_config SET enabled = true');
+
+  // Banco primeiro: se a transação falha no meio, nada some — nem perfil, nem arquivo, nem fila.
+  const storageCount = await count('SELECT count(*) AS n FROM storage.objects');
+  await db.exec(`CREATE FUNCTION public.falha_teste() RETURNS trigger LANGUAGE plpgsql AS
+      $$ BEGIN RAISE EXCEPTION 'falha simulada' USING ERRCODE = 'XX000'; END $$;
+    CREATE TRIGGER falha_teste BEFORE DELETE ON public.songs FOR EACH ROW EXECUTE FUNCTION public.falha_teste();`);
+  await fails(service('SELECT public.delete_account_data($1) AS r', [user.sara]), 'XX000', 'falha no meio da exclusão');
+  await db.exec('DROP TRIGGER falha_teste ON public.songs; DROP FUNCTION public.falha_teste();');
+  check([await count('SELECT count(*) AS n FROM public.profiles WHERE id = $1', [prof.sara]),
+    await count('SELECT count(*) AS n FROM public.account_deletion_storage_queue'),
+    await count('SELECT count(*) AS n FROM storage.objects')], [1, 0, storageCount], 'nada apagado depois da falha');
 
   // ----- exclusão da Sara -----
   const result = await service('SELECT public.delete_account_data($1) AS r', [user.sara]);
-  check(result, { deleted: true, already_deleted: false, deleted_team_ids: [team.c], left_team_count: 1 });
+  check(result, { deleted: true, already_deleted: false, deleted_team_ids: [team.c], left_team_count: 1, storage_objects: objects },
+    'devolve os arquivos a remover');
+  check(await rows('SELECT user_id, bucket, path FROM public.account_deletion_storage_queue ORDER BY bucket, path'),
+    objects.map((o) => ({ user_id: user.sara, bucket: o.bucket, path: o.path })), 'arquivos na fila até a remoção');
+  // Resposta perdida antes de remover os arquivos: a nova tentativa recebe a mesma lista.
+  check(await service('SELECT public.delete_account_data($1) AS r', [user.sara]),
+    { deleted: false, already_deleted: true, deleted_team_ids: [], left_team_count: 0, storage_objects: objects });
+  // A edge function remove pela Storage API (aqui, direto na tabela) e tira da fila.
+  for (const o of objects) await db.query('DELETE FROM storage.objects WHERE bucket_id = $1 AND name = $2', [o.bucket, o.path]);
+  check(await service('SELECT public.account_deletion_storage_done($1, $2) AS r', [user.sara, JSON.stringify(objects)]), objects.length);
+  check(await service('SELECT public.account_deletion_storage_done($1, $2) AS r', [user.sara, JSON.stringify(objects)]), 0, 'repetir é inofensivo');
+  check(await count('SELECT count(*) AS n FROM public.account_deletion_storage_queue'), 0, 'fila vazia');
+  check(await count('SELECT count(*) AS n FROM public.assistant_groups WHERE team_id = $1', [team.c]), 0, 'grupo do Asafe da equipe C saiu');
+  check(await rows('SELECT DISTINCT team_id FROM public.assistant_outbox'), [{ team_id: team.a }],
+    'só a equipe que continua recebe o aviso de mudança na escala');
   check(await count('SELECT count(*) AS n FROM public.profiles WHERE id = $1', [prof.sara]), 0, 'perfil apagado');
   check(await count('SELECT count(*) AS n FROM public.teams WHERE id = $1', [team.c]), 0, 'equipe de membro único apagada');
   check(await count('SELECT count(*) AS n FROM public.songs WHERE team_id = $1', [team.c]), 0, 'músicas dela junto');
   check(await count('SELECT count(*) AS n FROM public.messages WHERE team_id = $1', [team.c]), 0, 'chat dela junto');
   check(await rows(`SELECT id, created_by FROM public.songs WHERE team_id = $1 ORDER BY id`, [team.a]),
-    [{ id: song.aBySara, created_by: null }, { id: song.aByOlga, created_by: prof.olga }], 'músicas da equipe ficam, sem autora');
+    [{ id: song.aBySara, created_by: null }, { id: song.aByOlga, created_by: prof.olga }],
+    'músicas cadastradas ficam, sem autora; o rascunho dela sai');
   check((await one('SELECT created_by FROM public.cultos WHERE id = $1', [culto.a])).created_by, null);
   check((await one('SELECT created_by FROM public.repertorios WHERE id = $1', [rep.a])).created_by, null);
   check(await count('SELECT count(*) AS n FROM public.repertorio_songs WHERE repertorio_id = $1', [rep.a]), 1, 'repertório intacto');
@@ -332,20 +421,22 @@ try {
   check(await one('SELECT reviewer, reviewer_user FROM public.legacy_song_reviews'), { reviewer: null, reviewer_user: user.sara });
   check(await rows(`SELECT bucket_id, name, owner FROM storage.objects ORDER BY bucket_id, name`), [
     { bucket_id: 'audio', name: `${team.a}/${song.aBySara}.mp3`, owner: null },
+    { bucket_id: 'audio', name: `${team.a}/${song.draftA}0.mp3`, owner: null },
     { bucket_id: 'audio', name: '_ytcache/abc123.mp3', owner: null },
     { bucket_id: 'avatars', name: `${user.mel}/avatar.webp`, owner: null },
     { bucket_id: 'chat', name: `${team.a}/3-mel.jpg`, owner: user.mel },
     { bucket_id: 'covers', name: `${team.a}/${song.aBySara}.jpg`, owner: null },
   ], 'arquivos da equipe ficam, sem dono');
   check(await one(`SELECT actor_user_id, entity_id, details FROM public.platform_audit_log WHERE action = 'account_deleted'`),
-    { actor_user_id: null, entity_id: user.sara, details: { deleted_teams: 1, left_teams: 1 } }, 'registro sem dados pessoais');
+    { actor_user_id: null, entity_id: user.sara, details: { deleted_teams: 1, left_teams: 1, draft_songs: 1 } },
+    'registro sem dados pessoais');
 
   // auth.admin.deleteUser(): com o perfil e o dono do storage desvinculados, não há FK no caminho.
   await db.query('DELETE FROM auth.users WHERE id = $1', [user.sara]);
   check(await one('SELECT reviewer_user FROM public.legacy_song_reviews'), { reviewer_user: null });
   // Repetir é inofensivo (resposta perdida, novo clique).
   check(await service('SELECT public.delete_account_data($1) AS r', [user.sara]),
-    { deleted: false, already_deleted: true, deleted_team_ids: [], left_team_count: 0 });
+    { deleted: false, already_deleted: true, deleted_team_ids: [], left_team_count: 0, storage_objects: [] });
   check(await service('SELECT public.account_deletion_storage_objects($1) AS r', [user.sara]), []);
 
   // ----- quem estava bloqueado resolve e exclui -----
@@ -360,7 +451,50 @@ try {
   check((await one('SELECT created_by FROM public.songs WHERE id = $1', [song.aByOlga])).created_by, null);
   check(await count('SELECT count(*) AS n FROM public.teams'), 2, 'equipes A e B continuam');
 
-  console.log(`${checks} PostgreSQL checks passed: FKs, idempotência, prévia, transferência, bloqueios, arquivos, exclusão atômica, retry e permissões.`);
+  // ----- migrações posteriores (chat, termos, consentimento do Asafe, demo...) -----
+  // Uma FK nova sem ação de exclusão para o perfil, o usuário, mensagens ou
+  // equipes travaria a exclusão de contas; a conferência acusa.
+  check(await tryAndUndo(async (tx) => {
+    await tx.exec(`CREATE TABLE public.message_reports (id serial PRIMARY KEY,
+      message_id uuid NOT NULL REFERENCES public.messages(id),
+      reporter uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE)`);
+    return (await tx.query('SELECT constraint_name, referenced_table FROM public.account_deletion_blocking_references()')).rows;
+  }), [{ constraint_name: 'message_reports_message_id_fkey', referenced_table: 'public.messages' }], 'conferência acusa FK nova');
+  const later = (await readdir(new URL('../migrations/', import.meta.url)))
+    .filter((name) => name.endsWith('.sql') && name > MIGRATION_NAME).sort();
+  for (const name of later) {
+    try {
+      await db.exec(await file(`../migrations/${name}`));
+    } catch (error) {
+      throw new Error(`A migração posterior ${name} não aplicou no recorte deste teste (complete o setup acima): ${error.message}`);
+    }
+  }
+  check(await blocking(), [], `nenhuma FK trava a exclusão depois de ${later.length ? later.join(', ') : 'esta migração'}`);
+
+  // Exclusão completa depois de todas as migrações: equipe só dela com Asafe, culto futuro, escala e rascunho.
+  const nina = { user: id(1, 50), prof: id(2, 50), team: id(3, 50), culto: id(5, 50), song: id(4, 50) };
+  await db.exec(`
+    INSERT INTO auth.users(id, email) VALUES ('${nina.user}', 'nina@example.test');
+    INSERT INTO public.profiles(id, user_id, full_name) VALUES ('${nina.prof}', '${nina.user}', 'Nina');
+    INSERT INTO public.teams(id, name, owner_id) VALUES ('${nina.team}', 'Banda da Nina', '${nina.prof}');
+    INSERT INTO public.team_members(team_id, profile_id, role) VALUES
+      ('${nina.team}', '${nina.prof}', 'admin'), ('${team.a}', '${nina.prof}', 'viewer');
+    INSERT INTO public.assistant_groups(group_jid, team_id, activated_by) VALUES ('120363000000000050@g.us', '${nina.team}', '${nina.prof}');
+    INSERT INTO public.songs(id, team_id, title, created_by, is_draft) VALUES
+      ('${nina.song}', '${nina.team}', 'Autoral', '${nina.prof}', false), ('${id(4, 51)}', '${team.a}', 'Ideia', '${nina.prof}', true);
+    INSERT INTO public.cultos(id, team_id, name, date, created_by) VALUES ('${nina.culto}', '${nina.team}', 'Ensaio', current_date + 1, '${nina.prof}');
+    INSERT INTO public.culto_songs(culto_id, song_id) VALUES ('${nina.culto}', '${nina.song}');
+    INSERT INTO public.culto_lineup(culto_id, team_member_id, instrument)
+      SELECT '${nina.culto}', id, 'Voz' FROM public.team_members WHERE team_id = '${nina.team}';
+    INSERT INTO public.messages(team_id, sender_profile_id, content) VALUES ('${team.a}', '${nina.prof}', 'Oi'), ('${nina.team}', '${nina.prof}', 'Nota');
+  `);
+  check((await service('SELECT public.delete_account_data($1) AS r', [nina.user])).deleted_team_ids, [nina.team]);
+  await db.query('DELETE FROM auth.users WHERE id = $1', [nina.user]);
+  check(await count(`SELECT count(*) AS n FROM public.songs WHERE created_by IS NOT DISTINCT FROM $1 OR team_id = $2`, [nina.prof, nina.team]), 0,
+    'rascunho e equipe da Nina saíram');
+
+  console.log(`${checks} PostgreSQL checks passed: FKs, falha da migração, NOT VALID, idempotência, prévia, transferência, bloqueios, `
+    + 'arquivos depois do banco, Asafe ativo, rascunhos, exclusão atômica, retry, migrações posteriores e permissões.');
 } finally {
   await db.close();
 }

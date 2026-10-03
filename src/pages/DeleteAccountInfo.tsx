@@ -76,6 +76,7 @@ export default function DeleteAccountInfo() {
               <li>Perfil: nome, foto, e-mail, telefone e preferências de notificação.</li>
               <li>Escalas, disponibilidade, funções e loops de ensaio.</li>
               <li>Mensagens que você enviou no chat e os arquivos anexados.</li>
+              <li>Rascunhos de músicas que você começou e não cadastrou, com os arquivos deles.</li>
               <li>Vínculo com o assistente no WhatsApp e as conversas com ele.</li>
               <li>Notificações, aparelhos cadastrados para avisos, tickets de suporte e convites para o seu e-mail.</li>
               <li>Equipes em que você é o único membro, com tudo o que há nelas.</li>
@@ -84,8 +85,8 @@ export default function DeleteAccountInfo() {
 
           <Card icon={Users} title="O que continua com a equipe">
             <p>
-              Músicas, repertórios, cultos e avisos que você criou pertencem à equipe e continuam disponíveis para
-              os outros membros, sem o seu nome. Guardamos apenas o registro de que a exclusão foi feita, sem dados
+              Músicas já cadastradas, repertórios, cultos e avisos que você criou pertencem à equipe e continuam
+              disponíveis para os outros membros, sem o seu nome. Guardamos apenas o registro de que a exclusão foi feita, sem dados
               pessoais.
             </p>
           </Card>

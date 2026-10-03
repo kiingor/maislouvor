@@ -31,7 +31,7 @@ const team = (overrides: Record<string, unknown>) => ({
   action: "leave", candidates: [], ...overrides,
 });
 const preview = (teams: unknown[], canDelete = true) => ({
-  has_profile: true, can_delete: canDelete, teams, personal: { chat_messages: 3, support_tickets: 1 },
+  has_profile: true, can_delete: canDelete, teams, personal: { chat_messages: 3, support_tickets: 1, draft_songs: 2 },
 });
 const candidates = [
   { profile_id: "p-mario", full_name: "Mario", role: "editor" },
@@ -93,6 +93,8 @@ describe("DeleteAccountSection", () => {
     expect(solo).toHaveTextContent("Será excluída com a conta");
     expect(within(dialog).getByText("Louvor Sede").closest("li")).toHaveTextContent("Você sai da equipe");
     expect(dialog).toHaveTextContent("Suas mensagens no chat (3)");
+    expect(dialog).toHaveTextContent("Rascunhos de músicas que você ainda não cadastrou (2)");
+    expect(dialog).toHaveTextContent("Músicas já cadastradas, repertórios e cultos que você criou continuam");
     expect(within(dialog).getByRole("note")).toHaveTextContent("Assinaturas feitas pela App Store ou Google Play precisam ser canceladas na loja.");
     expect(mocks.rpc.mock.calls[0][0]).toBe("get_account_deletion_preview");
 

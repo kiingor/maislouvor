@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  isCallerAlreadyDeleted,
   isDeletionConfirmed,
+  isMissingUserError,
+  jwtSubject,
   runAccountDeletion,
   storageBatches,
+  type DeleteDataResult,
   type DeletionDeps,
   type DeletionPreview,
 } from "../../supabase/functions/delete-account/flow";
@@ -18,25 +22,27 @@ const preview = (overrides: Partial<DeletionPreview> = {}): DeletionPreview => (
   has_profile: true,
   can_delete: true,
   teams: [],
-  personal: { chat_messages: 0, support_tickets: 0 },
+  personal: { chat_messages: 0, support_tickets: 0, draft_songs: 0 },
   ...overrides,
+});
+
+const dataResult = (overrides: Partial<DeleteDataResult> = {}): DeleteDataResult => ({
+  deleted: true, already_deleted: false, deleted_team_ids: ["team-c"], left_team_count: 1, storage_objects: [], ...overrides,
 });
 
 function deps(overrides: Partial<DeletionDeps> = {}) {
   const calls: string[] = [];
   const base: DeletionDeps = {
     preview: vi.fn(async () => { calls.push("preview"); return preview(); }),
-    listStorage: vi.fn(async () => { calls.push("list"); return []; }),
+    deleteData: vi.fn(async () => { calls.push("db"); return dataResult(); }),
     removeStorage: vi.fn(async (bucket: string, paths: string[]) => { calls.push(`remove:${bucket}:${paths.length}`); }),
-    deleteData: vi.fn(async () => {
-      calls.push("db");
-      return { deleted: true, already_deleted: false, deleted_team_ids: ["team-c"], left_team_count: 1 };
-    }),
+    storageDone: vi.fn(async (_userId: string, objects: unknown[]) => { calls.push(`done:${objects.length}`); }),
     deleteAuthUser: vi.fn(async () => { calls.push("auth"); }),
     ...overrides,
   };
   return { deps: base, calls };
 }
+const jwt = (payload: unknown) => `Bearer h.${btoa(JSON.stringify(payload)).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_")}.sig`;
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -65,18 +71,26 @@ describe("delete-account flow", () => {
     expect(storageBatches("not a list")).toEqual([]);
   });
 
-  it("runs preview, storage, database and auth in this order", async () => {
+  it("runs preview, database, storage (from the database's list) and auth in this order", async () => {
+    const objects = [{ bucket: "avatars", path: "u/a.webp" }, { bucket: "chat", path: "t/1.jpg" }];
     const { deps: d, calls } = deps({
-      listStorage: vi.fn(async () => {
-        calls.push("list");
-        return [{ bucket: "avatars", path: "u/a.webp" }, { bucket: "chat", path: "t/1.jpg" }];
-      }),
+      deleteData: vi.fn(async () => { calls.push("db"); return dataResult({ storage_objects: objects }); }),
     });
     const outcome = await runAccountDeletion("user-1", d);
     expect(outcome).toEqual({ status: 200, body: { ok: true, already_deleted: false, deleted_team_ids: ["team-c"] } });
-    expect(calls).toEqual(["preview", "list", "remove:avatars:1", "remove:chat:1", "db", "auth"]);
+    expect(calls).toEqual(["preview", "db", "remove:avatars:1", "remove:chat:1", "done:2", "auth"]);
     expect(d.deleteData).toHaveBeenCalledWith("user-1");
+    expect(d.storageDone).toHaveBeenCalledWith("user-1", objects);
     expect(d.deleteAuthUser).toHaveBeenCalledWith("user-1");
+  });
+
+  it("never touches files when the database part fails", async () => {
+    const { deps: d, calls } = deps({ deleteData: vi.fn(async () => { calls.push("db"); throw { code: "23503", message: "fk" }; }) });
+    const outcome = await runAccountDeletion("user-1", d);
+    expect(outcome).toMatchObject({ status: 500, body: { error: "database_failed", message: expect.stringContaining("Nada foi apagado") } });
+    expect(calls).toEqual(["preview", "db"]);
+    expect(d.removeStorage).not.toHaveBeenCalled();
+    expect(d.deleteAuthUser).not.toHaveBeenCalled();
   });
 
   it("stops before touching anything when a team still depends on the person", async () => {
@@ -96,22 +110,36 @@ describe("delete-account flow", () => {
       teams: [{ team_id: "a", team_name: "Louvor Sede", action: "transfer_required" }],
     });
     expect(calls).toEqual([]);
-    expect(d.listStorage).not.toHaveBeenCalled();
     expect(d.deleteData).not.toHaveBeenCalled();
+    expect(d.removeStorage).not.toHaveBeenCalled();
   });
 
-  it("keeps the account when the storage cleanup fails", async () => {
+  it("keeps the login and the queue when the storage cleanup fails, so a retry finishes it", async () => {
     const { deps: d } = deps({
-      listStorage: vi.fn(async () => [{ bucket: "chat", path: "t/1.jpg" }]),
+      deleteData: vi.fn(async () => dataResult({ storage_objects: [{ bucket: "chat", path: "t/1.jpg" }] })),
       removeStorage: vi.fn(async () => { throw new Error("storage offline"); }),
     });
     const log = vi.fn();
     const outcome = await runAccountDeletion("user-1", { ...d, log });
     expect(outcome.status).toBe(502);
-    expect(outcome.body).toMatchObject({ ok: false, error: "storage_failed" });
-    expect(d.deleteData).not.toHaveBeenCalled();
+    expect(outcome.body).toMatchObject({ ok: false, error: "storage_failed", message: expect.stringContaining("Tente novamente") });
+    expect(d.storageDone).not.toHaveBeenCalled();
     expect(d.deleteAuthUser).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledWith("storage", expect.any(Error));
+
+    // Nova tentativa: o banco já foi, devolve o que ficou na fila, e a conta termina de sair.
+    const retry = deps({
+      preview: vi.fn(async () => preview({ has_profile: false })),
+      deleteData: vi.fn(async () => dataResult({
+        deleted: false, already_deleted: true, deleted_team_ids: [], left_team_count: 0,
+        storage_objects: [{ bucket: "chat", path: "t/1.jpg" }],
+      })),
+    });
+    expect(await runAccountDeletion("user-1", retry.deps)).toEqual({
+      status: 200, body: { ok: true, already_deleted: true, deleted_team_ids: [] },
+    });
+    expect(retry.deps.deleteData).toHaveBeenCalledWith("user-1");
+    expect(retry.calls).toEqual(["remove:chat:1", "done:1", "auth"]);
   });
 
   it("answers 409 when someone joins a sole-member team mid-way (database guard)", async () => {
@@ -129,11 +157,7 @@ describe("delete-account flow", () => {
     expect(d.deleteAuthUser).not.toHaveBeenCalled();
   });
 
-  it("reports database and auth failures so the person can retry", async () => {
-    const db = deps({ deleteData: vi.fn(async () => { throw { code: "23503", message: "fk" }; }) });
-    expect((await runAccountDeletion("user-1", db.deps)).body).toMatchObject({ error: "database_failed" });
-    expect(db.deps.deleteAuthUser).not.toHaveBeenCalled();
-
+  it("reports an auth failure so the person can retry", async () => {
     const auth = deps({ deleteAuthUser: vi.fn(async () => { throw new Error("gotrue down"); }) });
     const outcome = await runAccountDeletion("user-1", auth.deps);
     expect(outcome.status).toBe(502);
@@ -143,12 +167,44 @@ describe("delete-account flow", () => {
   it("is harmless to repeat after the database part already ran", async () => {
     const { deps: d } = deps({
       preview: vi.fn(async () => preview({ has_profile: false })),
-      deleteData: vi.fn(async () => ({ deleted: false, already_deleted: true, deleted_team_ids: [], left_team_count: 0 })),
+      deleteData: vi.fn(async () => dataResult({ deleted: false, already_deleted: true, deleted_team_ids: [], left_team_count: 0 })),
     });
     expect(await runAccountDeletion("user-1", d)).toEqual({
       status: 200, body: { ok: true, already_deleted: true, deleted_team_ids: [] },
     });
+    expect(d.removeStorage).not.toHaveBeenCalled();
+    expect(d.storageDone).not.toHaveBeenCalled();
     expect(d.deleteAuthUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("only reports an already deleted account when GoTrue and the Admin API agree", async () => {
+    const gone = vi.fn(async () => false);
+    const missing = { code: "user_not_found", message: "User from sub claim in JWT does not exist", status: 403 };
+    const token = jwt({ sub: "user-1", session_id: "s-1" });
+    expect(await isCallerAlreadyDeleted(missing, token, gone)).toBe(true);
+    expect(gone).toHaveBeenCalledWith("user-1");
+    // GoTrue antigo, sem código: só a mensagem do usuário inexistente.
+    expect(await isCallerAlreadyDeleted({ message: "User from sub claim in JWT does not exist" }, token, gone)).toBe(true);
+
+    // Sessão revogada (logout global, reuso de refresh token): a conta existe, pede para entrar de novo.
+    const revoked = { code: "session_not_found", message: "Session from session_id claim in JWT does not exist", status: 403 };
+    expect(isMissingUserError(revoked)).toBe(false);
+    expect(await isCallerAlreadyDeleted(revoked, token, gone)).toBe(false);
+    expect(await isCallerAlreadyDeleted({ message: "invalid JWT: not found" }, token, gone)).toBe(false);
+    // O Admin API ainda encontra o usuário, não sabe responder, ou o token não tem sub.
+    expect(await isCallerAlreadyDeleted(missing, token, async () => true)).toBe(false);
+    expect(await isCallerAlreadyDeleted(missing, token, async () => { throw new Error("offline"); })).toBe(false);
+    expect(await isCallerAlreadyDeleted(missing, "Bearer lixo", gone)).toBe(false);
+  });
+
+  it("reads the subject of a base64url JWT", () => {
+    // "-" e "_" no lugar de "+" e "/", sem o "=" do fim.
+    for (const sub of ["?~~>", ">>>?", "u", "user-1", "6b1f2c3d-0000-4000-8000-000000000001"]) {
+      expect(jwtSubject(jwt({ sub }))).toBe(sub);
+    }
+    expect(jwtSubject(jwt({ role: "anon" }))).toBeNull();
+    expect(jwtSubject(null)).toBeNull();
+    expect(jwtSubject("Bearer a.%%%.c")).toBeNull();
   });
 
   it("fails clearly when the preview cannot be loaded", async () => {
@@ -169,7 +225,8 @@ describe("accountDeletion client helpers", () => {
     expect(parsed.teams[0]).toMatchObject({ role: null, action: "promote_required",
       candidates: [{ profile_id: "p", full_name: null, role: "editor" }] });
     expect(parsed.teams[1]).toMatchObject({ team_name: "Equipe", action: "leave", candidates: [] });
-    expect(parsed.personal).toEqual({ chat_messages: 4, support_tickets: 0 });
+    expect(parsed.personal).toEqual({ chat_messages: 4, support_tickets: 0, draft_songs: 0 });
+    expect(parseDeletionPreview({ personal: { draft_songs: 2 } }).personal.draft_songs).toBe(2);
     expect(parseDeletionPreview(null)).toMatchObject({ has_profile: true, can_delete: false, teams: [] });
   });
 
