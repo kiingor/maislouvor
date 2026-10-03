@@ -13,6 +13,7 @@ import { UserNotificationPrefs } from "@/components/UserNotificationPrefs";
 import { UserStatsCard } from "@/components/UserStatsCard";
 import { TeamAvailabilitySettings } from "@/components/TeamAvailabilitySettings";
 import { MyAssistantSettings, TeamAssistantSettings } from "@/components/AssistantSettings";
+import { DeleteAccountSection } from "@/components/account/DeleteAccountSection";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AppearanceSegmented } from "@/components/AppearanceControl";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -514,6 +515,9 @@ export default function TeamSettings() {
 
             {/* Minhas estatísticas */}
             <UserStatsCard teamMemberId={myMember?.id ?? null} loading={isLoading} />
+
+            {/* Excluir conta (App Store 5.1.1(v) / Google Play): prévia, transferência e confirmação na folha */}
+            <DeleteAccountSection />
 
             {/* Sair (destrutivo, em grupo próprio no fim, como no app Ajustes) */}
             <div className={GROUP}>

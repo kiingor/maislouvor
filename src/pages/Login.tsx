@@ -6,6 +6,7 @@ import { InstallPWABanner } from "@/components/InstallPWABanner";
 import { BrandMark } from "@/components/BrandMark";
 import { GoogleButton } from "@/components/GoogleButton";
 import { cn } from "@/lib/utils";
+import { safeAppRedirect } from "@/lib/authRedirect";
 import { Music, ListMusic, Users, Mic2, MonitorSmartphone, Layers, Eye, EyeOff, Loader2 } from "lucide-react";
 
 /* ------------------------------------------------------------------
@@ -216,13 +217,15 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  // ?redirect=/app/... (ex.: a página pública /excluir-conta leva direto aos Ajustes).
+  const afterLogin = safeAppRedirect(new URLSearchParams(window.location.search).get("redirect"));
 
   // Redirect if already logged in
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) navigate("/app/home", { replace: true });
+      if (session) navigate(afterLogin, { replace: true });
     });
-  }, [navigate]);
+  }, [navigate, afterLogin]);
 
   const [forgotLoading, setForgotLoading] = useState(false);
 
@@ -256,7 +259,7 @@ export default function Login() {
         variant: "destructive",
       });
     } else {
-      navigate("/app/home");
+      navigate(afterLogin);
     }
     setLoading(false);
   };
