@@ -33,12 +33,17 @@ function GoogleLogo({ className }: { className?: string }) {
  * (provider precisa estar habilitado no GoTrue do self-host).
  * Visual: cápsula secundária de 50pt com contorno fino (HIG > Buttons), largura total.
  */
-export function GoogleButton({ label = "Continuar com Google" }: { label?: string }) {
+export function GoogleButton({ label = "Continuar com Google", onStart }: {
+  label?: string;
+  /** Chamado antes de sair para o Google (ex.: o cadastro guarda o aceite dos termos). */
+  onStart?: () => void;
+}) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
   const handle = async () => {
     setLoading(true);
+    onStart?.();
 
     // App nativo (Capacitor): abre o Google numa aba do navegador (Custom Tab) e
     // volta pelo deep link com.maislouvor.app://auth/callback (tratado no NativeAuthHandler).

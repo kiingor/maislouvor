@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { InstallPWABanner } from "@/components/InstallPWABanner";
 import { BrandMark } from "@/components/BrandMark";
 import { GoogleButton } from "@/components/GoogleButton";
+import { LegalLinksFooter } from "@/components/legal/LegalConsent";
 import { cn } from "@/lib/utils";
 import { Music, ListMusic, Users, Mic2, MonitorSmartphone, Layers, Eye, EyeOff, Loader2 } from "lucide-react";
 
@@ -322,6 +323,8 @@ export default function Login() {
         </p>
 
         <p className="mt-3 text-center text-footnote text-muted-foreground">Gratuito para equipes pequenas</p>
+
+        <LegalLinksFooter className="mt-4" />
       </AuthPanel>
 
       <InstallPWABanner />
