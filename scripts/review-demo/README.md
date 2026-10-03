@@ -165,8 +165,10 @@ Trate as duas lojas separadamente:
 - O reset só apaga contas com os e-mails fixos da loja **e** a marca
   `review_demo`, e só equipes cujo dono é uma dessas contas. Se um desses e-mails
   pertencer a uma conta sem a marca, nada é apagado.
-- A equipe é apagada antes das contas: na base atual, apagar o dono direto esbarra
-  nas FKs sem `ON DELETE` (`songs.created_by`, `culto_songs.notes_author_id`…).
+- A equipe é apagada antes das contas: com a exclusão de conta
+  (`20261003130000_account_deletion.sql`), `teams.owner_id` é `RESTRICT` e apagar
+  o dono direto falha (antes, esbarrava nas FKs sem `ON DELETE`, como
+  `songs.created_by`).
 - Storage limpo no reset: `audio/`, `covers/` e `chat/` da equipe e `avatars/` das
   contas de revisão.
 
@@ -183,6 +185,7 @@ a CLI (recusas, simulação sem rede, `--store`) e o fluxo apply/reset num store
 memória — inclusive o preflight de schema e a exclusão da conta da Apple sem afetar
 a do Google —, com o console capturado para garantir que as senhas e a chave nunca
 aparecem. O segundo roda o mesmo fluxo contra o schema de produção em memória
-(PGlite): preflight recusando o schema sem o cadastro de músicas, FKs, CHECKs,
-catálogo (`search_song_catalog`), Asafe suspenso e reset sem tocar em dados de
-outras pessoas nem da outra loja.
+(PGlite), já com as migrações da conformidade (`20261003*`): preflight recusando
+o schema sem o cadastro de músicas, FKs, CHECKs, catálogo (`search_song_catalog`),
+Asafe suspenso, a exclusão como o revisor faz (transferir para a Ana e excluir
+pela RPC) e reset sem tocar em dados de outras pessoas nem da outra loja.

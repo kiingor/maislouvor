@@ -50,6 +50,15 @@ Storage — nem pelo autor, nem pela liderança, nem pela plataforma (policy RES
 em `storage.objects`). Ao resolver ou descartar, o app apaga o arquivo que não for mais
 prova de nada.
 
+Exclusão de conta (`20261003130000_account_deletion.sql`): as denúncias continuam,
+sem a ligação com a conta (`reporter_profile_id`/`reported_profile_id` viram NULL) e
+com a cópia da mensagem; a mensagem sai em cascata (`message_deleted_role =
+'sistema'`). O anexo que é prova de denúncia em aberto **não** entra na fila de
+arquivos da exclusão (`account_deletion_storage_objects`): fica até a denúncia ser
+encerrada, e então `moderate_chat_report` devolve `attachment_to_remove` como em
+qualquer mensagem apagada. Os bloqueios da pessoa (feitos por ela ou contra ela)
+saem em cascata. Teste: `supabase/tests/lojas_all_migrations.mjs`.
+
 ## Filtro de palavras
 
 Trigger em `messages` troca por asteriscos palavras inteiras da tabela

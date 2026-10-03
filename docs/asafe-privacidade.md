@@ -126,6 +126,10 @@ registra até 80 caracteres do texto da mensagem.
   grupos, missões pausadas, reativar com código em cada grupo). Membros de
   equipes ativas que ainda não decidiram veem o aviso de membro ao abrir o app
   (permitir / não permitir); fechar só adia até a próxima abertura.
+- **Equipe suspensa pela plataforma** (`assistant_team_settings.enabled = false`,
+  ex.: as equipes de revisão das lojas): o líder ainda gera o código (e vê o
+  aviso de IA), mas `assistant_activate_group` responde `team_suspended` e nenhum
+  grupo é ligado; o bot responde que está suspenso e a tela avisa embaixo do botão.
 - **Alavancas da plataforma** (em `assistant_config`, sem tela):
   - `ai_consent_required_from`: fim das tolerâncias. A partir dessa data as
     equipes `pending` ficam `blocked` — o assistente não chama a IA e responde

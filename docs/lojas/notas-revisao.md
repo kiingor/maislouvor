@@ -30,8 +30,8 @@ ficaria no histórico do git. Ela existe só em
 | `{{CONTACT_EMAIL}}` | e-mail de contato para a revisão — **a definir** (ex.: o e-mail de suporte de `platform_settings`) |
 
 Os rótulos entre aspas são os textos da interface em português, como o revisor vai
-vê-los. Eles foram conferidos nas branches de exclusão de conta, moderação do chat,
-termos e consentimento do Asafe; confira de novo depois da integração.
+vê-los. Foram conferidos de novo depois da integração em `feat/conformidade-lojas`
+(exclusão de conta, moderação do chat, termos e consentimento do Asafe).
 
 ---
 
@@ -57,7 +57,7 @@ WHERE TO FIND THE MAIN FEATURES (bottom tab bar: "Cultos", "Repertório", "Iníc
 7. Privacy Policy: https://maislouvor.com/privacidade - Terms of Use: https://maislouvor.com/termos - Support: https://maislouvor.com/suporte. New accounts must accept the Terms and Privacy Policy at sign-up.
 
 ASAFE (OPTIONAL WHATSAPP ASSISTANT)
-"Asafe" is an optional assistant that a team leader can add to the team's WhatsApp group. It is suspended for this demo team: under "Usuário" > "Equipe" you will see "Assistente suspenso nesta equipe", and it does not answer in WhatsApp. No WhatsApp account is needed to review the app. On that screen, "Gerar código de ativação" shows how the assistant works: messages are processed by a third-party AI provider (OpenAI, USA), and the leader must give explicit consent ("Concordo e ativar") before any use.
+"Asafe" is an optional assistant that a team leader can add to the team's WhatsApp group. It is suspended for this demo team: under "Usuário" > "Equipe" you will see "Assistente suspenso nesta equipe", and it does not answer in WhatsApp. No WhatsApp account is needed to review the app. On that screen, "Gerar código de ativação" shows how the assistant works: messages are processed by a third-party AI provider (OpenAI, USA), and the leader must give explicit consent ("Concordo e ativar") before any use. Because the assistant is suspended for this team, a generated code does not activate any WhatsApp group.
 
 OTHER NOTES
 - No in-app purchases and no ads.
@@ -111,7 +111,8 @@ Conferir com a política em `/privacidade` antes de enviar.
   rastreamento entre apps/sites (Apple: "Data Not Used to Track You").
 - **Compartilhamento com terceiros:** provedores de IA contratados (recursos de IA
   do app, como transposição e sugestões); OpenAI (EUA) para o Asafe, só quando o
-  líder ativa e com consentimento; WhatsApp (Meta) para o Asafe; Google, se a pessoa
+  líder ativa (com o aceite dele) e, para os dados de cada pessoa, só com a
+  permissão dela (opt-in; quem já usava fica reconhecido até decidir); WhatsApp (Meta) para o Asafe; Google, se a pessoa
   entrar com Google.
 - **Criptografia em trânsito:** sim (HTTPS).
 - **Exclusão:** sim — no app ("Excluir minha conta") e na web
@@ -145,10 +146,11 @@ Conferir com a política em `/privacidade` antes de enviar.
   oferecer também uma opção equivalente, como "Iniciar sessão com a Apple", no app
   iOS.
 - **Asafe suspenso na equipe de revisão:** o revisor vê o aviso vermelho
-  "Assistente suspenso nesta equipe · Fale com o suporte do +Louvor", mas o
-  número do bot e "Gerar código de ativação" continuam na tela (o banco não confere
-  a suspensão ao gerar o código). As notas explicam isso; se quiser evitar que um
-  revisor ative um grupo de verdade, a entrega do Asafe pode bloquear a geração do
-  código em equipe suspensa.
+  "Assistente suspenso nesta equipe · Fale com o suporte do +Louvor". O número do
+  bot e "Gerar código de ativação" continuam na tela de propósito: gerar o código
+  mostra o aviso de IA e o consentimento ("Concordo e ativar"), que a Apple quer
+  ver (5.1.2(i)). Desde a integração, o código de uma equipe suspensa **não ativa
+  grupo nenhum** (`assistant_activate_group` responde `team_suspended` e o bot diz
+  que está suspenso), e a tela avisa isso embaixo do botão.
 - **Planos e cobrança (Apple 3.1.1):** o app não tem compra dentro dele; se o iOS
   passar a mostrar planos pagos, a cobrança precisa seguir as regras da Apple.
