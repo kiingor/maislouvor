@@ -28,6 +28,7 @@ import { ChatAudioRecorder } from "@/components/ChatAudioRecorder";
 import { ChatMessageBubble } from "@/components/ChatMessageBubble";
 import { ModeratedMessage } from "@/components/chat/ModeratedMessage";
 import { useChatModeration } from "@/components/chat/useChatModeration";
+import { CHAT_MESSAGE_MAX } from "@/lib/chatModeration";
 
 interface Message {
   id: string;
@@ -716,6 +717,7 @@ export default function Chat() {
                       type="text"
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
+                      maxLength={CHAT_MESSAGE_MAX}
                       onKeyDown={handleKeyDown}
                       enterKeyHint="send"
                       aria-label={`Mensagem em ${activeChannelName}`}

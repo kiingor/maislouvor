@@ -116,6 +116,11 @@ try {
       WITH CHECK (bucket_id = 'chat' AND public.is_team_member(auth.uid(), ((storage.foldername(name))[1])::uuid));
     CREATE POLICY "Authenticated can delete own chat media" ON storage.objects FOR DELETE TO authenticated
       USING (bucket_id = 'chat' AND owner = auth.uid());
+    -- Não existe nas migrations; simula um UPDATE liberado (upsert/mover) para
+    -- provar que a policy RESTRICTIVE também segura a prova nesse caminho.
+    GRANT UPDATE ON storage.objects TO authenticated;
+    CREATE POLICY "Simulated: owners can update chat media" ON storage.objects FOR UPDATE TO authenticated
+      USING (bucket_id = 'chat' AND owner = auth.uid());
   `);
 
   const users = Object.keys(U);
@@ -146,7 +151,7 @@ try {
   await fails(`INSERT INTO public.user_blocks(blocker_profile_id, blocked_profile_id) VALUES ('${P.reporter}', '${P.author}')`, '42501');
   await fails(`DELETE FROM public.user_blocks`, '42501');
   await fails(`SELECT public.chat_mask_text('porra')`, '42501');
-  await fails(`SELECT public.chat_can_moderate('${team}', NULL)`, '42501');
+  await fails(`SELECT public.chat_can_moderate('${team}', NULL, false)`, '42501');
   await asAnon();
   await fails(`SELECT public.report_chat_message('${team}', 'spam')`, '42501');
   await fails('SELECT public.list_chat_reports()', '42501');
@@ -166,6 +171,9 @@ try {
     ['Vamos louvar 🙌 hoje às 19h30, Glória a Deus!', null],
     ['O veado e o macaco do zoológico; a bicha de pessoas; a piranha do rio.', null],
     ['Ensaio puxado: Disputa, computação, escuta, cutucar, picolé.', null],
+    ['Retardado o ensaio? Liberação retardada.', null],
+    // Acento combinante digitado separado ("o" + U+0301) não fura o filtro.
+    ['Que po\u0301rra, CARA\u0301LHO!', 'Que *****, *******!'],
   ];
   for (const [input, expected] of filtered) {
     check((await send(U.author, input)).content, expected ?? input, input);
@@ -180,24 +188,49 @@ try {
   await db.exec(`DELETE FROM public.chat_blocked_terms WHERE term = 'tosco'`);
   check((await send(U.author, 'que tosco')).content, 'que tosco');
 
+  // Tamanho: até 4.000 caracteres; o filtro roda em tempo linear (antes era quadrático).
+  const longText = `${'ab '.repeat(1331)}x porra`;
+  check(longText.length, 4000);
+  check((await send(U.author, longText)).content, `${'ab '.repeat(1331)}x *****`);
+  await fails(
+    `INSERT INTO public.messages(team_id, sender_profile_id, content) VALUES ('${team}', '${P.author}', repeat('a', 4001))`,
+    '22001',
+  );
+  await asSystem();
+  const timeMask = async (n) => {
+    const started = performance.now();
+    const masked = await value(`SELECT public.chat_mask_text(repeat('ab ', ${n}) || 'merda') AS result`);
+    check(masked.endsWith('ab *****'), true);
+    return performance.now() - started;
+  };
+  await timeMask(1000); // aquece
+  const small = await timeMask(10000); // 30 mil caracteres
+  const large = await timeMask(40000); // 120 mil caracteres
+  // 4x mais texto não pode custar ~16x (quadrático): folga para a variação da máquina.
+  check(large < Math.max(8 * small, 400), true, `chat_mask_text: 30k=${small.toFixed(0)}ms, 120k=${large.toFixed(0)}ms`);
+
   // ---------------------------------------------------------------- denúncias
   const m1 = await send(U.author, 'Você é um idiota, porra');
   await asUser(U.reporter);
   const r1 = await report(m1.id, 'assedio', '  Isso me ofendeu.  ');
-  check(r1.already_reported, false);
+  check([r1.already_reported, r1.team_name], [false, 'Louvor Alfa']);
   check(sorted(r1.notify_profile_ids), sorted([P.leader, P.leader2]));
   await asSystem();
   const snapshot = (await rows('SELECT * FROM public.chat_reports WHERE id = $1', [r1.id]))[0];
   check([snapshot.team_id, snapshot.message_id, snapshot.reported_profile_id, snapshot.reporter_profile_id, snapshot.status],
     [team, m1.id, P.author, P.reporter, 'aberta']);
-  check([snapshot.message_content, snapshot.message_type, snapshot.details], ['Você é um idiota, *****', 'text', 'Isso me ofendeu.']);
+  check([snapshot.message_content, snapshot.message_type, snapshot.details, snapshot.platform_only],
+    ['Você é um idiota, *****', 'text', 'Isso me ofendeu.', false]);
   let notified = await notificationsFor('chat_report');
   check(sorted(notified.map((n) => n.profile_id)), sorted([P.leader, P.leader2, P.platform]));
   check(notified.some((n) => n.profile_id === P.author || n.profile_id === P.reporter), false);
   const platformNotice = notified.find((n) => n.profile_id === P.platform);
   check([platformNotice.link, platformNotice.team_id], ['/admin/denuncias', null]);
   check(platformNotice.body.startsWith('Louvor Alfa · Assédio ou intimidação'), true);
-  check(notified.filter((n) => n.profile_id !== P.platform).every((n) => n.link === '/app/settings?aba=membros' && n.team_id === team), true);
+  // Liderança: o nome da equipe no texto e a equipe no link (quem lidera duas sabe qual abrir).
+  const leaderNotices = notified.filter((n) => n.profile_id !== P.platform);
+  check(leaderNotices.every((n) => n.link === `/app/settings?aba=membros&equipe=${team}` && n.team_id === team), true);
+  check(leaderNotices.every((n) => n.body === 'Louvor Alfa · Assédio ou intimidação. Analise em até 24 horas.'), true);
   // Quem foi denunciado não vê nada, nem pela própria caixa de notificações.
   await asUser(U.author);
   check((await rows(`SELECT * FROM public.notifications WHERE type = 'chat_report'`)).length, 0);
@@ -224,15 +257,18 @@ try {
   await asUser(U.leader);
   const r2 = await report(m2.id, 'spam');
   check(r2.notify_profile_ids, [P.leader2]);
-  // Denúncia sobre um líder: só o outro líder e a plataforma sabem.
+  // Denúncia sobre um líder: só a plataforma sabe (líderes não julgam uns aos outros).
   const m3 = await send(U.leader2, 'mensagem do líder 2');
   await asUser(U.reporter);
   const r3 = await report(m3.id, 'odio');
-  check(r3.notify_profile_ids, [P.leader]);
+  check(r3.notify_profile_ids, []);
   await asSystem();
-  check((await rows(`SELECT 1 FROM public.notifications WHERE type = 'chat_report' AND profile_id = '${P.leader2}' AND created_at >= (SELECT created_at FROM public.chat_reports WHERE id = '${r3.id}')`)).length, 0);
-  const leader2Notices = await value(`SELECT count(*)::int AS result FROM public.notifications WHERE type = 'chat_report' AND profile_id = '${P.leader2}'`);
-  check(leader2Notices, 2); // r1 e r2, nunca r3
+  check((await rows('SELECT platform_only FROM public.chat_reports WHERE id = $1', [r3.id]))[0].platform_only, true);
+  const noticesFor = (profileId) =>
+    value(`SELECT count(*)::int AS result FROM public.notifications WHERE type = 'chat_report' AND profile_id = '${profileId}'`);
+  check(await noticesFor(P.leader2), 2); // r1 e r2, nunca r3
+  check(await noticesFor(P.leader), 1); // r1 (r2 foi dele; r3 é só da plataforma)
+  check(await noticesFor(P.platform), 3);
 
   // Limite: 10 denúncias por hora por pessoa (r1 e r3 já contam).
   const extra = [];
@@ -256,7 +292,7 @@ try {
   check((await visible(U.reporter)).includes(r2.id), false);
   check(await visible(U.editor), []);
   check(await visible(U.author), []);
-  check(sorted(await visible(U.leader)), sorted(allTeamReports));
+  check(sorted(await visible(U.leader)), sorted(allTeamReports.filter((x) => x !== r3.id)));
   check(sorted(await visible(U.leader2)), sorted(allTeamReports.filter((x) => x !== r3.id)));
   check(await visible(U.other), []);
   check(await visible(U.member2), []);
@@ -264,7 +300,7 @@ try {
 
   await asUser(U.leader);
   let list = await value(`SELECT public.list_chat_reports('${team}') AS result`);
-  check([list.total, list.pending_total, list.overdue_total], [12, 12, 10]);
+  check([list.total, list.pending_total, list.overdue_total], [11, 11, 9]);
   check(list.items[0].team_name, 'Louvor Alfa');
   const listed = list.items.find((item) => item.id === r1.id) ?? (await value(`SELECT public.list_chat_reports('${team}', '', '', 1, 100) AS result`)).items.find((item) => item.id === r1.id);
   check([listed.reporter_name, listed.reported_name, listed.message_exists, listed.reported_is_member, listed.reported_is_owner],
@@ -273,6 +309,7 @@ try {
   await fails('SELECT public.list_chat_reports()', '42501');
   await fails(`SELECT public.list_chat_reports('${team}', 'qualquer')`, '22023');
   await fails(`SELECT public.list_chat_reports('${team}', '', '', 1, 101)`, '22023');
+  check(list.items.some((item) => item.id === r3.id), false);
   await asUser(U.leader2);
   check((await value(`SELECT public.list_chat_reports('${team}', '', '', 1, 100) AS result`)).items.some((item) => item.id === r3.id), false);
   await asUser(U.editor);
@@ -280,6 +317,8 @@ try {
   await asUser(U.platform);
   list = await value(`SELECT public.list_chat_reports(NULL, '', 'alfa', 1, 5) AS result`);
   check([list.total, list.items.length], [12, 5]);
+  const platformView = (await value(`SELECT public.list_chat_reports('${team}', '', '', 1, 100) AS result`)).items;
+  check(platformView.filter((item) => item.platform_only).map((item) => item.id), [r3.id]);
   check((await value(`SELECT public.list_chat_reports(NULL, '', 'beta') AS result`)).total, 0);
 
   // ---------------------------------------------------------------- moderação
@@ -291,7 +330,9 @@ try {
   await fails('SELECT public.moderate_chat_report($1, $2)', '42501', [r1.id, 'resolvida']);
   await asUser(U.leader2);
   await fails('SELECT public.moderate_chat_report($1, $2)', '42501', [r3.id, 'descartada']);
+  // Nem o outro líder fecha a denúncia sobre o colega.
   await asUser(U.leader);
+  await fails('SELECT public.moderate_chat_report($1, $2)', '42501', [r3.id, 'descartada']);
   await fails('SELECT public.moderate_chat_report($1, $2)', '22023', [r1.id, 'aberta']);
   await fails('SELECT public.moderate_chat_report($1, $2, $3)', '22023', [r1.id, 'resolvida', 'x'.repeat(1001)]);
   await fails('SELECT public.moderate_chat_report($1, $2, $3, $4)', '22023', [r1.id, 'em_analise', null, true]);
@@ -307,17 +348,36 @@ try {
   check(moderated.resolution_note, 'Conversei com a pessoa.');
   let feedback = await notificationsFor('chat_report_update');
   check(feedback.map((n) => [n.profile_id, n.link]), [[P.reporter, '/app/chat']]);
+  // Quem denunciou acompanha o status, mas não lê a decisão interna da liderança.
+  await asUser(U.reporter);
+  check((await rows('SELECT status, reason, details, resolved_at IS NOT NULL AS closed FROM public.chat_reports WHERE id = $1', [r1.id]))[0],
+    { status: 'descartada', reason: 'assedio', details: 'Isso me ofendeu.', closed: true });
+  for (const column of ['resolution_note', 'resolved_by', 'member_removed_at', 'message_deleted_role', 'message_content', 'platform_only', '*']) {
+    await fails(`SELECT ${column} FROM public.chat_reports`, '42501');
+  }
+  // A liderança lê a anotação pela RPC, não direto na tabela.
+  await asUser(U.leader);
+  await fails('SELECT resolution_note FROM public.chat_reports', '42501');
+  check((await value(`SELECT public.list_chat_reports('${team}', 'descartada') AS result`)).items.find((item) => item.id === r1.id).resolution_note,
+    'Conversei com a pessoa.');
   // Ação da plataforma fica no histórico administrativo.
   await asUser(U.platform);
   check((await moderate(r3.id, 'descartada', 'Sem violação.')).status, 'descartada');
   await asSystem();
   check(await value(`SELECT count(*)::int AS result FROM public.platform_audit_log WHERE action = 'chat_report_update' AND entity_id = '${r3.id}'`), 1);
   check(await value(`SELECT count(*)::int AS result FROM public.platform_audit_log WHERE action = 'chat_report_update' AND entity_id = '${r1.id}'`), 0);
-  // Responsável pela equipe não sai por aqui.
+  // Responsável pela equipe: denúncia só da plataforma, e ele não sai por aqui.
   const ownerMessage = await send(U.leader, 'mensagem do responsável');
+  await asSystem();
+  const leader2Before = await noticesFor(P.leader2);
   await asUser(U.reporter);
   const r5 = await report(ownerMessage.id, 'ofensivo');
+  check(r5.notify_profile_ids, []);
+  await asSystem();
+  check(await noticesFor(P.leader2), leader2Before);
   await asUser(U.leader2);
+  await fails('SELECT public.moderate_chat_report($1, $2, $3, $4)', '42501', [r5.id, 'resolvida', null, true]);
+  await asUser(U.platform);
   await fails('SELECT public.moderate_chat_report($1, $2, $3, $4)', '22023', [r5.id, 'resolvida', null, true]);
 
   // ---------------------------------------------------------------- bloqueios
@@ -384,8 +444,11 @@ try {
   const photo = `${team}/1700000000000-foto.png`;
   const loosePhoto = `${team}/1700000000001-outra.png`;
   const betaPhoto = `${otherTeam}/1700000000002-beta.png`;
+  const ownPhoto = `${team}/1700000000004-minha.png`;
+  const audioPath = `${team}/1700000000003-audio.webm`;
   await asUser(U.author);
-  await db.exec(`INSERT INTO storage.objects(bucket_id, name, owner) VALUES ('chat', '${photo}', '${U.author}'), ('chat', '${loosePhoto}', '${U.author}')`);
+  await db.exec(`INSERT INTO storage.objects(bucket_id, name, owner) VALUES ('chat', '${photo}', '${U.author}'),
+    ('chat', '${loosePhoto}', '${U.author}'), ('chat', '${ownPhoto}', '${U.author}'), ('chat', '${audioPath}', '${U.author}')`);
   await asUser(U.member2);
   await db.exec(`INSERT INTO storage.objects(bucket_id, name, owner) VALUES ('chat', '${betaPhoto}', '${U.member2}')`);
   await asUser(U.author);
@@ -403,20 +466,32 @@ try {
   check(await storageRows(U.other, `DELETE FROM storage.objects WHERE name = '${photo}' RETURNING name`), []);
   check(await storageRows(U.platform, `DELETE FROM storage.objects WHERE name = '${loosePhoto}' RETURNING name`), []);
   check(await storageRows(U.leader, `DELETE FROM storage.objects WHERE name = '${betaPhoto}' RETURNING name`), []);
+  // Prova de denúncia em aberto: ninguém apaga nem move direto pelo Storage.
+  for (const uid of [U.author, U.leader, U.platform]) {
+    check(await storageRows(uid, `DELETE FROM storage.objects WHERE name = '${photo}' RETURNING name`), [], `apagar a prova como ${uid}`);
+  }
+  check(await storageRows(U.author, `UPDATE storage.objects SET name = '${team}/sumiu.png' WHERE name = '${photo}' RETURNING name`), []);
+  // Arquivo sem denúncia: o autor continua apagando (e movendo) o que é seu.
+  check(await storageRows(U.author, `UPDATE storage.objects SET name = '${ownPhoto}' WHERE name = '${ownPhoto}' RETURNING name`), [ownPhoto]);
+  check(await storageRows(U.author, `DELETE FROM storage.objects WHERE name = '${ownPhoto}' RETURNING name`), [ownPhoto]);
 
   await asUser(U.author);
   check(await del(image.id), { deleted: true, attachment_path: photo, keep_attachment: true });
+  check(await storageRows(U.author, `DELETE FROM storage.objects WHERE name = '${photo}' RETURNING name`), []);
   await asUser(U.leader);
   moderated = await moderate(r6.id, 'resolvida', 'Imagem removida.');
   check(moderated.attachment_to_remove, photo);
   check(await storageRows(U.leader, `DELETE FROM storage.objects WHERE name = '${photo}' RETURNING name`), [photo]);
   check(await storageRows(U.leader, `DELETE FROM storage.objects WHERE name = '${loosePhoto}' RETURNING name`), [loosePhoto]);
   // Denúncia encerrada com a mensagem ainda no ar: o anexo é dela, não sai.
-  const live = await send(U.author, null, { type: 'audio', attachment: `${team}/1700000000003-audio.webm` });
+  const live = await send(U.author, null, { type: 'audio', attachment: audioPath });
   await asUser(U.editor);
   const r7 = await report(live.id, 'spam');
+  check(await storageRows(U.author, `DELETE FROM storage.objects WHERE name = '${audioPath}' RETURNING name`), []);
   await asUser(U.leader);
   check((await moderate(r7.id, 'descartada')).attachment_to_remove, null);
+  // Encerrada a denúncia, o arquivo volta a ser só do autor.
+  check(await storageRows(U.author, `DELETE FROM storage.objects WHERE name = '${audioPath}' RETURNING name`), [audioPath]);
 
   // Remover o autor da equipe ao resolver.
   const r8 = await (async () => { const m = await send(U.author, 'última'); await asUser(U.editor); return report(m.id, 'assedio'); })();
@@ -444,7 +519,7 @@ try {
   await db.exec(`DELETE FROM public.teams WHERE id = '${team}'`);
   check(await value('SELECT count(*)::int AS result FROM public.chat_reports'), 0);
 
-  console.log(`${checks} PostgreSQL checks passed: privileges, content filter, reports, notifications, rate limit, RLS isolation, moderation, blocks, deletion, storage and cascades.`);
+  console.log(`${checks} PostgreSQL checks passed: privileges, content filter (incl. length cap and linear time), reports, notifications, rate limit, RLS isolation, column privileges, leadership reports routed to the platform, moderation, blocks, deletion, storage evidence and cascades.`);
 } finally {
   await db.close();
 }

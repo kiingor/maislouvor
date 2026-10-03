@@ -46,9 +46,14 @@ export const REPORT_RECEIVED_DESCRIPTION = "A liderança e a equipe do +Louvor v
 
 export const REPORT_DETAILS_MAX = 500;
 export const RESOLUTION_NOTE_MAX = 1000;
+/** Tamanho máximo de uma mensagem de texto (o banco recusa acima disso). */
+export const CHAT_MESSAGE_MAX = 4000;
 
-/** Rota da seção "Denúncias" da liderança (aba Membros dos ajustes). */
-export const TEAM_REPORTS_LINK = "/app/settings?aba=membros";
+/**
+ * Rota da seção "Denúncias" da liderança (aba Membros dos ajustes). A equipe vai
+ * junto: quem lidera mais de uma abre direto a equipe da denúncia.
+ */
+export const teamReportsLink = (teamId: string) => `/app/settings?aba=membros&equipe=${encodeURIComponent(teamId)}`;
 
 export interface ChatReport {
   id: string;
@@ -66,6 +71,8 @@ export interface ChatReport {
   reason: ChatReportReason;
   details: string | null;
   status: ChatReportStatus;
+  /** Sobre alguém da liderança: só a plataforma vê e decide. */
+  platform_only?: boolean;
   created_at: string;
   updated_at: string;
   resolved_at: string | null;
@@ -102,6 +109,7 @@ export interface ReportResult {
   already_reported: boolean;
   /** Liderança da equipe que recebeu o aviso (para o push). */
   notify_profile_ids: string[];
+  team_name?: string | null;
 }
 
 export type ModerationAction = Exclude<ChatReportStatus, "aberta">;

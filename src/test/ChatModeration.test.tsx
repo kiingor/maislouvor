@@ -67,7 +67,10 @@ const message = {
 
 describe("ReportMessageDialog", () => {
   it("sends the reason and details, confirms with the 24-hour notice and pushes to the leaders", async () => {
-    mocks.rpc.mockResolvedValue({ data: { id: "rep-1", already_reported: false, notify_profile_ids: ["leader-1"] }, error: null });
+    mocks.rpc.mockResolvedValue({
+      data: { id: "rep-1", already_reported: false, notify_profile_ids: ["leader-1"], team_name: "Louvor Alfa" },
+      error: null,
+    });
     const onOpenChange = vi.fn();
     withQuery(<ReportMessageDialog open onOpenChange={onOpenChange} message={message} teamId="team-1" />);
 
@@ -93,7 +96,13 @@ describe("ReportMessageDialog", () => {
       "Recebemos sua denúncia. A liderança e a equipe do +Louvor vão analisar em até 24 horas.",
     );
     expect(mocks.firePush).toHaveBeenCalledWith("team-1", [
-      expect.objectContaining({ profile_id: "leader-1", title: "Nova denúncia no chat", link: "/app/settings?aba=membros" }),
+      // Com a equipe no texto e no link: quem lidera duas equipes abre a certa.
+      expect.objectContaining({
+        profile_id: "leader-1",
+        title: "Nova denúncia no chat",
+        body: "Louvor Alfa · Analise em até 24 horas.",
+        link: "/app/settings?aba=membros&equipe=team-1",
+      }),
     ]);
     // O push não leva o conteúdo denunciado.
     expect(JSON.stringify(mocks.firePush.mock.calls)).not.toContain("Mensagem ofensiva");

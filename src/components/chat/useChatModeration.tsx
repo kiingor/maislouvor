@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,24 +16,11 @@ import {
   chatModerationError,
   deleteChatMessage,
   firstName,
-  listBlockedUsers,
   unblockUser,
 } from "@/lib/chatModeration";
 import { ReportMessageDialog, type ReportTarget } from "./ReportMessageDialog";
 import type { ModeratedMessageProps } from "./ModeratedMessage";
-
-/** Chave da lista de bloqueados (Chat e Ajustes › Usuários bloqueados usam a mesma). */
-export const blockedUsersKey = (profileId: string | null) => ["chat-blocks", profileId] as const;
-
-/** Lista de pessoas que eu bloqueei. */
-export function useBlockedUsers(profileId: string | null) {
-  return useQuery({
-    queryKey: blockedUsersKey(profileId),
-    queryFn: listBlockedUsers,
-    enabled: !!profileId,
-    staleTime: 60_000,
-  });
-}
+import { useBlockedIds } from "./useBlockedUsers";
 
 interface ChatMessageLike {
   id: string;
@@ -60,8 +47,7 @@ type Target = ReportTarget;
 export function useChatModeration({ teamId, profileId, isTeamAdmin, onDeleted }: Options) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const blocks = useBlockedUsers(profileId);
-  const blockedIds = useMemo(() => new Set((blocks.data ?? []).map((b) => b.profile_id)), [blocks.data]);
+  const { ids: blockedIds } = useBlockedIds(profileId);
   const [reportTarget, setReportTarget] = useState<Target | null>(null);
   const [blockTarget, setBlockTarget] = useState<Target | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<(Target & { isMe: boolean }) | null>(null);
@@ -143,7 +129,7 @@ export function useChatModeration({ teamId, profileId, isTeamAdmin, onDeleted }:
             <AlertDialogTitle>Bloquear {blockName}?</AlertDialogTitle>
             <AlertDialogDescription>
               As mensagens de {blockName} ficam ocultas para você no chat. Essa pessoa não é avisada. Para desfazer,
-              vá em Ajustes › Meu usuário › Usuários bloqueados.
+              vá em Usuário › Meu usuário › Usuários bloqueados.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

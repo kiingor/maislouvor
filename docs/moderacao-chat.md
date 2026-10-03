@@ -17,37 +17,47 @@ Teste: `supabase/tests/chat_moderation.mjs` (PGlite).
   Confirmação: "Recebemos sua denúncia. A liderança e a equipe do +Louvor vão
   analisar em até 24 horas." Quem foi denunciado não é avisado.
 - Mensagens de quem a pessoa bloqueou aparecem recolhidas ("Mensagem de usuário
-  bloqueado"), com *Mostrar* e *Desbloquear*. Lista completa em
-  Ajustes › Meu usuário › **Usuários bloqueados**.
+  bloqueado"), com *Mostrar* e *Desbloquear*, e somem da "Atividade da equipe" no
+  Início. Lista completa em Usuário › Meu usuário › **Usuários bloqueados**.
+- Mensagens de texto têm no máximo 4.000 caracteres (o compositor e o banco limitam).
 
 ## Quem analisa
 
 | Quem | Onde | Recebe aviso |
 |---|---|---|
-| Liderança da equipe (papel `admin`) | Ajustes › Membros › **Denúncias do chat** | Notificação no app + push |
+| Liderança da equipe (papel `admin`) | Usuário › Membros › **Denúncias do chat** | Notificação no app + push |
 | Administradores da plataforma | Gerenciador › **Denúncias** (`/admin/denuncias`) | Notificação no app |
 
-- Denúncias sobre um líder não aparecem para ele: ficam com o outro líder (se houver)
-  e com a plataforma.
+- O aviso traz o nome da equipe, e o link (`/app/settings?aba=membros&equipe=<id>`)
+  troca para a equipe da denúncia antes de abrir a aba Membros.
+- Denúncias sobre alguém da liderança (papel `admin` ou responsável pela equipe, no
+  momento da denúncia: `chat_reports.platform_only`) ficam **só com a plataforma**:
+  nenhum líder vê, é avisado ou fecha — líderes não julgam uns aos outros.
 - Ações: *Em análise*, *Resolver* (anotação interna e, opcionalmente, remover o autor
   da equipe — nunca o responsável pela equipe), *Descartar* e *Apagar mensagem*.
-- Ao encerrar, quem denunciou recebe "Sua denúncia foi analisada", sem detalhes.
+- Ao encerrar, quem denunciou recebe "Sua denúncia foi analisada", sem detalhes. Pela
+  tabela, quem denunciou só lê o status das próprias denúncias: anotação, quem resolveu
+  e a cópia da mensagem só saem por `list_chat_reports`, para quem modera.
 - Ações da plataforma ficam em `platform_audit_log`
   (`chat_report_update`, `chat_message_delete`).
 - Denúncias abertas há mais de 24 horas aparecem como **Prazo vencido**.
 
 ## Provas
 
-A denúncia guarda uma cópia da mensagem (texto, tipo e caminho do anexo). Se a
-mensagem for apagada enquanto a denúncia estiver aberta, o anexo continua no Storage;
-ao resolver ou descartar, o app apaga o arquivo que não for mais prova de nada.
+A denúncia guarda uma cópia da mensagem (texto, tipo e caminho do anexo). Enquanto a
+denúncia estiver aberta ou em análise, o anexo não pode ser apagado nem movido pelo
+Storage — nem pelo autor, nem pela liderança, nem pela plataforma (policy RESTRICTIVE
+em `storage.objects`). Ao resolver ou descartar, o app apaga o arquivo que não for mais
+prova de nada.
 
 ## Filtro de palavras
 
 Trigger em `messages` troca por asteriscos palavras inteiras da tabela
 `chat_blocked_terms` (sem diferenciar maiúsculas e acentos; pega plural, letras
 repetidas e números no lugar de letras). Palavras que só contêm o termo
-(*computador*, *disputa*, *cuidado*) não são afetadas. Termos ambíguos ficaram de fora.
+(*computador*, *disputa*, *cuidado*) não são afetadas. Termos ambíguos ficaram de fora
+(*veado*, *macaco*, *bicha*, *retardado* — "efeito retardado"...). Acentos digitados
+separados (combinantes) também são reconhecidos.
 
 Para incluir um termo (sem acento, minúsculo; vale para mensagens novas):
 
@@ -59,3 +69,5 @@ INSERT INTO public.chat_blocked_terms(term) VALUES ('novotermo');
 
 - 10 denúncias por pessoa por hora; denunciar de novo a mesma mensagem não duplica.
 - Só dá para bloquear quem está em alguma equipe em comum.
+- O responsável pela equipe não pode ser removido dela por uma denúncia (nem pela
+  plataforma): a mensagem pode ser apagada, mas suspender a conta ainda não existe.

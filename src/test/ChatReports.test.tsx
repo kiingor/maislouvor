@@ -57,7 +57,7 @@ describe("TeamChatReports", () => {
     expect(within(item).getByText("Você é um *****")).toBeInTheDocument();
     expect(within(item).getByText("Prazo vencido")).toBeInTheDocument();
     expect(within(item).getByText(/Denunciada por Bia Lima/)).toBeInTheDocument();
-    expect(screen.getByText(/1 passaram do prazo de 24 horas/)).toBeInTheDocument();
+    expect(screen.getByText(/1 passou do prazo de 24 horas/)).toBeInTheDocument();
     expect(mocks.rpc).toHaveBeenCalledWith("list_chat_reports", {
       p_team_id: "team-1", p_status: "pendentes", p_search: "", p_page: 1, p_page_size: 50,
     });
@@ -104,6 +104,15 @@ describe("TeamChatReports", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Resolver" }));
     expect(await screen.findByText(/é o responsável pela equipe e não pode ser removido/)).toBeInTheDocument();
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+
+  it("pluralizes the overdue count", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: { ...page([report(), report({ id: "rep-2" }), report({ id: "rep-3" })]), overdue_total: 3 },
+      error: null,
+    });
+    withQuery(<TeamChatReports teamId="team-1" />);
+    expect(await screen.findByText(/3 passaram do prazo de 24 horas/)).toBeInTheDocument();
   });
 });
 

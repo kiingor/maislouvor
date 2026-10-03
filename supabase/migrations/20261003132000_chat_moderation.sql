@@ -2,13 +2,16 @@
 -- Google Play — política de UGC com denúncia dentro do app).
 --
 --   1. Filtro de conteúdo ofensivo: trigger em messages mascara palavras de uma
---      lista (chat_blocked_terms), por palavra inteira e sem diferenciar acentos.
+--      lista (chat_blocked_terms), por palavra inteira e sem diferenciar acentos;
+--      mensagens de texto têm no máximo 4.000 caracteres.
 --   2. Denúncias (chat_reports): só pela RPC report_chat_message, com limite por
 --      hora, cópia da mensagem no momento da denúncia e aviso à liderança e aos
---      administradores da plataforma — nunca a quem foi denunciado.
+--      administradores da plataforma — nunca a quem foi denunciado. Denúncias
+--      sobre alguém da liderança ficam só com a plataforma.
 --   3. Bloqueios (user_blocks): cada pessoa vê e mexe só nos próprios.
 --   4. Apagar mensagens: o autor apaga as suas; a liderança (e a plataforma)
---      apaga qualquer uma da equipe, inclusive o anexo no Storage.
+--      apaga qualquer uma da equipe, inclusive o anexo no Storage — menos o
+--      anexo que é prova de denúncia em aberto.
 --
 -- Depende de 20260930010000_platform_admin_and_support.sql (is_platform_admin,
 -- platform_admins, platform_audit_log). Escritas só por RPC: nenhum cliente
@@ -20,7 +23,8 @@
 
 -- Lista conservadora: só palavras que quase sempre são xingamento ou ofensa.
 -- Termos ambíguos (veado, macaco, bicha, piranha, rola, pica, arrombado,
--- crioulo...) ficam de fora para não mascarar frases comuns. Para ampliar:
+-- crioulo, retardado — "efeito retardado"...) ficam de fora para não mascarar
+-- frases comuns. Para ampliar:
 --   INSERT INTO public.chat_blocked_terms(term) VALUES ('novotermo');
 -- O termo é gravado sem acento e em minúsculas; vale para mensagens novas.
 CREATE TABLE IF NOT EXISTS public.chat_blocked_terms (
@@ -41,12 +45,11 @@ INSERT INTO public.chat_blocked_terms(term) VALUES
   ('otario'), ('otaria'), ('corno'),
   -- ofensas contra grupos (homofobia, transfobia, capacitismo)
   ('viado'), ('viadinho'), ('viadao'), ('boiola'), ('baitola'), ('bichona'), ('traveco'),
-  ('sapatao'), ('retardado'), ('retardada'), ('mongoloide')
+  ('sapatao'), ('mongoloide')
 ON CONFLICT (term) DO NOTHING;
 
--- Minúsculas sem acento, caractere por caractere: o resultado tem o MESMO
--- comprimento do texto original, então as posições das palavras encontradas
--- no texto dobrado valem para o original (não depende do locale do banco).
+-- Minúsculas sem acento, caractere por caractere (translate: não depende do
+-- locale do banco).
 CREATE OR REPLACE FUNCTION public.chat_fold_text(p_text text) RETURNS text
 LANGUAGE sql IMMUTABLE PARALLEL SAFE SET search_path = '' AS $$
   SELECT translate(p_text,
@@ -54,50 +57,53 @@ LANGUAGE sql IMMUTABLE PARALLEL SAFE SET search_path = '' AS $$
     'abcdefghijklmnopqrstuvwxyzaaaaaaaaaaaaeeeeeeeeiiiiiiiioooooooooouuuuuuuuccnnyyy')
 $$;
 
--- Chave de comparação de uma palavra já dobrada: números usados como letras
+-- Chave de comparação de uma palavra: sem acentos (inclusive os combinantes,
+-- U+0300–U+036F, de quem digita "o" + "´" separados), números usados como letras
 -- (p0rra) viram letras e letras repetidas (porrrraaa) contam uma vez só.
 CREATE OR REPLACE FUNCTION public.chat_term_key(p_word text) RETURNS text
-LANGUAGE sql IMMUTABLE PARALLEL SAFE SET search_path = '' AS $$
-  SELECT regexp_replace(translate(public.chat_fold_text(p_word), '013457', 'oieast'), '(.)\1+', '\1', 'g')
+LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE SET search_path = '' AS $$
+  SELECT regexp_replace(
+    translate(public.chat_fold_text(regexp_replace(p_word, '[\u0300-\u036f]', '', 'g')), '013457', 'oieast'),
+    '(.)\1+', '\1', 'g')
 $$;
 
 -- Troca por asteriscos cada palavra inteira da lista (ou o plural com "s").
 -- Palavras que só contêm um termo (computador, disputa, cuidado) ficam intactas.
+-- Palavra = letras e números (com os acentos que chat_fold_text conhece) e acentos
+-- combinantes; o resto separa. Uma passada só pelo texto (regexp_matches +
+-- string_agg): concatenar token a token deixava mensagens longas quadráticas.
 CREATE OR REPLACE FUNCTION public.chat_mask_text(p_text text) RETURNS text
 LANGUAGE plpgsql STABLE SET search_path = '' AS $$
 DECLARE
+  c_word constant text := 'A-Za-z0-9ÁÀÂÃÄÅáàâãäåÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñÝýÿ\u0300-\u036f';
   v_terms text[];
-  v_folded text;
-  v_out text := '';
-  v_pos integer := 1;
-  v_token text;
-  v_len integer;
-  v_key text;
 BEGIN
   IF p_text IS NULL OR p_text = '' THEN RETURN p_text; END IF;
   SELECT coalesce(array_agg(DISTINCT public.chat_term_key(term)), '{}') INTO v_terms FROM public.chat_blocked_terms;
-  v_folded := public.chat_fold_text(p_text);
-  IF cardinality(v_terms) = 0 OR length(v_folded) <> length(p_text) THEN RETURN p_text; END IF;
-  FOR v_token IN
-    SELECT (t.m)[1] FROM regexp_matches(v_folded, '([a-z0-9]+|[^a-z0-9]+)', 'g') WITH ORDINALITY AS t(m, n) ORDER BY t.n
-  LOOP
-    v_len := length(v_token);
-    v_key := CASE WHEN v_token ~ '^[a-z0-9]' THEN public.chat_term_key(v_token) END;
-    IF v_key IS NOT NULL AND (v_key = ANY (v_terms) OR (v_key ~ '.s$' AND left(v_key, -1) = ANY (v_terms))) THEN
-      v_out := v_out || repeat('*', v_len);
-    ELSE
-      v_out := v_out || substr(p_text, v_pos, v_len);
-    END IF;
-    v_pos := v_pos + v_len;
-  END LOOP;
-  RETURN v_out;
+  IF cardinality(v_terms) = 0 THEN RETURN p_text; END IF;
+  RETURN coalesce((
+    SELECT string_agg(CASE
+        WHEN t.key = ANY (v_terms) OR (t.key ~ '.s$' AND left(t.key, -1) = ANY (v_terms))
+          THEN repeat('*', length(regexp_replace(t.token, '[\u0300-\u036f]', '', 'g')))
+        ELSE t.token END, '' ORDER BY t.n)
+    FROM (
+      -- (m.g)[2] só vem preenchido quando o pedaço é uma palavra.
+      SELECT m.n, (m.g)[1] AS token, public.chat_term_key((m.g)[2]) AS key
+      FROM regexp_matches(p_text, '(([' || c_word || ']+)|[^' || c_word || ']+)', 'g') WITH ORDINALITY AS m(g, n)
+    ) t
+  ), p_text);
 END;
 $$;
 
+-- Teto de tamanho (o compositor do app limita igual): sem ele, um texto gigante
+-- prende o banco no filtro e no Realtime de todos.
 CREATE OR REPLACE FUNCTION public.chat_filter_message() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 BEGIN
   IF NEW.content IS NOT NULL THEN
+    IF length(NEW.content) > 4000 THEN
+      RAISE EXCEPTION 'A mensagem pode ter até 4.000 caracteres.' USING ERRCODE = '22001';
+    END IF;
     NEW.content := public.chat_mask_text(NEW.content);
   END IF;
   RETURN NEW;
@@ -124,6 +130,9 @@ CREATE TABLE IF NOT EXISTS public.chat_reports (
   reason text NOT NULL CHECK (reason IN ('ofensivo', 'assedio', 'odio', 'sexual', 'spam', 'direitos_autorais', 'outro')),
   details text CHECK (details IS NULL OR length(details) <= 500),
   status text NOT NULL DEFAULT 'aberta' CHECK (status IN ('aberta', 'em_analise', 'resolvida', 'descartada')),
+  -- Denúncia sobre alguém da liderança (ou o responsável pela equipe) no momento
+  -- da denúncia: só a plataforma vê e decide, para líderes não julgarem uns aos outros.
+  platform_only boolean NOT NULL DEFAULT false,
   message_type text NOT NULL DEFAULT 'text',
   message_content text,
   message_attachment_path text,
@@ -152,26 +161,32 @@ CREATE UNIQUE INDEX IF NOT EXISTS chat_reports_once_idx ON public.chat_reports(r
 
 ALTER TABLE public.chat_reports ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.chat_reports FROM PUBLIC, anon, authenticated;
-GRANT SELECT ON public.chat_reports TO authenticated;
+-- Leitura direta só das colunas sem decisão interna: anotação, quem resolveu,
+-- remoção do autor e a cópia da mensagem ficam para list_chat_reports (moderadores).
+-- O app lê tudo pelas RPCs; isto é para quem denunciou acompanhar o status.
+GRANT SELECT (id, team_id, message_id, reason, details, status, created_at, resolved_at)
+  ON public.chat_reports TO authenticated;
 GRANT ALL ON public.chat_reports TO service_role;
 
 -- Quem denunciou vê as próprias denúncias; a liderança vê as da equipe, menos
--- as que são sobre ela mesma (essas ficam com a plataforma); a plataforma vê todas.
+-- as que são sobre alguém da liderança (essas ficam com a plataforma); a
+-- plataforma vê todas.
 DROP POLICY IF EXISTS "Chat reports: reporter, team leaders and platform" ON public.chat_reports;
 CREATE POLICY "Chat reports: reporter, team leaders and platform" ON public.chat_reports
   FOR SELECT TO authenticated USING (
     reporter_profile_id = (SELECT public.get_my_profile_id())
     OR (SELECT public.is_platform_admin())
-    OR (public.has_team_role((SELECT auth.uid()), team_id, 'admin')
+    OR (NOT platform_only AND public.has_team_role((SELECT auth.uid()), team_id, 'admin')
         AND reported_profile_id IS DISTINCT FROM (SELECT public.get_my_profile_id()))
   );
 
 -- Mesma regra da policy, para as RPCs de leitura e moderação.
-CREATE OR REPLACE FUNCTION public.chat_can_moderate(p_team_id uuid, p_reported_profile_id uuid) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DROP FUNCTION IF EXISTS public.chat_can_moderate(uuid, uuid);
+CREATE OR REPLACE FUNCTION public.chat_can_moderate(p_team_id uuid, p_reported_profile_id uuid, p_platform_only boolean)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
   SELECT auth.uid() IS NOT NULL AND (
     public.is_platform_admin()
-    OR (public.has_team_role(auth.uid(), p_team_id, 'admin')
+    OR (NOT coalesce(p_platform_only, true) AND public.has_team_role(auth.uid(), p_team_id, 'admin')
         AND p_reported_profile_id IS DISTINCT FROM public.get_my_profile_id())
   )
 $$;
@@ -196,6 +211,8 @@ DECLARE
   v_details text := nullif(btrim(p_details), '');
   v_id uuid;
   v_team_name text;
+  v_body text;
+  v_platform_only boolean;
   v_team_admins uuid[];
 BEGIN
   IF auth.uid() IS NULL OR v_profile IS NULL THEN
@@ -227,37 +244,44 @@ BEGIN
     RAISE EXCEPTION 'Você enviou muitas denúncias em pouco tempo. Tente novamente em uma hora.' USING ERRCODE = 'P0001';
   END IF;
 
+  SELECT name, owner_id = v_msg.sender_profile_id INTO v_team_name, v_platform_only
+  FROM public.teams WHERE id = v_msg.team_id;
+  v_platform_only := coalesce(v_platform_only, false) OR EXISTS (
+    SELECT 1 FROM public.team_members tm
+    WHERE tm.team_id = v_msg.team_id AND tm.profile_id = v_msg.sender_profile_id AND tm.role = 'admin');
+
   INSERT INTO public.chat_reports(team_id, message_id, reported_profile_id, reporter_profile_id, reason, details,
-    message_type, message_content, message_attachment_path, message_created_at)
+    platform_only, message_type, message_content, message_attachment_path, message_created_at)
   VALUES (v_msg.team_id, v_msg.id, v_msg.sender_profile_id, v_profile, p_reason, v_details,
-    coalesce(v_msg.message_type, 'text'), v_msg.content, v_msg.attachment_path, v_msg.created_at)
+    v_platform_only, coalesce(v_msg.message_type, 'text'), v_msg.content, v_msg.attachment_path, v_msg.created_at)
   RETURNING id INTO v_id;
 
   -- Avisos: administradores da plataforma (fila /admin/denuncias) e liderança da
-  -- equipe. Quem foi denunciado nunca recebe; quem denunciou também não.
-  SELECT name INTO v_team_name FROM public.teams WHERE id = v_msg.team_id;
+  -- equipe (exceto quando a denúncia é sobre a liderança). Quem foi denunciado
+  -- nunca recebe; quem denunciou também não. O nome da equipe vai no texto: um
+  -- líder de duas equipes sabe de qual se trata.
+  v_body := coalesce(v_team_name, 'Equipe') || ' · ' || public.chat_report_reason_label(p_reason) || '. Analise em até 24 horas.';
   INSERT INTO public.notifications(profile_id, type, title, body, link, team_id)
-  SELECT DISTINCT p.id, 'chat_report', 'Nova denúncia no chat',
-    coalesce(v_team_name, 'Equipe') || ' · ' || public.chat_report_reason_label(p_reason) || '. Analise em até 24 horas.',
-    '/admin/denuncias', NULL::uuid
+  SELECT DISTINCT p.id, 'chat_report', 'Nova denúncia no chat', v_body, '/admin/denuncias', NULL::uuid
   FROM public.platform_admins pa JOIN public.profiles p ON p.user_id = pa.user_id
   WHERE p.id <> v_msg.sender_profile_id AND p.id <> v_profile;
 
   SELECT coalesce(array_agg(tm.profile_id), '{}') INTO v_team_admins
   FROM public.team_members tm
-  WHERE tm.team_id = v_msg.team_id AND tm.role = 'admin'
+  WHERE NOT v_platform_only AND tm.team_id = v_msg.team_id AND tm.role = 'admin'
     AND tm.profile_id <> v_msg.sender_profile_id AND tm.profile_id <> v_profile;
 
+  -- ?equipe=: o app troca para a equipe certa antes de abrir a aba Membros.
   INSERT INTO public.notifications(profile_id, type, title, body, link, team_id)
-  SELECT a, 'chat_report', 'Nova denúncia no chat',
-    'Motivo: ' || public.chat_report_reason_label(p_reason) || '. Analise em até 24 horas.',
-    '/app/settings?aba=membros', v_msg.team_id
+  SELECT a, 'chat_report', 'Nova denúncia no chat', v_body,
+    '/app/settings?aba=membros&equipe=' || v_msg.team_id::text, v_msg.team_id
   FROM unnest(v_team_admins) AS a
   -- Quem também é administrador da plataforma já recebeu o aviso acima.
   WHERE NOT EXISTS (SELECT 1 FROM public.platform_admins pa JOIN public.profiles p ON p.user_id = pa.user_id WHERE p.id = a);
 
   -- notify_profile_ids: liderança da equipe, para o push (send-push só entrega a membros).
-  RETURN jsonb_build_object('id', v_id, 'already_reported', false, 'notify_profile_ids', to_jsonb(v_team_admins));
+  RETURN jsonb_build_object('id', v_id, 'already_reported', false, 'notify_profile_ids', to_jsonb(v_team_admins),
+    'team_name', v_team_name);
 END;
 $$;
 
@@ -286,12 +310,12 @@ BEGIN
   WITH visible AS (
     SELECT r.* FROM public.chat_reports r
     WHERE (p_team_id IS NULL OR r.team_id = p_team_id)
-      AND (v_platform OR r.reported_profile_id IS DISTINCT FROM v_profile)
+      AND (v_platform OR (NOT r.platform_only AND r.reported_profile_id IS DISTINCT FROM v_profile))
   ), filtered AS (
     SELECT r.id, r.team_id, team.name AS team_name, r.message_id, (r.message_id IS NOT NULL) AS message_exists,
       r.message_type, r.message_content, r.message_attachment_path, r.message_created_at,
       r.message_deleted_at, r.message_deleted_role, r.member_removed_at,
-      r.reason, r.details, r.status, r.created_at, r.updated_at, r.resolved_at, r.resolution_note,
+      r.reason, r.details, r.status, r.platform_only, r.created_at, r.updated_at, r.resolved_at, r.resolution_note,
       r.reporter_profile_id, reporter.full_name AS reporter_name,
       r.reported_profile_id, reported.full_name AS reported_name, reported.avatar_url AS reported_avatar_url,
       EXISTS (SELECT 1 FROM public.team_members tm WHERE tm.team_id = r.team_id AND tm.profile_id = r.reported_profile_id) AS reported_is_member,
@@ -338,7 +362,8 @@ DECLARE
   v_closing boolean;
 BEGIN
   SELECT * INTO v_report FROM public.chat_reports WHERE id = p_report_id FOR UPDATE;
-  IF v_report.id IS NULL OR v_profile IS NULL OR NOT public.chat_can_moderate(v_report.team_id, v_report.reported_profile_id) THEN
+  IF v_report.id IS NULL OR v_profile IS NULL
+     OR NOT public.chat_can_moderate(v_report.team_id, v_report.reported_profile_id, v_report.platform_only) THEN
     RAISE EXCEPTION 'Denúncia não encontrada ou sem permissão de acesso.' USING ERRCODE = '42501';
   END IF;
   IF p_status IS NULL OR p_status NOT IN ('em_analise', 'resolvida', 'descartada') THEN
@@ -535,6 +560,15 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
   )
 $$;
 
+-- Anexo que é prova de denúncia em aberto (aberta ou em análise).
+CREATE OR REPLACE FUNCTION public.chat_media_has_open_report(p_name text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.chat_reports
+    WHERE message_attachment_path = p_name AND status IN ('aberta', 'em_analise')
+  )
+$$;
+
 -- Storage: o autor já apaga os próprios arquivos ("Authenticated can delete own
 -- chat media"). Agora a liderança apaga os da pasta da equipe e a plataforma vê e
 -- apaga os anexos denunciados.
@@ -550,6 +584,17 @@ DROP POLICY IF EXISTS "Platform admins can delete reported chat media" ON storag
 CREATE POLICY "Platform admins can delete reported chat media" ON storage.objects
   FOR DELETE TO authenticated
   USING (bucket_id = 'chat' AND public.chat_media_is_reported(name));
+-- Prova não some: enquanto a denúncia estiver em aberto, ninguém apaga nem move
+-- o anexo direto pelo Storage — nem o autor, nem a liderança, nem a plataforma.
+-- RESTRICTIVE: vale por cima das policies acima (e das antigas do autor).
+DROP POLICY IF EXISTS "Chat media under open report cannot be deleted" ON storage.objects;
+CREATE POLICY "Chat media under open report cannot be deleted" ON storage.objects
+  AS RESTRICTIVE FOR DELETE TO authenticated
+  USING (bucket_id IS DISTINCT FROM 'chat' OR NOT public.chat_media_has_open_report(name));
+DROP POLICY IF EXISTS "Chat media under open report cannot be changed" ON storage.objects;
+CREATE POLICY "Chat media under open report cannot be changed" ON storage.objects
+  AS RESTRICTIVE FOR UPDATE TO authenticated
+  USING (bucket_id IS DISTINCT FROM 'chat' OR NOT public.chat_media_has_open_report(name));
 
 -- ---------------------------------------------------------------------------
 -- Permissões das funções (os default privileges do Supabase dão EXECUTE a todos)
@@ -558,15 +603,15 @@ CREATE POLICY "Platform admins can delete reported chat media" ON storage.object
 REVOKE ALL ON FUNCTION
   public.chat_fold_text(text), public.chat_term_key(text), public.chat_mask_text(text),
   public.chat_filter_message(), public.chat_track_reported_message_delete(),
-  public.chat_can_moderate(uuid, uuid), public.chat_report_reason_label(text),
-  public.chat_media_team_id(text), public.chat_media_is_reported(text),
+  public.chat_can_moderate(uuid, uuid, boolean), public.chat_report_reason_label(text),
+  public.chat_media_team_id(text), public.chat_media_is_reported(text), public.chat_media_has_open_report(text),
   public.report_chat_message(uuid, text, text), public.list_chat_reports(uuid, text, text, integer, integer),
   public.moderate_chat_report(uuid, text, text, boolean), public.delete_chat_message(uuid),
   public.block_user(uuid), public.unblock_user(uuid), public.list_blocked_users()
   FROM PUBLIC, anon, authenticated;
--- As duas primeiras são usadas pelas policies do Storage (avaliadas como o usuário).
+-- As três primeiras são usadas pelas policies do Storage (avaliadas como o usuário).
 GRANT EXECUTE ON FUNCTION
-  public.chat_media_team_id(text), public.chat_media_is_reported(text),
+  public.chat_media_team_id(text), public.chat_media_is_reported(text), public.chat_media_has_open_report(text),
   public.report_chat_message(uuid, text, text), public.list_chat_reports(uuid, text, text, integer, integer),
   public.moderate_chat_report(uuid, text, text, boolean), public.delete_chat_message(uuid),
   public.block_user(uuid), public.unblock_user(uuid), public.list_blocked_users()

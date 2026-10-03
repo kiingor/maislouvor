@@ -9,12 +9,12 @@ import {
   REPORT_REASONS,
   REPORT_RECEIVED_DESCRIPTION,
   REPORT_RECEIVED_TITLE,
-  TEAM_REPORTS_LINK,
   blockUser,
   chatModerationError,
   firstName,
   messagePreview,
   reportChatMessage,
+  teamReportsLink,
   type ChatReportReason,
 } from "@/lib/chatModeration";
 
@@ -79,15 +79,17 @@ export function ReportMessageDialog({ open, onOpenChange, message, teamId, alrea
         }
       }
       toast({ title: REPORT_RECEIVED_TITLE, description: REPORT_RECEIVED_DESCRIPTION });
-      // Push para a liderança; o aviso no app já foi criado pela RPC. Sem conteúdo da mensagem.
+      // Push para a liderança; o aviso no app já foi criado pela RPC. Sem conteúdo da
+      // mensagem; com o nome da equipe, para quem lidera mais de uma.
       if (teamId && !result.already_reported && result.notify_profile_ids?.length) {
+        const body = result.team_name ? `${result.team_name} · Analise em até 24 horas.` : "Analise em até 24 horas.";
         void firePush(
           teamId,
           result.notify_profile_ids.map((profileId) => ({
             profile_id: profileId,
             title: "Nova denúncia no chat",
-            body: "Analise em até 24 horas.",
-            link: TEAM_REPORTS_LINK,
+            body,
+            link: teamReportsLink(teamId),
           })),
         );
       }

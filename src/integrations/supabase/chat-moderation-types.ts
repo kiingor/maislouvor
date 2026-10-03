@@ -10,14 +10,12 @@ export type ChatReportStatus = "aberta" | "em_analise" | "resolvida" | "descarta
 export type ChatDeletedRole = "autor" | "lideranca" | "plataforma" | "sistema";
 
 export type ChatModerationTables = {
+  // Só as colunas que o cliente pode ler direto (GRANT por coluna). A decisão
+  // interna e a cópia da mensagem vêm de list_chat_reports.
   chat_reports: ReadOnlyTable<{
     id: string; team_id: string; message_id: string | null;
-    reported_profile_id: string | null; reporter_profile_id: string | null;
     reason: ChatReportReason; details: string | null; status: ChatReportStatus;
-    message_type: string; message_content: string | null; message_attachment_path: string | null;
-    message_created_at: string | null; message_deleted_at: string | null; message_deleted_role: ChatDeletedRole | null;
-    member_removed_at: string | null; created_at: string; updated_at: string;
-    resolved_at: string | null; resolved_by: string | null; resolution_note: string | null;
+    created_at: string; resolved_at: string | null;
   }>;
   user_blocks: ReadOnlyTable<{ blocker_profile_id: string; blocked_profile_id: string; created_at: string }>;
 };

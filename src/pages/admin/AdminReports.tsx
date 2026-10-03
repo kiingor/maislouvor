@@ -17,7 +17,7 @@ const PAGE_SIZE = 20;
 
 /**
  * Denúncias do chat de todas as equipes (App Store 1.2: agir em até 24 horas).
- * A plataforma vê também as denúncias sobre líderes, que a liderança não vê.
+ * Denúncias sobre alguém da liderança (ou o responsável) só a plataforma vê e decide.
  */
 export default function AdminReports() {
   const [params, setParams] = useSearchParams();
@@ -56,7 +56,7 @@ export default function AdminReports() {
         <AdminPagination total={data.total} page={page} pageSize={PAGE_SIZE} onChange={setPage} />
       </>}
     </AdminPanel>
-    <p className="mt-4 text-[11px] text-muted-foreground">{integerFormat.format(data?.total ?? 0)} denúncias nesta seleção · A fila é atualizada automaticamente. Ações ficam no histórico administrativo.</p>
+    <p className="mt-4 text-[11px] text-muted-foreground">{integerFormat.format(data?.total ?? 0)} {data?.total === 1 ? "denúncia" : "denúncias"} nesta seleção · A fila é atualizada automaticamente. Ações ficam no histórico administrativo.</p>
     {actions.dialogs}
   </>;
 }
@@ -69,6 +69,7 @@ function ReportItem({ report, actions }: { report: ChatReport; actions: ReturnTy
       <span className="text-sm font-semibold">{reportReasonLabels[report.reason]}</span>
       <span className={cn("admin-badge", open ? "admin-badge-warn" : "admin-badge-neutral")}>{reportStatusLabels[report.status]}</span>
       {report.overdue && <span className="admin-badge admin-badge-danger"><Clock3 size={11} aria-hidden="true" />Prazo de 24 h vencido</span>}
+      {report.platform_only && <span className="admin-badge admin-badge-neutral" title="Denúncia sobre alguém da liderança: a equipe não vê, só a plataforma decide.">Sobre a liderança</span>}
       <time dateTime={report.created_at} className="ml-auto text-[11px] text-muted-foreground">{displayDate(report.created_at, true)}</time>
     </header>
     <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(220px,1fr)]">

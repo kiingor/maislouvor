@@ -97,9 +97,25 @@ export default function TeamSettings() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const qc = useQueryClient();
-  // Aviso de denúncia no chat abre direto na aba Membros (?aba=membros).
-  const [searchParams] = useSearchParams();
+  // Aviso de denúncia no chat abre direto na aba Membros (?aba=membros), na
+  // equipe da denúncia (&equipe=<id>) para quem lidera mais de uma.
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = searchParams.get("aba") === "membros" ? "members" : "profile";
+  const linkedTeamId = searchParams.get("equipe");
+  const { switchTeam } = useTeam();
+  useEffect(() => {
+    if (!linkedTeamId || !teams.some((t) => t.id === linkedTeamId)) return;
+    if (currentTeam?.id !== linkedTeamId) switchTeam(linkedTeamId);
+    // Usado uma vez: trocar de equipe à mão depois não volta para esta.
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("equipe");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [linkedTeamId, teams, currentTeam?.id, switchTeam, setSearchParams]);
 
   // Current user email
   const [userEmail, setUserEmail] = useState("");

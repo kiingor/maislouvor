@@ -26,8 +26,8 @@ type Filter = "pendentes" | "";
 const ago = (iso: string) => formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ptBR });
 
 /**
- * Denúncias do chat da equipe, para a liderança (aba Membros). Denúncias sobre o
- * próprio líder não aparecem aqui: ficam com a equipe do +Louvor.
+ * Denúncias do chat da equipe, para a liderança (aba Membros). Denúncias sobre
+ * alguém da liderança não aparecem aqui: ficam só com a equipe do +Louvor.
  */
 export function TeamChatReports({ teamId }: { teamId: string }) {
   const [filter, setFilter] = useState<Filter>("pendentes");
@@ -89,9 +89,13 @@ export function TeamChatReports({ teamId }: { teamId: string }) {
         )}
       </div>
       <p className={GROUP_FOOTER}>
-        {overdue > 0 && <span className="font-semibold text-ios-red">{overdue} passaram do prazo de 24 horas. </span>}
+        {overdue > 0 && (
+          <span className="font-semibold text-ios-red">
+            {overdue === 1 ? "1 passou do prazo de 24 horas. " : `${overdue} passaram do prazo de 24 horas. `}
+          </span>
+        )}
         Analise cada denúncia em até 24 horas. A equipe do +Louvor também recebe as denúncias, e as que forem sobre
-        você ficam só com ela.
+        alguém da liderança ficam só com ela.
       </p>
       {actions.dialogs}
     </section>
