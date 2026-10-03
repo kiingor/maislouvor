@@ -69,18 +69,21 @@ const ACTION_INTENT =
   /(confirm|recus|aceit|desmarc|marc(a|ar|o|ou|e)\b|remov|cancel|\btir(a|e|ar)\b|indisponi|disponivel|nao (posso|vou|consigo|irei|estarei|da pra|vai dar)|posso (ir|sim|tocar|cantar)|vou (sim|estar|poder)|\bestarei\b|conta comigo)/;
 const AFFIRMATIVE =
   /^(sim|s|pode|pode sim|isso|isso mesmo|quero|ok|okay|confirmo|claro|beleza|blz|bora|manda|faz|fechado|por favor|pfv|pode ser)(\b|$)/;
+const ACTION_SUBJECT = /\b(escalas?|cultos?|(?:in)?disponibilidade|(?:in)?disponive(?:l|is))\b/;
 
 /**
  * A pessoa pediu uma ação (confirmar/recusar escala, marcar disponibilidade)?
  * Só então as ferramentas de ação vão para o modelo. Assim, um texto de outra
  * pessoa (mensagem citada, observação de culto) não dispara ação sozinho.
- * "sim" vale quando responde a uma pergunta do assistente.
+ * "sim" vale quando responde a uma pergunta de ação sobre escala ou
+ * disponibilidade, nunca a um convite para outra piada ou a um quiz.
  */
 export function wantsAction(text: string, history: { role: string; content: string }[]): boolean {
   const t = fold(text).trim();
   if (ACTION_INTENT.test(t)) return true;
   const lastAnswer = [...history].reverse().find((h) => h.role === "assistant");
-  return Boolean(lastAnswer?.content.includes("?") && AFFIRMATIVE.test(t));
+  const questions = fold(lastAnswer?.content ?? "").match(/[^.!?\n]+\?/g) ?? [];
+  return AFFIRMATIVE.test(t) && questions.some((question) => ACTION_INTENT.test(question) && ACTION_SUBJECT.test(question));
 }
 
 export function parseCommand(text: string): Command | null {

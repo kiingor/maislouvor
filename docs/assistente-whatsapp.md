@@ -3,7 +3,7 @@
 Um número da plataforma entra nos grupos de WhatsApp dos ministérios e responde quando é chamado: menção (`@Asafe`), resposta a uma mensagem dele ou `@Asafe` digitado sem escolher o contato. Ele consulta o app (escala, repertório, tons, disponibilidade) e faz duas ações da própria pessoa: confirmar ou recusar a escala e marcar disponibilidade. A extensão de [avisos automáticos](asafe-avisos-automaticos.md), ainda não publicada, leva cultos, escalas com menção, repertório, avisos do líder e lembretes da véspera aos grupos ativados.
 
 - **Nome padrão:** Asafe, o músico-chefe do rei Davi (1 Cr 16:5). Muda em `assistant_config.assistant_name`, sem deploy. O nome do perfil do WhatsApp é configurado no próprio celular.
-- **Personalidade:** levemente engraçado, cômico e caricato. É um "maestro" teatral que leva a escala a sério demais. Faz no máximo uma piada por resposta, a informação vem sempre primeiro e ele não faz humor com a pessoa, a fé, doença ou luto. Texto em `supabase/functions/whatsapp-assistant/persona.ts`.
+- **Personalidade:** acolhedor e bem-humorado, com um personagem de "maestro" usado sem bordões obrigatórios. Nas consultas, a informação vem primeiro. Quando convidado, conta piadas gospel, faz trocadilhos, charadas e desafios bíblicos, responde aos cumprimentos e continua as brincadeiras pelo histórico recente da pessoa. Humor respeitoso, sem ridicularizar pessoas ou a fé; assuntos sérios recebem atenção sem piada. Texto em `supabase/functions/whatsapp-assistant/persona.ts`.
 - **Instruções do ministério:** o líder escreve em Ajustes › Equipe (até 2.000 caracteres). O texto entra no fim do prompt como **fatos da equipe** (ensaio, local, combinados) e não muda as regras do assistente.
 
 ## Fluxo
@@ -22,7 +22,18 @@ grupo do WhatsApp
 
 As ferramentas são funções SQL presas à equipe do grupo e a quem perguntou; o modelo não escolhe equipe nem pessoa. Elas checam as mesmas permissões do app (`member_can`): quem tem "cultos: ver" desligado não vê escalas nem nomes de culto e não responde escala pelo assistente. Nenhuma ferramenta devolve telefone, e-mail ou motivo de indisponibilidade. As ações só valem para a própria pessoa e só para datas de hoje em diante. A marcação de disponibilidade respeita o modo da equipe (`teams.availability_mode`), como o app.
 
-As duas ferramentas de ação só são oferecidas ao modelo quando a mensagem da própria pessoa pede uma ação ("confirmo", "não posso dia 20"…), ou quando ela responde "sim" a uma pergunta do assistente. Um pedido escondido numa mensagem citada de outra pessoa ou numa observação de culto não dispara ação.
+As duas ferramentas de ação só são oferecidas ao modelo quando a mensagem da própria pessoa pede uma ação ("confirmo", "não posso dia 20"…), ou quando ela responde "sim" a uma pergunta de ação sobre escala ou disponibilidade. Aceitar outra piada ou responder a um quiz não libera essas ferramentas. Um pedido escondido numa mensagem citada de outra pessoa ou numa observação de culto não dispara ação.
+
+### Conversa e brincadeiras no grupo
+
+Além das consultas, qualquer integrante reconhecido da equipe pode chamar o Asafe para interagir:
+
+- `@Asafe conta uma piada gospel`
+- `@Asafe faz uma brincadeira com a gente`
+- `@Asafe faz um desafio bíblico pra gente`
+- `@Asafe outra!` ou uma resposta citando a mensagem dele para continuar.
+
+Ele conta a piada diretamente, sem pedir uma consulta de escala, e varia conforme o histórico disponível. Nos desafios, faz uma pergunta por vez e espera a tentativa antes de revelar a resposta. Outro integrante pode participar respondendo à mensagem do desafio: o texto citado dá o contexto, enquanto o histórico e a identificação continuam individuais. Esse contexto citado não autoriza ações no app. Conversa social não requer ferramentas nem altera dados do app. Continua respondendo apenas quando chamado; não acompanha nem armazena as demais conversas do grupo. Cada resposta pela IA usa a quota de perguntas normal da equipe e da pessoa.
 
 ### Funções listadas na ativação
 
@@ -39,6 +50,8 @@ Fonte única: `capabilities.ts`, usada pela mensagem de boas-vindas, pelo `@Asaf
 | Confirmar ou recusar (ação) | "confirmo a escala de domingo" | `responder_escala` |
 | Avisar indisponibilidade (ação) | "não posso dia 20" | `marcar_disponibilidade`, `minha_disponibilidade` |
 | Avisos do ministério | "que horas é o ensaio?" | instruções do líder |
+| Piadas e brincadeiras | "conta uma piada gospel" | conversa, sem ferramenta |
+| Desafios bíblicos | "faz um desafio bíblico pra gente" | conversa, sem ferramenta |
 
 Comandos que não passam pela IA nem gastam o limite: `ativar CÓDIGO`, `desativar` (só líder), `ajuda` e, **no privado**, `vincular CÓDIGO`. Toda resposta automática tem limite de frequência (ajuda a cada 3 min por grupo, avisos a pessoas desconhecidas a cada 6 h), para o número não virar spam.
 

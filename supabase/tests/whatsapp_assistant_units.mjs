@@ -125,6 +125,16 @@ for (const text of ['qual minha escala?', 'qual o tom de Bondade?', 'quem toca d
 }
 check([wantsAction('sim', asked), wantsAction('Pode sim!', asked), wantsAction('não sei', asked)], [true, true, false], '"sim" responde à pergunta do assistente');
 check(wantsAction('sim', [{ role: 'assistant', content: 'Você toca domingo.' }]), false, '"sim" sem pergunta não é pedido');
+for (const answer of ['Quer outra piada gospel?', 'Quer tentar um desafio bíblico?',
+  'Qual personagem bíblico aceitou entrar na arca?', 'Sua escala está confirmada. Quer mais uma piada?']) {
+  for (const text of ['sim', 'pode sim', 'manda', 'bora', 'quero']) {
+    check(wantsAction(text, [{ role: 'assistant', content: answer }]), false, `conversa social não libera ações: ${answer} / ${text}`);
+  }
+}
+check(wantsAction('sim', [{ role: 'assistant', content: 'Posso marcar você indisponível no dia 20?' }]), true, 'esclarecimento de disponibilidade continua autorizado');
+check(wantsAction('pode sim', [{ role: 'assistant', content: 'Quer que eu confirme a escala de domingo?' }]), true, 'esclarecimento de confirmação continua autorizado');
+check(wantsAction('sim', [{ role: 'assistant', content: 'Quer que eu remova sua indisponibilidade?' }]), true, 'esclarecimento de remoção continua autorizado');
+check(wantsAction('sim', [{ role: 'assistant', content: 'Quer que eu marque esses dias como indisponíveis?' }]), true, 'esclarecimento no plural continua autorizado');
 
 // ---- Formatação --------------------------------------------------------------------
 check(toWhatsApp('## Domingo\n**Culto da Família** — [ouvir](https://youtu.be/x)\n- Violão\n* Soprano\n\n\n\nfim'),

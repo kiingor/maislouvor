@@ -161,6 +161,10 @@ function AssistantUsageGuide({ name, initiallyOpen }: { name: string; initiallyO
               Ele consulta os dados desta equipe no +Louvor: cultos, escalas, músicas, tons e disponibilidade.
               Cada integrante também pode confirmar ou recusar a própria escala.
             </p>
+            <p className="mt-2 text-subhead leading-relaxed text-muted-foreground">
+              Também vale chamar para uma piada gospel, um trocadilho ou um desafio bíblico para a equipe.
+              Para continuar a brincadeira, responda à mensagem dele ou marque o contato de novo.
+            </p>
             <p className="mt-2 text-footnote leading-relaxed text-muted-foreground">
               Para reconhecer cada pessoa, ele usa o telefone do cadastro ou o vínculo do WhatsApp em Ajustes › Meu usuário.
             </p>

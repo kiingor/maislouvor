@@ -25,5 +25,7 @@ export const ASSISTANT_CAPABILITIES: readonly AssistantCapability[] = [
   { emoji: "✅", title: "Confirmar ou recusar", description: "responder à sua escala", example: "confirmo a escala de domingo" },
   { emoji: "🚫", title: "Avisar indisponibilidade", description: "marcar ou desmarcar um dia seu", example: "não posso dia 20" },
   { emoji: "📌", title: "Avisos do ministério", description: "ensaio, local e o que o líder cadastrar", example: "que horas é o ensaio?" },
+  { emoji: "😄", title: "Piadas e brincadeiras", description: "piadas gospel, trocadilhos e brincadeiras leves com a equipe", example: "conta uma piada gospel" },
+  { emoji: "🧩", title: "Desafios bíblicos", description: "charadas e perguntas para o grupo tentar responder", example: "faz um desafio bíblico pra gente" },
   { emoji: "⏰", title: "Missões do líder", description: "agendar, consultar, alterar, pausar e cancelar avisos neste grupo", example: "toda sexta às 17h avisa que tem ensaio às 19h" },
 ];

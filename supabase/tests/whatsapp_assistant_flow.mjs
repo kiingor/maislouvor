@@ -156,7 +156,8 @@ try {
   r = await deliver(groupMessage(wa.bruno, 'e no domingo?', { quoted: { participant: BOT_LID, text: 'Você toca domingo' } }));
   check(r.outcomes, ['answered:no_tools']);
   check(aiRequests.at(-1).history.map((h) => h.role), ['user', 'assistant'], 'histórico da conversa');
-  check(aiRequests.at(-1).message, 'e no domingo?', 'citação do próprio assistente não entra na pergunta');
+  ok(aiRequests.at(-1).message.startsWith('e no domingo?') && aiRequests.at(-1).message.includes('Você toca domingo'),
+    'citação do assistente complementa o histórico quando traz outro contexto');
 
   // 6) "sim" respondendo a uma pergunta do assistente libera as ações.
   aiBehavior = async (req) => {
@@ -219,6 +220,47 @@ try {
   check((await sql(`SELECT title FROM public.notifications WHERE profile_id = '${prof.carla}'`)).map((n) => n.title), ['WhatsApp vinculado ao assistente'], 'dona avisada');
   r = await deliver(mentionBot(wa.carla, 'qual minha escala?'));
   check(r.outcomes, ['answered:no_tools'], 'Carla reconhecida pelo vínculo');
+
+  // Conversa social usa o histórico e a quota; aceitar outra piada não libera ações.
+  const socialUsage = await usageToday();
+  const joke = 'O teclado só conversa no ensaio quando encontra a tecla certa! 🎹 Quer outra piada?';
+  aiBehavior = plain(joke);
+  r = await deliver(mentionBot(wa.bruno, 'conta uma piada gospel'));
+  check([r.outcomes, r.replies[0].text], [['answered:no_tools'], joke], 'piada chega pelo fluxo normal');
+  aiBehavior = async (req) => {
+    check(req.history.at(-1)?.content, joke, 'continuação recebe a brincadeira anterior');
+    check(toolNames(req).includes('responder_escala') || toolNames(req).includes('marcar_disponibilidade'), false,
+      'aceitar outra piada não oferece ferramentas de ação');
+    const denied = JSON.stringify({ erro: 'acao_nao_autorizada_nesta_mensagem' });
+    check(await req.runTool('responder_escala', JSON.stringify({ culto_id: id(6, 1), resposta: 'recusar' })), denied,
+      'handler também bloqueia tentativa de alterar escala na continuação');
+    check(await req.runTool('marcar_disponibilidade', JSON.stringify({ data: later, status: 'indisponivel', motivo: null })), denied,
+      'handler também bloqueia tentativa de alterar disponibilidade na continuação');
+    return plain('Agora a bateria pediu silêncio: estava sem baquetas para discutir! 🥁')();
+  };
+  r = await deliver(groupMessage(wa.bruno, 'sim', { quoted: { participant: BOT_LID, text: joke } }));
+  check(r.outcomes, ['answered:no_tools'], 'resposta à piada continua a conversa');
+  check((await sql(`SELECT status::text FROM public.culto_lineup WHERE culto_id = '${id(6, 1)}' AND team_member_id = '${mem.bruno}'`))[0].status,
+    'accepted', 'brincadeira preserva a escala');
+  check((await sql(`SELECT count(*)::int AS n FROM public.member_availability WHERE team_member_id = '${mem.bruno}'`))[0].n,
+    0, 'brincadeira não marca disponibilidade');
+  check(await usageToday(), socialUsage + 2, 'duas respostas sociais usam a quota normal');
+
+  const challenge = 'Desafio bíblico: quem foi lançado na cova dos leões? 🦁';
+  aiBehavior = plain(challenge);
+  r = await deliver(mentionBot(wa.ana, 'faz um desafio bíblico para o grupo'));
+  check(r.outcomes, ['answered:no_tools'], 'uma integrante inicia o desafio');
+  aiBehavior = async (req) => {
+    ok(req.message.startsWith('Daniel') && req.message.includes(challenge), 'outro integrante recebe o desafio citado como contexto');
+    ok(req.instructions.includes('Bruno Lima (membro; funções: Violão)'), 'identidade continua sendo de quem respondeu');
+    check(req.history.some((turn) => turn.content === challenge), false, 'não compartilha o histórico da outra integrante');
+    check(toolNames(req).includes('responder_escala') || toolNames(req).includes('marcar_disponibilidade'), false,
+      'tentativa no quiz não libera alterações no app');
+    return plain('Acertou, Bruno! Foi Daniel. 🦁')();
+  };
+  r = await deliver(groupMessage(wa.bruno, 'Daniel', { quoted: { participant: BOT_LID, text: challenge } }));
+  check([r.outcomes, r.replies[0].text], [['answered:no_tools'], 'Acertou, Bruno! Foi Daniel. 🦁'], 'outro integrante participa do mesmo desafio');
+  check(await usageToday(), socialUsage + 4, 'participação no desafio também segue a quota normal');
 
   // 11) Ajuda não passa pela IA nem gasta o limite, e não repete em seguida.
   const used = await usageToday();
