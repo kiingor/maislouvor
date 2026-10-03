@@ -4,6 +4,8 @@
  */
 import {
   APP_NAME,
+  ASAFE_ALLOW_LABEL,
+  DELETE_ACCOUNT_IN_APP,
   LEGAL_PATHS,
   MIN_AGE,
   PRIVACY_EMAIL,
@@ -56,7 +58,7 @@ export const supportPage: LegalDocumentContent = {
           faq: [
             {
               q: "Esqueci minha senha. E agora?",
-              a: "Na tela de entrada, digite seu e-mail e toque em **Esqueceu a senha?** para receber um link e criar uma nova senha. Se você criou a conta com o Google, use **Entrar com Google**.",
+              a: "Na tela de entrada, digite seu e-mail e toque em **Esqueceu a senha?** para receber um link e criar uma nova senha. Se você criou a conta com o Google, use **Continuar com Google**.",
             },
             {
               q: "Como entro na equipe da minha igreja?",
@@ -68,11 +70,11 @@ export const supportPage: LegalDocumentContent = {
             },
             {
               q: "Como excluo minha conta?",
-              a: `No app, em **Usuário › Meu usuário › Excluir conta**. Sem o app, use a página ${link("Excluir conta", LEGAL_PATHS.deleteAccount)}. O que é apagado e o que fica está na ${link("Política de Privacidade", `${LEGAL_PATHS.privacy}#exclusao`)}.`,
+              a: `No app, em **${DELETE_ACCOUNT_IN_APP}**. Sem o app, use a página ${link("Excluir conta", LEGAL_PATHS.deleteAccount)}. O que é apagado e o que fica está na ${link("Política de Privacidade", `${LEGAL_PATHS.privacy}#exclusao`)}.`,
             },
             {
               q: "Como desativo o Asafe, o assistente no WhatsApp?",
-              a: "Os ajustes do Asafe ficam em **Usuário › Meu usuário** (para você) e, para líderes, na aba **Equipe** (para toda a equipe).",
+              a: `Para você: desligue **${ASAFE_ALLOW_LABEL}** em **Usuário › Meu usuário**; o Asafe deixa de reconhecer você e apaga o seu histórico com ele. Para toda a equipe: líderes desativam o assistente na aba **Equipe**.`,
             },
             {
               q: `O ${APP_NAME} vende meus dados?`,

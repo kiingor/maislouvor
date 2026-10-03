@@ -5,6 +5,7 @@
  */
 import {
   APP_NAME,
+  ASAFE_ALLOW_LABEL,
   LEGAL_ADDRESS,
   LEGAL_DOCUMENT,
   LEGAL_ENTITY_NAME,
@@ -145,7 +146,7 @@ export const termsOfUse: LegalDocumentContent = {
           "Alguns recursos usam inteligência artificial: sincronizar letras, transpor tons, sugerir músicas para cultos, importar cifras e projetos do Moises e o assistente Asafe.",
           "**As respostas podem conter erros.** Confira letras, cifras, tons, datas e sugestões antes de usar; elas não substituem a decisão da liderança.",
           `Para gerar os resultados, o conteúdo necessário é enviado a provedores de inteligência artificial, inclusive no exterior, como explica a ${link("Política de Privacidade", LEGAL_PATHS.privacy)}.`,
-          "O Asafe é opcional: precisa ser ativado pela equipe e só atende quem deu o consentimento. Você pode desativá-lo quando quiser nos ajustes do app.",
+          `O Asafe é opcional e só funciona nas equipes em que um líder o ativa; para ativá-lo, o líder aceita um aviso sobre o envio de dados à OpenAI (equipes que já o usavam recebem o mesmo aviso para manter ou desativar). Ele reconhece os membros pelo telefone cadastrado no perfil. Se você não quiser que ele use seus dados, desligue **${ASAFE_ALLOW_LABEL}** em Usuário › Meu usuário; líderes podem desativá-lo para toda a equipe na aba Equipe.`,
           "Não envie ao Asafe dados sensíveis, como informações de saúde, documentos ou senhas.",
         ],
       ],

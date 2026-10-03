@@ -51,12 +51,28 @@ describe("legal constants", () => {
 
   it("keeps a pending sign-up acceptance for a limited time", () => {
     const now = Date.UTC(2026, 9, 3, 12);
-    expect(hasPendingAcceptance(now)).toBe(false);
+    const createdAt = new Date(now + 30_000).toISOString();
+    expect(hasPendingAcceptance(createdAt, now)).toBe(false);
     rememberPendingAcceptance(now);
-    expect(hasPendingAcceptance(now + 60_000)).toBe(true);
-    expect(hasPendingAcceptance(now + 3 * 60 * 60 * 1000)).toBe(false);
+    expect(hasPendingAcceptance(createdAt, now + 60_000)).toBe(true);
+    expect(hasPendingAcceptance(createdAt, now + 3 * 60 * 60 * 1000)).toBe(false);
     clearPendingAcceptance();
-    expect(hasPendingAcceptance(now)).toBe(false);
+    expect(hasPendingAcceptance(createdAt, now)).toBe(false);
+  });
+
+  it("applies a pending sign-up acceptance only to an account created after it", () => {
+    const now = Date.UTC(2026, 9, 3, 12);
+    rememberPendingAcceptance(now);
+    const later = now + 5 * 60_000;
+    // Conta nova (relógio do servidor um pouco atrás do aparelho ainda vale).
+    expect(hasPendingAcceptance(new Date(now + 20_000).toISOString(), later)).toBe(true);
+    expect(hasPendingAcceptance(new Date(now - 2 * 60_000).toISOString(), later)).toBe(true);
+    // Conta antiga entrando no mesmo aparelho (ex.: tablet da igreja): não herda o aceite.
+    expect(hasPendingAcceptance("2026-05-10T10:00:00Z", later)).toBe(false);
+    expect(hasPendingAcceptance(new Date(now - 60 * 60_000).toISOString(), later)).toBe(false);
+    // Sem data de criação, nada é presumido.
+    expect(hasPendingAcceptance(undefined, later)).toBe(false);
+    expect(hasPendingAcceptance("não é data", later)).toBe(false);
   });
 
   it("reads the acceptance stored in the account metadata", () => {
@@ -64,6 +80,23 @@ describe("legal constants", () => {
     expect(metadataHasCurrentAcceptance({ legal_acceptance: { terms_version: "2025-01-01", privacy_version: PRIVACY_VERSION } })).toBe(false);
     expect(metadataHasCurrentAcceptance({})).toBe(false);
     expect(metadataHasCurrentAcceptance(undefined)).toBe(false);
+  });
+});
+
+describe("server-side versions", () => {
+  // Todas as migrações, como texto; vale a última que define legal_current_versions().
+  const migrations = import.meta.glob("../../supabase/migrations/*.sql", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+
+  it("match TERMS_VERSION and PRIVACY_VERSION (accept_terms only accepts the server's versions)", () => {
+    const defining = Object.keys(migrations)
+      .sort()
+      .filter((file) => /FUNCTION\s+public\.legal_current_versions\(\)/i.test(migrations[file]));
+    expect(defining.length).toBeGreaterThan(0);
+    const latest = migrations[defining[defining.length - 1]];
+    const body = latest.slice(latest.search(/FUNCTION\s+public\.legal_current_versions\(\)/i));
+    const match = body.match(/jsonb_build_object\(\s*'terms'\s*,\s*'([^']+)'\s*,\s*'privacy'\s*,\s*'([^']+)'\s*\)/);
+    expect(match).not.toBeNull();
+    expect({ terms: match![1], privacy: match![2] }).toEqual({ terms: TERMS_VERSION, privacy: PRIVACY_VERSION });
   });
 });
 
@@ -104,6 +137,11 @@ describe("legal documents content", () => {
     expect(privacy).toMatch(/Não vendemos/);
     expect(privacy).toContain("(/excluir-conta)");
     expect(privacy).toMatch(/Qualquer pessoa com o link/);
+    // Apple 5.1.1(i): terceiros com proteção igual à desta política.
+    expect(privacy).toMatch(/proteção igual ou superior à descrita nesta Política/);
+    // Asafe: descreve o reconhecimento pelo telefone e o envio de nomes da escala.
+    expect(privacy).toMatch(/telefone cadastrado no perfil/);
+    expect(privacy).toMatch(/seu nome pode ser enviado quando um colega consulta uma escala/);
     const terms = all(termsOfUse);
     expect(terms).toMatch(/Tolerância zero/);
     expect(terms).toMatch(/24 horas/);

@@ -32,6 +32,15 @@ export async function fetchTermsAcceptance(userId: string): Promise<TermsAccepta
   return data;
 }
 
+/**
+ * O servidor recusou porque as versões deste app não são as vigentes (o app
+ * está desatualizado: publicaram documentos novos). Atualizar o app resolve.
+ */
+export function isOutdatedTermsError(error: unknown): boolean {
+  const message = error && typeof error === "object" && "message" in error ? String((error as { message: unknown }).message) : String(error);
+  return message.includes("outdated_version");
+}
+
 /** Registra o aceite das versões vigentes. A data é a do servidor. */
 export async function acceptCurrentTerms(): Promise<TermsAcceptanceRecord> {
   const { data, error } = await legalSupabase.rpc("accept_terms", {

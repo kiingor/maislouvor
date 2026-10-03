@@ -5,7 +5,9 @@
  */
 import {
   APP_NAME,
+  ASAFE_ALLOW_LABEL,
   BACKUP_RETENTION,
+  DELETE_ACCOUNT_IN_APP,
   DPO_NAME,
   EMAIL_PROVIDER,
   INFRA_PROVIDER,
@@ -32,7 +34,7 @@ export const privacyPolicy: LegalDocumentContent = {
         [
           `Usamos seus dados para o ${APP_NAME} funcionar para você e para a sua equipe: conta, escalas, repertórios, músicas, chat e notificações.`,
           "**Não vendemos** dados pessoais, **não exibimos anúncios** e **não rastreamos** você em outros apps ou sites.",
-          "Alguns recursos usam provedores de inteligência artificial. O assistente Asafe, no WhatsApp, só funciona com o seu consentimento.",
+          "Alguns recursos usam provedores de inteligência artificial. O assistente Asafe, no WhatsApp, é opcional e ativado pelos líderes da equipe; ele envia mensagens e dados da equipe à OpenAI, e você pode impedir que ele use os seus dados a qualquer momento.",
           `Você pode acessar, corrigir e excluir seus dados — inclusive excluir a conta pelo app ou pela página ${link("Excluir conta", LEGAL_PATHS.deleteAccount)}.`,
         ],
       ],
@@ -65,7 +67,7 @@ export const privacyPolicy: LegalDocumentContent = {
         "**Dados gerados pelo uso:**",
         [
           "**Notificações push:** o token do aparelho no Firebase Cloud Messaging (app Android/iOS) ou a assinatura de notificações do navegador (app web), para enviar os avisos da equipe.",
-          "**Asafe (assistente no WhatsApp):** somente quando a sua equipe ativa o assistente e você vincula o seu número — o número e o identificador do WhatsApp, o nome exibido, as mensagens enviadas ao Asafe ou que o mencionam nos grupos ativados, as respostas geradas e contadores de uso.",
+          `**Asafe (assistente no WhatsApp):** só nas equipes em que um líder ativa o assistente. O Asafe reconhece quem fala comparando o número do WhatsApp com o telefone cadastrado no perfil dos membros da equipe (ou pelo código de vínculo que você gerar no app) e guarda esse vínculo, o identificador do WhatsApp, o nome exibido, as mensagens enviadas ao Asafe ou que o mencionam nos grupos ativados, as respostas geradas e contadores de uso. Se você desligar **${ASAFE_ALLOW_LABEL}** (em Usuário › Meu usuário), ele deixa de reconhecer você, apaga o vínculo e o seu histórico de conversas e não marca mais você nos avisos.`,
           "**Registros técnicos:** endereço IP, data e hora de acesso, tipo de aparelho e de navegador e registros de erro, mantidos pelo servidor.",
           "**Armazenamento no aparelho:** a sessão de login, preferências (tema, equipe selecionada, ajustes do modo ensaio) e uma cópia temporária (cache) para o app abrir mais rápido e funcionar com conexão instável.",
         ],
@@ -80,7 +82,7 @@ export const privacyPolicy: LegalDocumentContent = {
         [
           "**Execução do contrato** (art. 7º, V): criar e manter sua conta, autenticar o acesso, permitir que você participe de equipes, escalas, repertórios e chat, armazenar e processar seus arquivos (por exemplo, separar as trilhas de um áudio), enviar notificações e e-mails do serviço (como redefinição de senha e convites) e executar os recursos que você aciona, inclusive os de inteligência artificial.",
           "**Legítimo interesse** (art. 7º, IX): manter a segurança, prevenir fraudes e abusos, moderar conteúdo e analisar denúncias, atender o suporte, enviar convites a pedido de um líder e melhorar o serviço com estatísticas internas — sempre respeitando suas expectativas e seus direitos.",
-          "**Consentimento** (art. 7º, I): uso do Asafe, que envia mensagens a um provedor de inteligência artificial. Você pode revogar o consentimento a qualquer momento nos ajustes do app.",
+          `**Asafe**, o assistente opcional no WhatsApp, que envia dados a um provedor de inteligência artificial: responder a quem conversa com ele é **execução do contrato** (art. 7º, V). Reconhecer os membros pelo telefone do perfil e incluir nas respostas a escala e a disponibilidade da equipe, com nomes, se apoia no **legítimo interesse** da equipe em organizar o ministério (art. 7º, IX), e você pode se opor a qualquer momento desligando **${ASAFE_ALLOW_LABEL}**. Quando um líder aceita o aviso sobre a IA para ativar o assistente, e quando você vincula o WhatsApp por código ou liga essa permissão, há também **consentimento** (art. 7º, I), que pode ser revogado nos ajustes do app.`,
           "**Cumprimento de obrigação legal** (art. 7º, II): guardar registros de acesso pelo prazo do Marco Civil da Internet e atender ordens de autoridades.",
           "**Exercício regular de direitos** (art. 7º, VI): guardar o necessário para defesa em processos judiciais, administrativos ou arbitrais.",
         ],
@@ -97,14 +99,15 @@ export const privacyPolicy: LegalDocumentContent = {
           `**Infraestrutura:** o banco de dados, os arquivos e a autenticação ficam em servidor contratado junto a ${value(INFRA_PROVIDER)}, onde operamos o software de código aberto Supabase.`,
           `**Google:** login com Google (se você escolher), entrega de notificações pelo Firebase Cloud Messaging e o player do YouTube incorporado ao app, que usa os Serviços de API do YouTube. Ao reproduzir um vídeo, o Google pode coletar dados conforme a ${link("Política de Privacidade do Google", "https://policies.google.com/privacy")}. Quando você importa o áudio de um link do YouTube, nosso servidor acessa o vídeo indicado por você.`,
           "**Serviços de notificação dos navegadores** (como Google, Mozilla, Apple e Microsoft), que entregam os avisos do app web.",
-          "**OpenAI (Estados Unidos):** quando o Asafe está ativo, as mensagens enviadas a ele e as informações da equipe necessárias para responder (por exemplo, a escala ou o repertório consultado) são enviadas à OpenAI para gerar a resposta.",
+          "**OpenAI (Estados Unidos):** quando alguém chama o Asafe numa equipe que o usa, a OpenAI recebe, para gerar a resposta, a mensagem enviada ao assistente (e o texto de uma mensagem citada ao chamá-lo), o nome, o papel e as funções de quem pergunta e as informações da equipe necessárias para responder — por exemplo, a escala de um culto com o nome, a função e a confirmação das pessoas escaladas, a disponibilidade da equipe num dia (sem o motivo), o repertório e o roteiro. Por isso, **seu nome pode ser enviado quando um colega consulta uma escala em que você aparece**, mesmo que você não use o Asafe ou tenha desligado o uso dos seus dados por ele. Telefone, e-mail e identificadores do WhatsApp não são enviados. As conversas vão sem pedido de armazenamento; pela política da API da OpenAI, os dados podem ficar guardados por até 30 dias para segurança e não são usados para treinar modelos.",
           "**Provedores de inteligência artificial contratados** (inclusive nos Estados Unidos): recebem o conteúdo necessário quando você usa recursos como sincronizar letras, transpor tons, sugerir músicas para um culto e importar cifras ou projetos do Moises — por exemplo, a letra, a cifra ou os títulos das músicas.",
           `**WhatsApp (Meta) e gateway de integração (Evolution API):** quando sua equipe usa o Asafe, as mensagens passam pelo WhatsApp e pelo gateway que conecta o WhatsApp ao ${APP_NAME}, hospedado em infraestrutura contratada por nós.`,
           `**Envio de e-mails:** ${value(EMAIL_PROVIDER)}, para e-mails de redefinição de senha, confirmação e convite.`,
           "**Autoridades:** quando exigido por lei ou ordem judicial, ou para proteger direitos e a segurança de pessoas — inclusive comunicando às autoridades conteúdo de abuso ou exploração sexual de crianças e adolescentes.",
           "**Reorganizações societárias:** em caso de fusão, aquisição ou venda do serviço, os dados seguem com o serviço, protegidos por esta política.",
         ],
-        "Os operadores tratam os dados segundo nossas instruções e as próprias políticas. **Não vendemos nem alugamos dados pessoais, não os usamos para publicidade e não os repassamos a corretores de dados.** Também não rastreamos você em apps ou sites de outras empresas.",
+        `Os operadores só podem usar os dados para prestar o serviço ao ${APP_NAME}, segundo nossas instruções. **Exigimos, por contrato ou pelos termos dos serviços contratados, que ofereçam aos dados pessoais proteção igual ou superior à descrita nesta Política e à exigida pela LGPD.**`,
+        "**Não vendemos nem alugamos dados pessoais, não os usamos para publicidade e não os repassamos a corretores de dados.** Também não rastreamos você em apps ou sites de outras empresas.",
       ],
     },
     {
@@ -119,7 +122,7 @@ export const privacyPolicy: LegalDocumentContent = {
       id: "transferencia-internacional",
       title: "Transferência internacional",
       blocks: [
-        "Alguns operadores — como OpenAI, Google, Meta e provedores de inteligência artificial — tratam dados fora do Brasil, principalmente nos **Estados Unidos**. Essas transferências seguem o art. 33 da LGPD: ocorrem quando necessárias para executar o contrato com você (art. 33, IX), com garantias contratuais dos provedores (art. 33, II) e, no caso do Asafe, com o seu consentimento específico e em destaque (art. 33, VIII).",
+        "Alguns operadores — como OpenAI, Google, Meta e provedores de inteligência artificial — tratam dados fora do Brasil, principalmente nos **Estados Unidos**. Essas transferências seguem o art. 33 da LGPD: ocorrem quando necessárias para executar o contrato com você (art. 33, IX), com garantias contratuais dos provedores (art. 33, II) e, no caso do Asafe, também com o consentimento específico e em destaque de quem autoriza o uso dos próprios dados (art. 33, VIII): o líder, ao aceitar o aviso que ativa o assistente, e cada membro, ao permitir o uso dos seus dados.",
       ],
     },
     {
@@ -127,12 +130,12 @@ export const privacyPolicy: LegalDocumentContent = {
       title: "Por quanto tempo guardamos",
       blocks: [
         [
-          "**Conta e perfil:** enquanto a conta existir. Depois da exclusão, são apagados ou anonimizados em até 30 dias.",
-          "**Conteúdo da equipe** (músicas, repertórios, cultos, escalas, arquivos e chat): enquanto a equipe existir ou até ser apagado por quem tem permissão.",
-          "**Asafe:** histórico de mensagens por 30 dias; códigos de ativação e de vínculo por até 7 dias depois do uso ou da expiração; contadores de uso agregados por dia.",
+          "**Conta e perfil:** enquanto a conta existir. Quando você exclui a conta pelo app, são apagados na hora; pedidos de exclusão por e-mail são atendidos em até 15 dias.",
+          "**Conteúdo da equipe** (músicas, repertórios, cultos, escalas, arquivos e chat): enquanto a equipe existir ou até ser apagado por quem tem permissão. As mensagens que você enviou no chat são apagadas junto com a sua conta.",
+          "**Asafe:** histórico de mensagens por 30 dias; códigos de ativação e de vínculo por até 7 dias depois do uso ou da expiração; contadores de uso agregados por dia; registros de aceite e de revogação do aviso sobre a IA, como prova da escolha, que deixam de identificar você quando a conta é excluída.",
           "**Registros de acesso** (IP, data e hora): 6 meses, como exige o art. 15 do Marco Civil da Internet (Lei nº 12.965/2014), ou mais, se houver ordem judicial.",
           "**Denúncias e registros de moderação:** pelo tempo necessário para a apuração e, depois, pelo prazo legal para defesa de direitos.",
-          "**Suporte:** enquanto a conta existir e por até 5 anos depois, para defesa de direitos (art. 27 do Código de Defesa do Consumidor).",
+          "**Suporte:** chamados e sugestões abertos no app ficam enquanto a conta existir e são apagados com ela; e-mails trocados com o suporte, por até 5 anos, para defesa de direitos (art. 27 do Código de Defesa do Consumidor).",
           "**Tokens de notificação:** até você sair da conta, desinstalar o app ou o token expirar.",
           "**Convites pendentes:** até serem aceitos, cancelados ou expirarem.",
         ],
@@ -143,10 +146,10 @@ export const privacyPolicy: LegalDocumentContent = {
       id: "exclusao",
       title: "Exclusão da conta",
       blocks: [
-        `Você pode excluir sua conta a qualquer momento, sem custo: no app, em **Usuário › Meu usuário › Excluir conta**, ou pela página ${link("Excluir conta", LEGAL_PATHS.deleteAccount)}, que funciona mesmo sem o app instalado.`,
-        "Ao excluir a conta, apagamos seu perfil, foto, telefone, preferências, tokens de notificação, o vínculo com o Asafe e seu acesso às equipes.",
-        "Conteúdos que você criou dentro de uma equipe (como músicas, repertórios e cultos) fazem parte do acervo da equipe e podem continuar disponíveis para os outros membros **sem identificar você**. Se você for o responsável por uma equipe com outros membros, o app orienta como transferir a liderança ou excluir a equipe.",
-        "Guardamos apenas o que a lei exige ou o necessário para defesa de direitos, pelos prazos da seção anterior.",
+        `Você pode excluir sua conta a qualquer momento, sem custo: no app, em **${DELETE_ACCOUNT_IN_APP}**, ou pela página ${link("Excluir conta", LEGAL_PATHS.deleteAccount)}, que funciona mesmo sem o app instalado.`,
+        "Ao excluir a conta, apagamos seu perfil (nome, foto, e-mail, telefone e preferências), suas escalas, disponibilidade, funções e loops de ensaio, as mensagens que você enviou no chat e os arquivos anexados, o vínculo e as conversas com o Asafe, notificações, aparelhos cadastrados para avisos, chamados de suporte, convites para o seu e-mail e as equipes em que você é o único membro, com tudo o que há nelas.",
+        "Músicas, repertórios, cultos e avisos que você criou dentro de uma equipe com outros membros fazem parte do acervo da equipe e continuam disponíveis para eles **sem identificar você**. Se você for o responsável por uma equipe com outros membros, o app pede que você passe a liderança a outra pessoa antes de excluir a conta.",
+        "Guardamos apenas o registro de que a exclusão foi feita, sem dados pessoais, e o que a lei exige ou for necessário para defesa de direitos, pelos prazos da seção anterior.",
       ],
     },
     {
@@ -163,7 +166,7 @@ export const privacyPolicy: LegalDocumentContent = {
           "informação sobre com quem compartilhamos seus dados e sobre a possibilidade de não consentir, com as consequências da recusa;",
           "oposição a tratamento feito em desacordo com a lei.",
         ],
-        `Muita coisa você faz direto no app: editar nome, foto e telefone, mudar as notificações, desativar o Asafe e excluir a conta. Para os demais pedidos, escreva para ${mail(PRIVACY_EMAIL)}. Podemos pedir informações para confirmar sua identidade e respondemos em até 15 dias.`,
+        `Muita coisa você faz direto no app: editar nome, foto e telefone, mudar as notificações, desligar o uso dos seus dados pelo Asafe e excluir a conta. Para os demais pedidos, escreva para ${mail(PRIVACY_EMAIL)}. Podemos pedir informações para confirmar sua identidade e respondemos em até 15 dias.`,
         `Você também pode apresentar reclamação à Autoridade Nacional de Proteção de Dados (${link("ANPD", "https://www.gov.br/anpd")}).`,
       ],
     },

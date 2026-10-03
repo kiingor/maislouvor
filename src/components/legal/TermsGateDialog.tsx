@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { acceptCurrentTerms, termsAcceptanceQueryKey } from "@/integrations/supabase/legal-client";
+import { acceptCurrentTerms, isOutdatedTermsError, termsAcceptanceQueryKey } from "@/integrations/supabase/legal-client";
 import { APP_NAME, clearPendingAcceptance, formatLegalDate, LEGAL_EFFECTIVE_DATE, LEGAL_PATHS } from "@/lib/legal";
 
 const LINK = "font-semibold text-primary underline underline-offset-[3px]";
@@ -36,10 +36,12 @@ export default function TermsGateDialog({ userId, updated }: { userId: string; u
       const record = await acceptCurrentTerms();
       clearPendingAcceptance();
       queryClient.setQueryData(termsAcceptanceQueryKey(userId), record);
-    } catch {
+    } catch (error) {
       toast({
         title: "Não foi possível registrar o aceite",
-        description: "Confira sua conexão e tente de novo.",
+        description: isOutdatedTermsError(error)
+          ? "Os documentos foram atualizados. Atualize o app (ou recarregue a página) para ler a versão mais recente."
+          : "Confira sua conexão e tente de novo.",
         variant: "destructive",
       });
       setBusy(null);

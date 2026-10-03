@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { Link } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { ChevronRight, FileText, Info, LifeBuoy, ShieldCheck, UserX } from "lucide-react";
@@ -16,11 +16,26 @@ function IconTile({ icon: Icon }: { icon: LucideIcon }) {
   );
 }
 
-const LINKS: { to: string; label: string; icon: LucideIcon }[] = [
+/** Âncora da seção de exclusão nesta mesma tela (DeleteAccountSection, branch de exclusão de conta). */
+const DELETE_ACCOUNT_ANCHOR = "excluir-conta";
+
+/**
+ * Com a exclusão já nesta tela, vai até ela em vez de sair do app para a página
+ * pública (que mandaria de volta para cá). Sem a seção, segue o link normal.
+ */
+function goToInAppDeletion(event: MouseEvent<HTMLAnchorElement>) {
+  const section = document.getElementById(DELETE_ACCOUNT_ANCHOR);
+  if (!section) return;
+  event.preventDefault();
+  section.scrollIntoView?.({ block: "center" });
+  section.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
+}
+
+const LINKS: { to: string; label: string; icon: LucideIcon; onClick?: (event: MouseEvent<HTMLAnchorElement>) => void }[] = [
   { to: LEGAL_PATHS.terms, label: "Termos de Uso", icon: FileText },
   { to: LEGAL_PATHS.privacy, label: "Política de Privacidade", icon: ShieldCheck },
   { to: LEGAL_PATHS.support, label: "Suporte", icon: LifeBuoy },
-  { to: LEGAL_PATHS.deleteAccount, label: "Excluir conta", icon: UserX },
+  { to: LEGAL_PATHS.deleteAccount, label: "Excluir conta", icon: UserX, onClick: goToInAppDeletion },
 ];
 
 /** Versão instalada no app nativo (ex.: 1.0.5 (6)); no navegador, "Web". */
@@ -57,6 +72,7 @@ export function SettingsAboutGroup() {
           <Link
             key={item.to}
             to={item.to}
+            onClick={item.onClick}
             className="group/row flex w-full items-center gap-3 pl-4 text-left transition-colors active:bg-fill-quaternary"
           >
             <IconTile icon={item.icon} />

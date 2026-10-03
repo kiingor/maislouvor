@@ -91,6 +91,14 @@ try {
       has_function_privilege('anon', 'public.profiles_guard_terms_acceptance()', 'EXECUTE') AS anon`);
   check([guard.auth, guard.anon], [false, false]);
 
+  // Versões vigentes no servidor: públicas (não são segredo), as mesmas de src/lib/legal.ts.
+  const versionsFn = await one(`SELECT p.provolatile, p.proconfig,
+      has_function_privilege('anon', p.oid, 'EXECUTE') AS anon
+    FROM pg_proc p WHERE p.oid = 'public.legal_current_versions()'::regprocedure`);
+  check([versionsFn.provolatile, versionsFn.proconfig, versionsFn.anon], ['s', ['search_path=""'], true]);
+  await asAnon();
+  check((await one('SELECT public.legal_current_versions() AS v')).v, { terms: VERSION, privacy: VERSION });
+
   // Sem login: anon não executa; authenticated sem uid é recusado.
   await asAnon();
   await fails(`SELECT public.accept_terms('${VERSION}', '${VERSION}')`, '42501');
@@ -119,19 +127,24 @@ try {
   await asOwner();
   check(await profileOf(brunoProfile), { full_name: 'Bruno', terms_accepted_at: null, terms_version: null, privacy_version: null }, 'outro perfil intocado');
 
-  // Nova versão: atualiza versão e data.
+  // Só a versão vigente: nem uma futura (ainda não publicada) nem uma antiga.
   await as(ana);
-  await db.query("SELECT pg_sleep(0.01)");
-  const updated = await accept('2027-01-15', '2027-01-15');
-  check([updated.terms_version, updated.privacy_version], ['2027-01-15', '2027-01-15']);
-  ok(new Date(updated.terms_accepted_at) > new Date(result.terms_accepted_at), 'novo aceite tem nova data');
+  await fails("SELECT public.accept_terms('2027-01-15', '2027-01-15')", '22023');
+  await fails(`SELECT public.accept_terms('${VERSION}', '2025-01-01')`, '22023');
+  await fails(`SELECT public.accept_terms('2025-01-01', '${VERSION}')`, '22023');
+  await assert.rejects(db.query("SELECT public.accept_terms('2027-01-15', '2027-01-15')"), /outdated_version/, 'o app reconhece o erro');
+  checks++;
+  await asOwner();
+  const anaAfterWrong = await profileOf(anaProfile);
+  check([anaAfterWrong.terms_version, anaAfterWrong.privacy_version], [VERSION, VERSION], 'versão errada não grava');
+  check(anaAfterWrong.terms_accepted_at.getTime(), new Date(result.terms_accepted_at).getTime());
 
   // Bruno não consegue aceitar "por" Ana nem ver o perfil dela.
   await as(bruno);
   await accept();
   check((await rows('SELECT user_id FROM public.profiles')).map((r) => r.user_id), [bruno], 'RLS: só o próprio perfil');
   await asOwner();
-  check((await profileOf(anaProfile)).terms_version, '2027-01-15', 'aceite de Bruno não muda Ana');
+  check((await profileOf(anaProfile)).terms_accepted_at.getTime(), new Date(result.terms_accepted_at).getTime(), 'aceite de Bruno não muda Ana');
 
   // Sem perfil: erro claro, nada é criado.
   await as(semPerfil);
@@ -174,6 +187,18 @@ try {
   await db.query(`UPDATE public.profiles SET terms_version = $1, privacy_version = $1, terms_accepted_at = now() WHERE user_id = $2`, [VERSION, carla]);
   await asOwner();
   check((await profileOf((await one('SELECT id FROM public.profiles WHERE user_id = $1', [carla])).id)).terms_version, VERSION);
+
+  // Nova versão dos documentos, publicada por uma migração que redefine a função:
+  // a versão anterior deixa de ser aceita e a nova grava versão e data.
+  await asOwner();
+  await db.exec(`CREATE OR REPLACE FUNCTION public.legal_current_versions() RETURNS jsonb LANGUAGE sql STABLE SET search_path = ''
+    AS $$ SELECT jsonb_build_object('terms', '2027-01-15', 'privacy', '2027-01-15') $$;`);
+  await as(ana);
+  await fails(`SELECT public.accept_terms('${VERSION}', '${VERSION}')`, '22023');
+  await db.query("SELECT pg_sleep(0.01)");
+  const updated = await accept('2027-01-15', '2027-01-15');
+  check([updated.terms_version, updated.privacy_version], ['2027-01-15', '2027-01-15']);
+  ok(new Date(updated.terms_accepted_at) > new Date(result.terms_accepted_at), 'novo aceite tem nova data');
 
   console.log(`terms_acceptance: ${checks} verificações ok`);
 } finally {

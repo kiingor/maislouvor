@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { TermsGate } from "./TermsGate";
+import { useTermsAccepted } from "./useTermsAcceptance";
 import { PRIVACY_VERSION, TERMS_VERSION, rememberPendingAcceptance } from "@/lib/legal";
 import { memoryStorage } from "@/test/memoryStorage";
 
@@ -26,7 +27,11 @@ vi.mock("@/integrations/supabase/client", () => ({
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: mocks.toast }) }));
 
 const USER = "user-1";
-const session = (metadata: Record<string, unknown> = {}) => ({ user: { id: USER, user_metadata: metadata } });
+const PENDING_KEY = "louvor-legal-pending-acceptance";
+// Conta recém-criada por padrão (o aceite anotado no cadastro vale para ela).
+const session = (metadata: Record<string, unknown> = {}, createdAt = new Date().toISOString()) => ({
+  user: { id: USER, user_metadata: metadata, created_at: createdAt },
+});
 const current = { terms_version: TERMS_VERSION, privacy_version: PRIVACY_VERSION, terms_accepted_at: "2026-10-03T12:00:00Z" };
 const outdated = { terms_version: null, privacy_version: null, terms_accepted_at: null };
 
@@ -40,12 +45,18 @@ function Where() {
   return <p data-testid="where">{useLocation().pathname}</p>;
 }
 
-function renderAt(path: string) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+/** Outro aviso do app logado (ex.: o do Asafe) consultando se pode abrir. */
+function AcceptedProbe() {
+  return <p data-testid="terms-accepted">{String(useTermsAccepted())}</p>;
+}
+
+function renderAt(path: string, { probe = false } = {}) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryDelay: 0 } } });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
         <TermsGate />
+        {probe && <AcceptedProbe />}
         <Routes>
           <Route path="*" element={<Where />} />
         </Routes>
@@ -160,7 +171,50 @@ describe("TermsGate", () => {
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith("accept_terms", { p_terms_version: TERMS_VERSION, p_privacy_version: PRIVACY_VERSION }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-    expect(localStorage.getItem("louvor-legal-pending-acceptance")).toBeNull();
+    expect(localStorage.getItem(PENDING_KEY)).toBeNull();
+  });
+
+  it("does not hand an acceptance remembered on this device to an older account", async () => {
+    // Alguém tocou em "Criar conta com Google" e desistiu; outra pessoa entra com a conta dela.
+    rememberPendingAcceptance();
+    mocks.getSession.mockResolvedValue({ data: { session: session({}, "2026-05-10T10:00:00Z") } });
+    profileReturns({ data: outdated, error: null });
+    renderAt("/app/home");
+
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(localStorage.getItem(PENDING_KEY)).toBeNull();
+  });
+
+  it("forgets the remembered acceptance when the person signs out", async () => {
+    profileReturns({ data: current, error: null });
+    renderAt("/login");
+    await waitFor(() => expect(mocks.onAuthStateChange).toHaveBeenCalled());
+    rememberPendingAcceptance();
+
+    const listener = mocks.onAuthStateChange.mock.calls[0][0] as (event: string, next: unknown) => void;
+    act(() => listener("SIGNED_OUT", null));
+    expect(localStorage.getItem(PENDING_KEY)).toBeNull();
+  });
+
+  it("forgets the remembered acceptance when the current versions are already accepted", async () => {
+    rememberPendingAcceptance();
+    profileReturns({ data: current, error: null });
+    renderAt("/app/home");
+    await waitFor(() => expect(localStorage.getItem(PENDING_KEY)).toBeNull());
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("asks to update the app when the server already has newer documents", async () => {
+    profileReturns({ data: outdated, error: null });
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: "outdated_version: os Termos de Uso mudaram." } });
+    renderAt("/app/home");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Aceitar e continuar" }));
+    await waitFor(() =>
+      expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ description: expect.stringMatching(/Atualize o app/) })),
+    );
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
   });
 
   it("uses the acceptance stored in the account metadata (e-mail confirmation flow)", async () => {
@@ -181,5 +235,40 @@ describe("TermsGate", () => {
     mocks.rpc.mockResolvedValue({ data: null, error: { message: "offline" } });
     renderAt("/app/home");
     expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+  });
+});
+
+describe("useTermsAccepted (other blocking notices wait for the terms)", () => {
+  it("stays false while the terms dialog is open and turns true after accepting", async () => {
+    profileReturns({ data: outdated, error: null });
+    mocks.rpc.mockResolvedValue({ data: current, error: null });
+    renderAt("/app/home", { probe: true });
+
+    await screen.findByRole("alertdialog");
+    expect(screen.getByTestId("terms-accepted")).toHaveTextContent("false");
+    fireEvent.click(screen.getByRole("button", { name: "Aceitar e continuar" }));
+    await waitFor(() => expect(screen.getByTestId("terms-accepted")).toHaveTextContent("true"));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(mocks.maybeSingle).toHaveBeenCalledTimes(1); // uma consulta só para o gate e o hook
+  });
+
+  it("is true when the current versions were accepted", async () => {
+    profileReturns({ data: current, error: null });
+    renderAt("/app/home", { probe: true });
+    await waitFor(() => expect(screen.getByTestId("terms-accepted")).toHaveTextContent("true"));
+  });
+
+  it("is true when the acceptance cannot be read, like the gate (fails open)", async () => {
+    profileReturns({ data: null, error: { message: "offline" } });
+    renderAt("/app/home", { probe: true });
+    await waitFor(() => expect(screen.getByTestId("terms-accepted")).toHaveTextContent("true"));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("is false without a session", async () => {
+    mocks.getSession.mockResolvedValue({ data: { session: null } });
+    renderAt("/app/home", { probe: true });
+    await waitFor(() => expect(mocks.getSession).toHaveBeenCalled());
+    expect(screen.getByTestId("terms-accepted")).toHaveTextContent("false");
   });
 });

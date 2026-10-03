@@ -14,6 +14,11 @@
 /**
  * Versões vigentes. Mudou o texto de forma relevante? Atualize a data aqui:
  * quem aceitou uma versão anterior vê o aviso de novo aceite (TermsGate).
+ *
+ * O banco só aceita estas versões (public.legal_current_versions(), em
+ * 20261003131000_terms_acceptance.sql): ao mudar a data, crie uma migração nova
+ * que redefina a função com a mesma data e publique-a junto com o app. O teste
+ * src/lib/legal.test.ts falha se as duas pontas divergirem.
  */
 export const TERMS_VERSION = "2026-10-03";
 export const PRIVACY_VERSION = "2026-10-03";
@@ -46,6 +51,12 @@ export const SUPPORT_RESPONSE_TIME = "até 2 dias úteis";
 export const REPORT_REVIEW_TIME = "24 horas";
 /** Idade mínima para ter conta. De 13 a 17 anos, só com autorização do responsável. */
 export const MIN_AGE = 13;
+
+// Rótulos de telas citados nos documentos (mudou a tela? ajuste aqui).
+/** Onde fica a exclusão de conta no app (DeleteAccountSection, branch de exclusão de conta). */
+export const DELETE_ACCOUNT_IN_APP = "Usuário › Meu usuário › Excluir minha conta";
+/** Interruptor do Asafe em Usuário › Meu usuário (branch do consentimento do Asafe). */
+export const ASAFE_ALLOW_LABEL = "Permitir que o Asafe use meus dados";
 
 /** Rotas públicas (fora de /app, sem login). Use sempre estes caminhos nos links. */
 export const LEGAL_PATHS = {
@@ -111,9 +122,15 @@ export function requiresTermsAcceptance(pathname: string): boolean {
 /**
  * Aceite feito antes de existir sessão (cadastro com Google, que sai do app e
  * volta pelo redirecionamento). O TermsGate grava no perfil na primeira sessão.
+ *
+ * A anotação não diz de quem é: por isso só vale para uma conta CRIADA depois
+ * dela (created_at do GoTrue), nunca para uma conta antiga que entre no mesmo
+ * aparelho (ex.: tablet da igreja). O TermsGate também a apaga ao sair da conta.
  */
 const PENDING_KEY = "louvor-legal-pending-acceptance";
 const PENDING_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+/** Folga para a diferença entre o relógio do aparelho e o do servidor. */
+const PENDING_CLOCK_SKEW_MS = 10 * 60 * 1000;
 
 export function rememberPendingAcceptance(now = Date.now()): void {
   try {
@@ -123,12 +140,19 @@ export function rememberPendingAcceptance(now = Date.now()): void {
   }
 }
 
-export function hasPendingAcceptance(now = Date.now()): boolean {
+/**
+ * Há um aceite do cadastro, recente e das versões vigentes, que valha para esta
+ * conta? accountCreatedAt = session.user.created_at.
+ */
+export function hasPendingAcceptance(accountCreatedAt: string | null | undefined, now = Date.now()): boolean {
   try {
     const raw = localStorage.getItem(PENDING_KEY);
-    if (!raw) return false;
+    if (!raw || !accountCreatedAt) return false;
     const p = JSON.parse(raw) as { terms?: string; privacy?: string; at?: number };
-    return p.terms === TERMS_VERSION && p.privacy === PRIVACY_VERSION && typeof p.at === "number" && now - p.at >= 0 && now - p.at <= PENDING_MAX_AGE_MS;
+    if (p.terms !== TERMS_VERSION || p.privacy !== PRIVACY_VERSION || typeof p.at !== "number") return false;
+    if (now - p.at < 0 || now - p.at > PENDING_MAX_AGE_MS) return false;
+    const created = Date.parse(accountCreatedAt);
+    return Number.isFinite(created) && created >= p.at - PENDING_CLOCK_SKEW_MS && created <= p.at + PENDING_MAX_AGE_MS;
   } catch {
     return false;
   }

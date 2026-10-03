@@ -1,9 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
-import { acceptCurrentTerms, fetchTermsAcceptance, termsAcceptanceQueryKey } from "@/integrations/supabase/legal-client";
+import { useQueryClient } from "@tanstack/react-query";
+import { acceptCurrentTerms, termsAcceptanceQueryKey } from "@/integrations/supabase/legal-client";
 import {
   clearPendingAcceptance,
   hasCurrentAcceptance,
@@ -11,6 +9,7 @@ import {
   metadataHasCurrentAcceptance,
   requiresTermsAcceptance,
 } from "@/lib/legal";
+import { useTermsAcceptance } from "./useTermsAcceptance";
 
 // O diálogo só é baixado quando falta aceite (quase nunca depois do primeiro acesso).
 const TermsGateDialog = lazy(() => import("./TermsGateDialog"));
@@ -25,44 +24,36 @@ const TermsGateDialog = lazy(() => import("./TermsGateDialog"));
  * mas ainda não tinha sessão para gravar, tem o aceite registrado aqui sem
  * ver o pedido de novo. Se o servidor não responder, o app segue liberado: o
  * bloqueio volta na próxima abertura.
+ *
+ * Outros avisos que abrem sozinhos no app logado esperam por este com
+ * useTermsAccepted() (./useTermsAcceptance), para não abrirem juntos.
  */
 export function TermsGate() {
   const { pathname } = useLocation();
   const gated = requiresTermsAcceptance(pathname);
   const queryClient = useQueryClient();
-  const [session, setSession] = useState<Session | null>(null);
+  const { session, userId, query: acceptance } = useTermsAcceptance(gated);
 
+  const current = acceptance.isSuccess && !!acceptance.data && hasCurrentAcceptance(acceptance.data);
+  const outdated = gated && !!userId && acceptance.isSuccess && !!acceptance.data && !current;
+
+  // Aceite já em dia: a anotação do cadastro, se houver, não serve para mais nada.
   useEffect(() => {
-    let active = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (active) setSession(data.session);
-    });
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
-    return () => {
-      active = false;
-      data.subscription.unsubscribe();
-    };
-  }, []);
-
-  const userId = session?.user?.id ?? null;
-  const acceptance = useQuery({
-    queryKey: termsAcceptanceQueryKey(userId),
-    queryFn: () => fetchTermsAcceptance(userId as string),
-    enabled: gated && !!userId,
-    staleTime: 5 * 60_000,
-    retry: 1,
-  });
-
-  const outdated = gated && !!userId && acceptance.isSuccess && !!acceptance.data && !hasCurrentAcceptance(acceptance.data);
+    if (current) clearPendingAcceptance();
+  }, [current]);
 
   // Para quem o aceite prévio (do cadastro) já foi verificado.
   const [checkedFor, setCheckedFor] = useState<string | null>(null);
   const autoAccepting = useRef(false);
   const metadata = session?.user?.user_metadata;
+  const createdAt = session?.user?.created_at;
 
   useEffect(() => {
     if (!outdated || !userId || checkedFor === userId || autoAccepting.current) return;
-    if (!hasPendingAcceptance() && !metadataHasCurrentAcceptance(metadata)) {
+    // A anotação do aparelho só vale para a conta recém-criada; a do cadastro por
+    // e-mail viaja na própria conta (user_metadata).
+    if (!hasPendingAcceptance(createdAt) && !metadataHasCurrentAcceptance(metadata)) {
+      clearPendingAcceptance();
       setCheckedFor(userId);
       return;
     }
@@ -79,7 +70,7 @@ export function TermsGate() {
         autoAccepting.current = false;
         setCheckedFor(userId);
       });
-  }, [outdated, userId, checkedFor, metadata, queryClient]);
+  }, [outdated, userId, checkedFor, metadata, createdAt, queryClient]);
 
   if (!outdated || checkedFor !== userId) return null;
 

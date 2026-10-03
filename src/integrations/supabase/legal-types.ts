@@ -21,8 +21,13 @@ export type TermsAcceptanceRecord = {
 };
 
 export type LegalFunctions = {
+  /** Só aceita as versões de legal_current_versions(); outra versão -> erro "outdated_version". */
   accept_terms: {
     Args: { p_terms_version: string; p_privacy_version: string };
     Returns: TermsAcceptanceRecord;
+  };
+  legal_current_versions: {
+    Args: Record<never, never>;
+    Returns: { terms: string; privacy: string };
   };
 };
