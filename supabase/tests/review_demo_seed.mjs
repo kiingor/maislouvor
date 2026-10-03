@@ -1,14 +1,20 @@
 // Conta de revisão das lojas contra o schema real em memória (PGlite), nunca contra um servidor.
 // Roda applyDemo/resetDemo de scripts/review-demo/seed.mjs com um store SQL que faz o papel do
 // PostgREST (service_role) e do GoTrue (auth.users + trigger handle_new_user). Confere que as
-// linhas respeitam FKs, CHECKs e únicos de produção, que as músicas entram no catálogo e que o
-// reset só apaga o que é da demonstração.
+// linhas respeitam FKs, CHECKs e únicos de produção, que as músicas entram no catálogo, que o
+// preflight recusa o schema de produção sem o cadastro de músicas e que o reset só apaga o que é
+// da conta de revisão daquela loja.
 // PGLITE_MODULE=/caminho/@electric-sql/pglite/dist/index.js node supabase/tests/review_demo_seed.mjs
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createAssistantDb, withRole } from './helpers/assistant_db.mjs';
-import { applyDemo, resetDemo } from '../../scripts/review-demo/seed.mjs';
-import { DEMO_TEAM_NAME, LEADER, MEMBERS, PEOPLE, REVIEW_MARKER, localDateISO } from '../../scripts/review-demo/data.mjs';
+import { applyDemo, findSchemaGaps, preflightSchema, resetDemo } from '../../scripts/review-demo/seed.mjs';
+import { ACCOUNTS, REVIEW_MARKER, localDateISO } from '../../scripts/review-demo/data.mjs';
+
+const APPLE = ACCOUNTS.apple;
+const GOOGLE = ACCOUNTS.google;
+const { leader: LEADER, members: MEMBERS, people: PEOPLE } = APPLE;
+const DEMO_TEAM_NAME = APPLE.teamName;
 
 let checks = 0;
 const eq = (actual, expected, label) => { assert.deepEqual(actual, expected, label); checks++; };
@@ -84,7 +90,17 @@ await db.exec('CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FO
 await db.exec(await migration('20260927120000_song_loop_notes.sql'));
 await db.exec(await migration('20260929120000_assistant_notifications.sql'));
 await db.exec(await migration('20260930120000_assistant_missions.sql'));
-await db.exec(await migration('20260930200000_song_registration_catalog.sql'));
+
+// Produção hoje (cadastro de músicas aprovado, não publicado): o preflight recusa antes de
+// gravar e diz exatamente o que falta.
+const catalog = '20260930200000_song_registration_catalog.sql';
+const gapsBefore = await findSchemaGaps({ store: pgliteStore() });
+eq(gapsBefore.map((gap) => [gap.kind, `${gap.table}.${gap.column}`, gap.migration]),
+  ['audio_revision', 'draft_repertorio_ids', 'is_draft', 'recording_source_url'].map((column) => ['column', `songs.${column}`, catalog]),
+  'preflight aponta as colunas do cadastro de músicas');
+await assert.rejects(preflightSchema({ store: pgliteStore() }), new RegExp(`songs: colunas .*is_draft.* → ${catalog}`)); checks++;
+eq((await sql(`SELECT count(*)::int AS n FROM auth.users`))[0].n, 0, 'nada gravado pelo preflight');
+await db.exec(await migration(catalog));
 
 /** O que o supabase-js faria com a service_role, em SQL. Storage fica em memória. */
 function pgliteStore() {
@@ -126,6 +142,16 @@ function pgliteStore() {
       const cols = columns.split(',').map((c) => ident(c.trim())).join(', ');
       return service(async (tx) => (await tx.query(`SELECT ${cols} FROM public.${ident(table)} WHERE ${where(filters, params)}`, params)).rows);
     },
+    // Como o select(...).limit(0) do PostgREST: o Postgres confere as colunas sem trazer linhas.
+    async probe(table, columns) {
+      const cols = columns.length ? columns.map(ident).join(', ') : '*';
+      try {
+        await service((tx) => tx.query(`SELECT ${cols} FROM public.${ident(table)} LIMIT 0`));
+        return null;
+      } catch (error) {
+        return error.message;
+      }
+    },
     async insert(table, rows) { await service(async (tx) => { for (const row of rows) await insertRow(tx, table, row); }); },
     async upsert(table, rows, onConflict) { await service(async (tx) => { for (const row of rows) await insertRow(tx, table, row, onConflict); }); },
     async remove(table, filters) {
@@ -144,10 +170,13 @@ function pgliteStore() {
 const store = pgliteStore();
 const log = { info() {}, warn() {}, error() {}, addSecret() {} };
 const saved = [];
-const run = (fn) => fn({ store, log, now: new Date(), uuid: () => crypto.randomUUID(), password: 'Abcd-Efgh-2345-Jkmn',
-  saveCredentials: async (state) => { saved.push(state); }, loadBytes: async () => new Uint8Array(32) });
+const run = (fn, account = APPLE) => fn({ store, account, log, now: new Date(), uuid: () => crypto.randomUUID(),
+  password: 'Abcd-Efgh-2345-Jkmn', saveCredentials: async (state) => { saved.push(state); }, loadBytes: async () => new Uint8Array(32) });
 
 try {
+  // Com todas as migrações, nenhuma coluna do plano falta.
+  eq(await findSchemaGaps({ store }), [], 'preflight passa no schema completo');
+
   // Uma pessoa e uma equipe reais que o reset não pode tocar.
   const [outsider] = await sql(`INSERT INTO auth.users (id, email, raw_user_meta_data) VALUES
     (gen_random_uuid(), 'pessoa@example.test', '{"full_name":"Pessoa Real"}') RETURNING id::text`);
@@ -258,6 +287,19 @@ try {
   eq((await sql('SELECT count(*)::int AS n FROM public.teams WHERE id = $1', [realTeam.id]))[0].n, 1);
   eq(await count('songs', 'team_id', realTeam.id), 1);
   eq((await sql('SELECT count(*)::int AS n FROM auth.users WHERE id = $1', [outsider.id]))[0].n, 1);
+
+  // Uma conta por loja: o reset da Apple não toca na conta nem na equipe do Google.
+  const google = await run(applyDemo, GOOGLE);
+  eq(google.status, 'created');
+  const apple = await run(applyDemo, APPLE);
+  const googleUsers = await sql('SELECT id::text FROM auth.users WHERE email = ANY($1) ORDER BY id', [GOOGLE.emails]);
+  eq(googleUsers.length, GOOGLE.people.length);
+  eq((await sql('SELECT name FROM public.teams WHERE id = $1', [google.teamId]))[0].name, GOOGLE.teamName);
+  eq((await run(resetDemo, APPLE)).teams, [apple.teamId]);
+  eq(await sql('SELECT id::text FROM auth.users WHERE email = ANY($1) ORDER BY id', [GOOGLE.emails]), googleUsers, 'contas do Google intactas');
+  eq(await count('songs', 'team_id', google.teamId), 6, 'equipe do Google intacta');
+  eq((await sql('SELECT count(*)::int AS n FROM auth.users WHERE email = ANY($1)', [APPLE.emails]))[0].n, 0);
+  await run(resetDemo, GOOGLE);
 
   // Conta com e-mail de revisão sem a marca: nada é apagado.
   await sql(`INSERT INTO auth.users (id, email) VALUES (gen_random_uuid(), $1)`, [MEMBERS[1].email]);

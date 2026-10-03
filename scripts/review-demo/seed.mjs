@@ -1,33 +1,35 @@
 #!/usr/bin/env node
 // Conta de revisão das lojas (Apple 2.1 "Sign-in required" / Google Play "App access").
-// Cria um líder com uma equipe fictícia e populada para quem revisa o app.
+// Cria, para cada loja, um líder com uma equipe fictícia e populada para quem revisa o app.
 //
-//   node scripts/review-demo/seed.mjs                 simulação (padrão): só imprime o plano, sem rede
-//   node scripts/review-demo/seed.mjs --apply --yes   cria a conta e a equipe
-//   node scripts/review-demo/seed.mjs --reset --yes   apaga a equipe e as contas de revisão e recria
+//   node scripts/review-demo/seed.mjs                               simulação (padrão): só imprime o plano, sem rede
+//   node scripts/review-demo/seed.mjs --apply --yes                 cria as contas que faltam (App Store e Google Play)
+//   node scripts/review-demo/seed.mjs --reset --yes --store apple   apaga e recria só a conta da App Store
 //
 // --apply e --reset gravam em PRODUÇÃO com a service_role: exigem SUPABASE_URL em
-// https, SUPABASE_SERVICE_ROLE_KEY e --yes. A senha do líder vai só para o arquivo de
-// credenciais (diretório 700, arquivo 600); a chave e a senha nunca são impressas.
-// Detalhes e cuidados: scripts/review-demo/README.md.
+// https, SUPABASE_SERVICE_ROLE_KEY e --yes, e conferem o schema antes de gravar. As
+// senhas dos líderes vão só para o arquivo de credenciais (diretório 700, arquivo 600);
+// a chave e as senhas nunca são impressas. Detalhes e cuidados: scripts/review-demo/README.md.
 import { randomBytes, randomUUID } from 'node:crypto';
 import { chmod, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  BABY_BIRD, CREDENTIALS_RELATIVE_PATH, DEMO_EMAILS, DEMO_TEAM_NAME, LEADER, ORIGINAL_SONGS, PEOPLE,
-  REVIEW_MARKER, TIME_ZONE, buildContent, buildTeam, buildUsers, generatePassword, renderGuideWav,
+  ACCOUNTS, BABY_BIRD, CREDENTIALS_RELATIVE_PATH, LEADER_KEY, ORIGINAL_SONGS, REVIEW_MARKER, ROSTER, SCHEMA_SOURCES,
+  STORES, STORE_KEYS, TIME_ZONE, buildContent, buildTeam, buildUsers, generatePassword, renderGuideWav, writtenColumns,
 } from './data.mjs';
 
 const ASSETS_DIR = fileURLToPath(new URL('./assets/', import.meta.url));
 const REPO_ROOT = resolve(ASSETS_DIR, '..', '..', '..');
 
-export const USAGE = `Uso: node scripts/review-demo/seed.mjs [--dry-run | --apply --yes | --reset --yes] [opções]
+export const USAGE = `Uso: node scripts/review-demo/seed.mjs [--dry-run | --apply --yes | --reset --yes --store L] [opções]
 
   --dry-run         (padrão) imprime o plano completo; não usa a rede nem grava nada
-  --apply           cria a conta de revisão e a equipe de demonstração
-  --reset           apaga a equipe e as contas de revisão e cria tudo de novo
+  --apply           cria as contas de revisão e as equipes que ainda não existem
+  --reset           apaga a equipe e as contas de revisão da loja e cria tudo de novo
+  --store L         apple, google ou all (padrão: all; obrigatório com --reset, para
+                    não derrubar a revisão em andamento na outra loja)
   --yes             confirma a gravação em produção (obrigatório com --apply/--reset)
   --new-password    gera outra senha em vez de reaproveitar a do arquivo de credenciais
   --credentials P   caminho do arquivo de credenciais (padrão: ~/${CREDENTIALS_RELATIVE_PATH})
@@ -39,7 +41,7 @@ Variáveis (só para --apply/--reset): SUPABASE_URL (https) e SUPABASE_SERVICE_R
 // ---------------------------------------------------------------------------
 
 export function parseArgs(argv) {
-  const options = { mode: null, yes: false, newPassword: false, credentialsPath: null, help: false };
+  const options = { mode: null, yes: false, newPassword: false, credentialsPath: null, help: false, stores: null };
   const setMode = (mode) => {
     if (options.mode && options.mode !== mode) throw new Error('Use só um modo: --dry-run, --apply ou --reset.');
     options.mode = mode;
@@ -56,9 +58,18 @@ export function parseArgs(argv) {
       const value = argv[++i];
       if (!value || value.startsWith('--')) throw new Error('Informe o caminho depois de --credentials.');
       options.credentialsPath = resolve(value);
+    } else if (arg === '--store') {
+      const value = argv[++i];
+      if (value === 'all') options.stores = [...STORE_KEYS];
+      else if (Object.hasOwn(STORES, value ?? '')) options.stores = [value];
+      else throw new Error(`Informe a loja depois de --store: ${STORE_KEYS.join(', ')} ou all.`);
     } else throw new Error(`Opção desconhecida: ${arg}`);
   }
   options.mode ??= 'dry-run';
+  if (options.mode === 'reset' && !options.stores) {
+    throw new Error('--reset precisa de --store (apple, google ou all): o reset derruba a sessão de quem está revisando.');
+  }
+  options.stores ??= [...STORE_KEYS];
   return options;
 }
 
@@ -170,6 +181,11 @@ export function supabaseStore(client) {
     async select(table, columns, filters) {
       return must(`select ${table}`, await applyFilters(client.from(table).select(columns), filters)) || [];
     },
+    /** Erro do PostgREST ao ler as colunas (sem trazer linhas), ou null se existem. */
+    async probe(table, columns) {
+      const { error } = await client.from(table).select(columns.length ? columns.join(',') : '*').limit(0);
+      return error ? error.message || error.code || 'erro desconhecido' : null;
+    },
     async insert(table, rows) {
       for (const part of chunks(rows, 200)) must(`insert ${table}`, await client.from(table).insert(part));
     },
@@ -231,9 +247,59 @@ async function fileSize(file) {
 // Operações
 // ---------------------------------------------------------------------------
 
-/** O que já existe da conta de revisão (identificada pelos e-mails fixos + marca). */
-export async function inspectDemo(store) {
-  const users = await store.listUsersByEmail(DEMO_EMAILS);
+/**
+ * O que falta no banco para o plano: [{ kind, table, column, migration, error }], com
+ * kind 'column', 'table' (a tabela não responde) ou 'other' (erro que não é de coluna).
+ * Uma consulta por tabela; só quando ela falha, uma por coluna para dizer qual falta.
+ */
+const MISSING_TABLE = /does not exist|schema cache|PGRST205|42P01/i;
+
+export async function findSchemaGaps({ store, columns = writtenColumns() }) {
+  const gaps = [];
+  for (const [table, cols] of columns) {
+    const error = await store.probe(table, cols);
+    if (!error) continue;
+    const tableError = await store.probe(table, []);
+    if (tableError) {
+      // Tabela ausente (Postgres 42P01 ou PGRST205 do PostgREST); outro erro (rede, permissão) não aponta migração.
+      const absent = MISSING_TABLE.test(tableError);
+      gaps.push({ kind: absent ? 'table' : 'other', table, column: null,
+        migration: absent ? SCHEMA_SOURCES[table] ?? null : null, error: tableError });
+      continue;
+    }
+    const before = gaps.length;
+    for (const column of cols) {
+      if (await store.probe(table, [column])) {
+        gaps.push({ kind: 'column', table, column, migration: SCHEMA_SOURCES[`${table}.${column}`] ?? SCHEMA_SOURCES[table] ?? null, error: null });
+      }
+    }
+    if (gaps.length === before) gaps.push({ kind: 'other', table, column: null, migration: null, error });
+  }
+  return gaps;
+}
+
+/**
+ * Recusa gravar se o banco ainda não tem o schema do plano (ex.: o cadastro de músicas
+ * não publicado): sem isso o script criaria as contas e pararia no meio.
+ */
+export async function preflightSchema({ store, columns }) {
+  const gaps = await findSchemaGaps({ store, columns });
+  if (!gaps.length) return;
+  const lines = [];
+  for (const table of [...new Set(gaps.map((gap) => gap.table))]) {
+    const rows = gaps.filter((gap) => gap.table === table);
+    const migrations = [...new Set(rows.map((gap) => gap.migration).filter(Boolean))];
+    const what = rows[0].kind === 'column' ? `colunas ${rows.map((gap) => gap.column).join(', ')}`
+      : rows[0].kind === 'table' ? `tabela inexistente (${rows[0].error})` : `erro: ${rows[0].error}`;
+    lines.push(`  - ${table}: ${what}${migrations.length ? ` → ${migrations.join(', ')}` : ''}`);
+  }
+  throw new Error(['O banco ainda não tem o schema que o seed grava:', ...lines,
+    'Publique as migrações indicadas (ver "Pré-requisitos" no README) e rode de novo.'].join('\n'));
+}
+
+/** O que já existe da conta de revisão da loja (identificada pelos e-mails fixos + marca). */
+export async function inspectDemo(store, account) {
+  const users = await store.listUsersByEmail(account.emails);
   const unmarked = users.filter((user) => user.app_metadata?.[REVIEW_MARKER] !== true);
   const profiles = users.length ? await store.select('profiles', 'id,user_id', { user_id: users.map((u) => u.id) }) : [];
   const teams = profiles.length ? await store.select('teams', 'id,name,owner_id', { owner_id: profiles.map((p) => p.id) }) : [];
@@ -248,18 +314,18 @@ function refuseUnmarked(state) {
 }
 
 /** Garante um perfil por conta (o trigger handle_new_user cria; aqui só completa se faltar). */
-async function resolveProfiles(store, userIds) {
+async function resolveProfiles(store, userIds, account) {
   const byUser = async () => Object.fromEntries(
     (await store.select('profiles', 'id,user_id', { user_id: Object.values(userIds) })).map((p) => [p.user_id, p.id]),
   );
   let found = await byUser();
-  const missing = PEOPLE.filter((person) => !found[userIds[person.key]]);
+  const missing = account.people.filter((person) => !found[userIds[person.key]]);
   if (missing.length) {
     await store.insert('profiles', missing.map((person) => ({ user_id: userIds[person.key], full_name: person.fullName })));
     found = await byUser();
   }
   const profiles = {};
-  for (const person of PEOPLE) {
+  for (const person of account.people) {
     profiles[person.key] = found[userIds[person.key]];
     if (!profiles[person.key]) throw new Error(`Perfil de ${person.email} não foi criado.`);
   }
@@ -271,37 +337,37 @@ async function resolveProfiles(store, userIds) {
  * existe (execução interrompida), para e pede --reset. `saveCredentials` grava a senha
  * ANTES de criar o usuário, para ela nunca se perder.
  */
-export async function applyDemo({ store, now, uuid, password, log, saveCredentials, loadBytes = loadFileBytes }) {
-  const state = await inspectDemo(store);
+export async function applyDemo({ store, account, now, uuid, password, log, saveCredentials, loadBytes = loadFileBytes }) {
+  const state = await inspectDemo(store, account);
   refuseUnmarked(state);
-  const demoTeam = state.teams.find((team) => team.name === DEMO_TEAM_NAME);
-  if (state.users.length === PEOPLE.length && demoTeam) {
-    log.info('A conta de revisão já existe. Nada foi alterado (use --reset --yes para recriar).');
+  const demoTeam = state.teams.find((team) => team.name === account.teamName);
+  if (state.users.length === account.people.length && demoTeam) {
+    log.info(`A conta de revisão já existe. Nada foi alterado (use --reset --yes --store ${account.store} para recriar).`);
     return { status: 'exists', teamId: demoTeam.id };
   }
   if (state.users.length || state.teams.length) {
-    throw new Error('Existe só parte da conta de revisão (execução interrompida?). Rode com --reset --yes.');
+    throw new Error(`Existe só parte da conta de revisão (execução interrompida ou conta excluída pelo revisor). Rode com --reset --yes --store ${account.store}.`);
   }
 
   await saveCredentials({ status: 'pending', team_id: null });
   log.info('1/5 Contas (e-mail já confirmado, nenhum e-mail enviado)');
   const userIds = {};
-  for (const attributes of buildUsers(password)) {
+  for (const attributes of buildUsers(password, account)) {
     const { key, ...body } = attributes;
     userIds[key] = (await store.createUser(body)).id;
     log.info(`    ${attributes.email}`);
   }
-  const profiles = await resolveProfiles(store, userIds);
+  const profiles = await resolveProfiles(store, userIds, account);
 
-  log.info(`2/5 Equipe "${DEMO_TEAM_NAME}" (Asafe desligado)`);
+  log.info(`2/5 Equipe "${account.teamName}" (Asafe desligado)`);
   const teamId = uuid();
-  const { team, members, assistant } = buildTeam({ teamId, profiles });
+  const { team, members, assistant } = buildTeam({ teamId, profiles, account });
   await store.insert('teams', [team]);
   // O trigger on_team_created já põe o dono como admin; o upsert completa as funções.
   await store.upsert('team_members', members, 'team_id,profile_id');
   const memberRows = await store.select('team_members', 'id,profile_id', { team_id: teamId });
   const memberIds = {};
-  for (const person of PEOPLE) {
+  for (const person of account.people) {
     memberIds[person.key] = memberRows.find((row) => row.profile_id === profiles[person.key])?.id;
     if (!memberIds[person.key]) throw new Error(`Membro ${person.email} não entrou na equipe.`);
   }
@@ -324,11 +390,11 @@ export async function applyDemo({ store, now, uuid, password, log, saveCredentia
 }
 
 /**
- * Apaga a equipe (e o que estiver no Storage dela) e as contas de revisão. Só toca
- * contas com a marca; equipes só se o dono for uma conta de revisão.
+ * Apaga a equipe (e o que estiver no Storage dela) e as contas de revisão da loja. Só
+ * toca contas com a marca; equipes só se o dono for uma conta de revisão desta loja.
  */
-export async function resetDemo({ store, log, rememberedTeamIds = [] }) {
-  const state = await inspectDemo(store);
+export async function resetDemo({ store, account, log, rememberedTeamIds = [] }) {
+  const state = await inspectDemo(store, account);
   refuseUnmarked(state);
   const demoProfiles = new Set(state.profiles.map((p) => p.id));
   const teamIds = new Set(state.teams.map((team) => team.id));
@@ -365,56 +431,61 @@ export async function resetDemo({ store, log, rememberedTeamIds = [] }) {
 
 const ROLE_LABEL = { admin: 'líder (admin), dono da equipe', editor: 'editor', viewer: 'membro (viewer)' };
 
-export async function describePlan({ now, credentialsPath }) {
+export async function describePlan({ now, credentialsPath, stores = STORE_KEYS }) {
   let n = 0;
   const fakeId = () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`;
   const refs = { teamId: fakeId(), profiles: {}, members: {} };
-  for (const person of PEOPLE) { refs.profiles[person.key] = fakeId(); refs.members[person.key] = fakeId(); }
+  for (const person of ROSTER) { refs.profiles[person.key] = fakeId(); refs.members[person.key] = fakeId(); }
   const content = buildContent({ now, uuid: fakeId, refs });
   const table = Object.fromEntries(content.tables);
   let totalBytes = 0;
   for (const file of content.files) totalBytes += await fileSize(file);
   const lines = [];
   const add = (line = '') => lines.push(line);
-  add('+Louvor · conta de revisão das lojas — SIMULAÇÃO (nada foi gravado, nenhuma rede usada)');
+  add('+Louvor · contas de revisão das lojas — SIMULAÇÃO (nada foi gravado, nenhuma rede usada)');
   add(`Hoje: ${content.today} (${TIME_ZONE})`);
   add();
-  add(`Contas no Auth (e-mail confirmado, nenhum e-mail enviado, app_metadata.${REVIEW_MARKER} = true)`);
-  for (const person of PEOPLE) {
-    const access = person.key === LEADER.key
-      ? `senha gerada e gravada só em ${credentialsPath}`
-      : 'sem senha (não faz login), sem telefone';
-    add(`  ${person.email} — ${person.fullName} · ${ROLE_LABEL[person.role]} · ${person.instruments.join(', ')} · ${access}`);
+  add(`Uma conta por loja, cada uma com a sua equipe e o mesmo conteúdo (${stores.length === 1 ? 'só' : 'lojas:'} ${stores.join(', ')}).`);
+  add(`Contas no Auth: e-mail confirmado, nenhum e-mail enviado, app_metadata.${REVIEW_MARKER} = true.`);
+  for (const key of stores) {
+    const account = ACCOUNTS[key];
+    add();
+    add(`${account.label} (--store ${key}) · equipe "${account.teamName}"`);
+    for (const person of account.people) {
+      const access = person.key === LEADER_KEY
+        ? `senha gerada e gravada só em ${credentialsPath}`
+        : 'sem senha (não faz login), sem telefone';
+      add(`  ${person.email} — ${person.fullName} · ${ROLE_LABEL[person.role]} · ${person.instruments.join(', ')} · ${access}`);
+    }
   }
   add();
-  add(`Equipe "${DEMO_TEAM_NAME}"`);
+  add('Conteúdo de cada equipe');
   add('  Asafe: não ativado (sem grupo); assistente suspenso nesta equipe e avisos automáticos desligados');
-  add();
-  add(`Músicas (${table.songs.length}), todas com os seis campos do cadastro (nome, artista, tom, tema, cifra e áudio)`);
+  add(`  Músicas (${table.songs.length}), todas com os seis campos do cadastro (nome, artista, tom, tema, cifra e áudio)`);
   for (const song of table.songs) {
     const tracks = table.song_tracks.filter((track) => track.song_id === song.id);
     const extra = tracks.length
       ? `${tracks.length} faixas (${tracks.map((t) => t.track_name).join(', ')}) · CC BY 3.0`
       : `guia de ${song.duration_seconds} s`;
-    add(`  ${song.title} — ${song.artist} · ${song.key_original} · ${song.theme} · ${song.bpm} BPM · ${extra}`);
+    add(`    ${song.title} — ${song.artist} · ${song.key_original} · ${song.theme} · ${song.bpm} BPM · ${extra}`);
   }
-  add(`  Arquivos no bucket audio: ${content.files.length} (${(totalBytes / 1024 / 1024).toFixed(1)} MB)`);
-  add();
-  add(`Repertório "${table.repertorios[0].name}": ${table.repertorio_songs.length} músicas`);
-  add('Cultos');
+  add(`  Arquivos no bucket audio: ${content.files.length} por equipe (${(totalBytes / 1024 / 1024).toFixed(1)} MB)`);
+  add(`  Repertório "${table.repertorios[0].name}": ${table.repertorio_songs.length} músicas`);
+  add('  Cultos');
   for (const culto of table.cultos) {
     const songs = table.culto_songs.filter((row) => row.culto_id === culto.id).length;
     const blocks = table.culto_blocks.filter((row) => row.culto_id === culto.id).length;
     const lineup = table.culto_lineup.filter((row) => row.culto_id === culto.id);
-    add(`  ${culto.date} ${culto.name} — ${songs} músicas, ${blocks} momento(s), escala: `
-      + lineup.map((row) => `${PEOPLE.find((p) => refs.members[p.key] === row.team_member_id).fullName} (${row.instrument}, ${row.status})`).join('; '));
+    add(`    ${culto.date} ${culto.name} — ${songs} músicas, ${blocks} momento(s), escala: `
+      + lineup.map((row) => `${ROSTER.find((p) => refs.members[p.key] === row.team_member_id).fullName} (${row.instrument}, ${row.status})`).join('; '));
   }
-  add(`Disponibilidade: ${table.member_availability.length} registros`);
+  add(`  Disponibilidade: ${table.member_availability.length} registros`);
   const general = table.messages.filter((m) => !m.channel_id).length;
-  add(`Chat: ${general} mensagens em Geral e ${table.messages.length - general} no canal "${table.channels[0].name}"`);
-  add(`Loops: ${table.song_loop_points.length} na ${BABY_BIRD.title}, com anotação`);
-  add(`Avisos para o líder: ${table.notifications.length}`);
+  add(`  Chat: ${general} mensagens em Geral e ${table.messages.length - general} no canal "${table.channels[0].name}"`);
+  add(`  Loops: ${table.song_loop_points.length} na ${BABY_BIRD.title}, com anotação`);
+  add(`  Avisos para o líder: ${table.notifications.length}`);
   add();
+  add('Antes de gravar, o script confere se o banco tem todas as colunas do plano (ver "Pré-requisitos" no README).');
   add('Para gravar (produção — rode você mesmo, com a service_role):');
   add('  SUPABASE_URL=https://... SUPABASE_SERVICE_ROLE_KEY=... node scripts/review-demo/seed.mjs --apply --yes');
   return lines.join('\n');
@@ -423,6 +494,8 @@ export async function describePlan({ now, credentialsPath }) {
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
+
+const isObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 
 export async function main(argv = process.argv.slice(2), deps = {}) {
   const {
@@ -440,7 +513,7 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
   const credentialsPath = options.credentialsPath || defaultCredentialsPath();
 
   if (options.mode === 'dry-run') {
-    log.info(await describePlan({ now, credentialsPath }));
+    log.info(await describePlan({ now, credentialsPath, stores: options.stores }));
     return 0;
   }
 
@@ -454,39 +527,71 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
     return 2;
   }
 
+  let current = null;
   try {
+    // Uma entrada por loja; as das outras lojas são mantidas como estão.
     const previous = await readCredentials(credentialsPath);
-    // Reaproveita a senha já cadastrada nas lojas, a menos que peçam outra.
-    const reuse = !options.newPassword && previous?.email === LEADER.email
-      && typeof previous.password === 'string' && previous.password.length >= 12;
-    const password = reuse ? previous.password : generatePassword(random);
-    log.addSecret(password);
-    const saveCredentials = (extra) => writeCredentials(credentialsPath, {
-      purpose: 'Conta de revisão das lojas (+Louvor). Use só no App Store Connect e no Play Console.',
-      email: LEADER.email,
-      password,
-      supabase_url: target.url,
-      team_name: DEMO_TEAM_NAME,
-      updated_at: new Date().toISOString(),
-      ...extra,
-    });
-
-    log.info(`Destino: ${target.host} (${options.mode === 'reset' ? 'reset' : 'apply'})`);
-    const store = await createStore(target);
-    if (options.mode === 'reset') {
-      await resetDemo({ store, log, rememberedTeamIds: previous?.team_id ? [previous.team_id] : [] });
+    const file = {
+      purpose: 'Contas de revisão das lojas (+Louvor). Use só no App Store Connect e no Play Console; nunca em arquivos do repositório.',
+      accounts: { ...(isObject(previous?.accounts) ? previous.accounts : {}) },
+    };
+    // Senhas definidas antes de qualquer saída, para o logger já mascarar todas.
+    // Reaproveita a senha já cadastrada na loja, a menos que peçam outra.
+    const passwords = {};
+    for (const key of options.stores) {
+      const saved = file.accounts[key];
+      const reused = !options.newPassword && saved?.email === ACCOUNTS[key].leader.email
+        && typeof saved.password === 'string' && saved.password.length >= 12;
+      passwords[key] = { value: reused ? saved.password : generatePassword(random), reused };
+      log.addSecret(passwords[key].value);
     }
-    const result = await applyDemo({ store, now, uuid, password, log, saveCredentials, loadBytes });
-    if (result.status === 'created') {
-      log.info(`Login: ${LEADER.email}`);
-      log.info(`Senha: ${reuse ? 'a mesma de antes' : 'nova'}, gravada em ${credentialsPath} (não é exibida aqui).`);
-    } else if (!previous) {
-      log.warn(`Sem arquivo de credenciais em ${credentialsPath}: rode --reset --yes para gerar uma senha nova.`);
+
+    log.info(`Destino: ${target.host} (${options.mode}; lojas: ${options.stores.join(', ')})`);
+    const store = await createStore(target);
+    log.info('Conferindo o schema do banco…');
+    await preflightSchema({ store });
+
+    for (const key of options.stores) {
+      current = key;
+      const account = ACCOUNTS[key];
+      const saved = file.accounts[key];
+      const password = passwords[key].value;
+      const saveCredentials = (extra) => {
+        file.accounts[key] = {
+          store: account.label,
+          email: account.leader.email,
+          password,
+          team_name: account.teamName,
+          supabase_url: target.url,
+          updated_at: new Date().toISOString(),
+          ...extra,
+        };
+        return writeCredentials(credentialsPath, file);
+      };
+      log.info('');
+      log.info(`== ${account.label} · ${account.leader.email} ==`);
+      if (options.mode === 'reset') {
+        // A equipe lembrada só vale para o mesmo servidor.
+        const remembered = saved?.team_id && saved.supabase_url === target.url ? [saved.team_id] : [];
+        await resetDemo({ store, account, log, rememberedTeamIds: remembered });
+      }
+      const result = await applyDemo({ store, account, now, uuid, password, log, saveCredentials, loadBytes });
+      if (result.status === 'created') {
+        log.info(`Login: ${account.leader.email}`);
+        log.info(`Senha: ${passwords[key].reused ? 'a mesma de antes' : 'nova'}, gravada em ${credentialsPath} (não é exibida aqui).`);
+      } else if (!passwords[key].reused) {
+        log.warn(options.newPassword
+          ? `A senha não mudou: a conta já existia. Para trocar, use --reset --yes --store ${key} --new-password.`
+          : `Sem a senha desta conta em ${credentialsPath}: rode --reset --yes --store ${key} para gerar uma nova.`);
+      }
     }
     return 0;
   } catch (error) {
-    log.error(`Falhou: ${error.message}`);
-    log.error('Nada mais foi gravado depois do erro. Para limpar e recriar: --reset --yes.');
+    const where = current ? ` (${ACCOUNTS[current].label})` : '';
+    log.error(`Falhou${where}: ${error.message}`);
+    log.error(current
+      ? `Nada mais foi gravado depois do erro. Para limpar e recriar: --reset --yes --store ${current}.`
+      : 'Nada foi gravado.');
     return 1;
   }
 }

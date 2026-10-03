@@ -13,31 +13,49 @@ export const TIME_ZONE = 'America/Sao_Paulo';
 /** Marca gravada no app_metadata (só a service_role altera) de cada conta de revisão. */
 export const REVIEW_MARKER = 'review_demo';
 
-export const DEMO_TEAM_NAME = 'Igreja Demonstração (App Review)';
 export const DEMO_ARTIST = 'Equipe Demonstração';
 
 /** Credenciais ficam só neste arquivo (diretório 700, arquivo 600), nunca no terminal. */
 export const CREDENTIALS_RELATIVE_PATH = '.local/share/maislouvor-review/credentials.json';
 
-export const LEADER = Object.freeze({
-  key: 'leader',
-  email: 'revisao@maislouvor.com',
-  fullName: 'Líder Demonstração',
-  role: 'admin',
-  instruments: ['Ministrante', 'Violão'],
-});
+export const LEADER_KEY = 'leader';
 
-// Membros fictícios: sem telefone, sem senha (não fazem login), sem push e sem
-// vínculo com o WhatsApp.
-export const MEMBERS = Object.freeze([
-  { key: 'ana', email: 'membro1.revisao@maislouvor.com', fullName: 'Ana Exemplo', role: 'editor', instruments: ['Ministrante', 'Soprano'] },
-  { key: 'bruno', email: 'membro2.revisao@maislouvor.com', fullName: 'Bruno Exemplo', role: 'viewer', instruments: ['Teclado', 'Baixo'] },
-  { key: 'carla', email: 'membro3.revisao@maislouvor.com', fullName: 'Carla Exemplo', role: 'viewer', instruments: ['Contralto', 'Violão'] },
-  { key: 'davi', email: 'membro4.revisao@maislouvor.com', fullName: 'Davi Exemplo', role: 'viewer', instruments: ['Bateria', 'Cajon'] },
+// Pessoas fictícias, iguais nas duas lojas (só o e-mail muda). Os membros não têm
+// telefone, senha (não fazem login), push nem vínculo com o WhatsApp.
+export const ROSTER = Object.freeze([
+  { key: LEADER_KEY, mailbox: 'revisao', fullName: 'Líder Demonstração', role: 'admin', instruments: ['Ministrante', 'Violão'] },
+  { key: 'ana', mailbox: 'membro1.revisao', fullName: 'Ana Exemplo', role: 'editor', instruments: ['Ministrante', 'Soprano'] },
+  { key: 'bruno', mailbox: 'membro2.revisao', fullName: 'Bruno Exemplo', role: 'viewer', instruments: ['Teclado', 'Baixo'] },
+  { key: 'carla', mailbox: 'membro3.revisao', fullName: 'Carla Exemplo', role: 'viewer', instruments: ['Contralto', 'Violão'] },
+  { key: 'davi', mailbox: 'membro4.revisao', fullName: 'Davi Exemplo', role: 'viewer', instruments: ['Bateria', 'Cajon'] },
 ]);
 
-export const PEOPLE = Object.freeze([LEADER, ...MEMBERS]);
-export const DEMO_EMAILS = Object.freeze(PEOPLE.map((person) => person.email));
+/**
+ * Uma conta de revisão (líder, membros e equipe) por loja. Apple e Google costumam
+ * revisar ao mesmo tempo e o revisor pode excluir a conta pelo app: com contas
+ * separadas, a exclusão (ou um --reset) numa loja não derruba o login da outra.
+ */
+export const STORES = Object.freeze({
+  apple: Object.freeze({ key: 'apple', label: 'App Store', emailTag: '', teamName: 'Igreja Demonstração (App Review)' }),
+  google: Object.freeze({ key: 'google', label: 'Google Play', emailTag: '.google', teamName: 'Igreja Demonstração (Play Review)' }),
+});
+export const STORE_KEYS = Object.freeze(Object.keys(STORES));
+
+function demoAccount({ key, label, emailTag, teamName }) {
+  const people = Object.freeze(ROSTER.map(({ mailbox, instruments, ...person }) => Object.freeze({
+    ...person, email: `${mailbox}${emailTag}@maislouvor.com`, instruments: Object.freeze([...instruments]),
+  })));
+  return Object.freeze({
+    store: key, label, teamName, people,
+    leader: people.find((person) => person.key === LEADER_KEY),
+    members: Object.freeze(people.filter((person) => person.key !== LEADER_KEY)),
+    emails: Object.freeze(people.map((person) => person.email)),
+  });
+}
+
+/** { apple: { store, label, teamName, leader, members, people, emails }, google: {...} } */
+export const ACCOUNTS = Object.freeze(Object.fromEntries(STORE_KEYS.map((key) => [key, demoAccount(STORES[key])])));
+export const ALL_DEMO_EMAILS = Object.freeze(STORE_KEYS.flatMap((key) => ACCOUNTS[key].emails));
 
 /** Avisos automáticos do Asafe, todos desligados para a equipe de revisão. */
 export const ASSISTANT_NOTICES_OFF = Object.freeze({
@@ -651,24 +669,68 @@ export function buildContent({ now, uuid, refs }) {
 }
 
 /** Linhas de equipe/membros (gravadas antes do conteúdo, depois das contas). */
-export function buildTeam({ teamId, profiles }) {
+export function buildTeam({ teamId, profiles, account }) {
   return {
-    team: { id: teamId, name: DEMO_TEAM_NAME, owner_id: profiles.leader },
-    members: PEOPLE.map((person) => ({
-      team_id: teamId, profile_id: profiles[person.key], role: person.role, instruments: person.instruments,
+    team: { id: teamId, name: account.teamName, owner_id: profiles[LEADER_KEY] },
+    members: account.people.map((person) => ({
+      team_id: teamId, profile_id: profiles[person.key], role: person.role, instruments: [...person.instruments],
     })),
     assistant: { team_id: teamId, enabled: false, notification_settings: { ...ASSISTANT_NOTICES_OFF } },
   };
 }
 
 /** Atributos das contas no Auth. A senha só existe para o líder (os demais não fazem login). */
-export function buildUsers(password) {
-  return PEOPLE.map((person) => ({
+export function buildUsers(password, account) {
+  return account.people.map((person) => ({
     key: person.key,
     email: person.email,
-    password: person.key === LEADER.key ? password : undefined,
+    password: person.key === LEADER_KEY ? password : undefined,
     email_confirm: true,
     user_metadata: { full_name: person.fullName },
     app_metadata: { [REVIEW_MARKER]: true },
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Schema exigido (preflight)
+// ---------------------------------------------------------------------------
+
+/**
+ * Migrações que criaram as colunas/tabelas mais novas que o seed grava, para o
+ * preflight dizer o que falta publicar. As demais já estavam no schema de 27/09.
+ */
+export const SCHEMA_SOURCES = Object.freeze({
+  'songs.is_draft': '20260930200000_song_registration_catalog.sql',
+  'songs.recording_source_url': '20260930200000_song_registration_catalog.sql',
+  'songs.audio_revision': '20260930200000_song_registration_catalog.sql',
+  'songs.draft_repertorio_ids': '20260930200000_song_registration_catalog.sql',
+  'song_loop_points.notes': '20260927120000_song_loop_notes.sql',
+  assistant_team_settings: '20260928120000_whatsapp_assistant.sql',
+  'assistant_team_settings.notification_settings': '20260929120000_assistant_notifications.sql',
+  culto_song_voices: '20260727000000_culto_song_voices.sql',
+});
+
+/**
+ * Colunas que o seed lê ou grava em cada tabela, tiradas do próprio plano (assim o
+ * preflight nunca fica desatualizado). Devolve [[tabela, [colunas em ordem]], ...].
+ */
+export function writtenColumns() {
+  let n = 0;
+  const fakeId = () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`;
+  const refs = { teamId: fakeId(), profiles: {}, members: {} };
+  for (const person of ROSTER) { refs.profiles[person.key] = fakeId(); refs.members[person.key] = fakeId(); }
+  const { team, members, assistant } = buildTeam({ teamId: refs.teamId, profiles: refs.profiles, account: ACCOUNTS.apple });
+  const content = buildContent({ now: new Date('2026-01-01T12:00:00Z'), uuid: fakeId, refs });
+  const columns = new Map();
+  const add = (table, rows) => {
+    const set = columns.get(table) ?? new Set();
+    for (const row of rows) Object.keys(row).forEach((column) => set.add(column));
+    columns.set(table, set);
+  };
+  add('profiles', [{ id: null, user_id: null, full_name: null }]);
+  add('teams', [team]);
+  add('team_members', [{ id: null }, ...members]);
+  add('assistant_team_settings', [assistant]);
+  for (const [table, rows] of content.tables) add(table, rows);
+  return [...columns].map(([table, set]) => [table, [...set].sort()]);
 }
