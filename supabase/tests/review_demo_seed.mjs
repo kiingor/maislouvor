@@ -6,7 +6,7 @@
 // da conta de revisão daquela loja.
 // PGLITE_MODULE=/caminho/@electric-sql/pglite/dist/index.js node supabase/tests/review_demo_seed.mjs
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { createAssistantDb, withRole } from './helpers/assistant_db.mjs';
 import { applyDemo, findSchemaGaps, preflightSchema, resetDemo } from '../../scripts/review-demo/seed.mjs';
 import { ACCOUNTS, REVIEW_MARKER, localDateISO } from '../../scripts/review-demo/data.mjs';
@@ -82,6 +82,23 @@ await db.exec(`
     channel_id uuid REFERENCES public.channels(id) ON DELETE CASCADE,
     message_type text NOT NULL DEFAULT 'text', attachment_path text
   );
+  -- Para as migrações da conformidade (exclusão de conta, chat): convites, aparelhos,
+  -- pedidos de entrada e o Storage (os arquivos do seed ficam no store em memória).
+  CREATE TABLE public.team_invites (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    team_id uuid NOT NULL REFERENCES public.teams(id) ON DELETE CASCADE, email text NOT NULL,
+    role public.team_role NOT NULL DEFAULT 'viewer', token uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    accepted boolean NOT NULL DEFAULT false, created_at timestamptz NOT NULL DEFAULT now());
+  CREATE TABLE public.device_tokens (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    profile_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE, token text NOT NULL UNIQUE);
+  CREATE TABLE public.team_join_requests (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    team_id uuid NOT NULL REFERENCES public.teams(id) ON DELETE CASCADE,
+    profile_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    status text NOT NULL DEFAULT 'pending', decided_by uuid REFERENCES public.profiles(id), UNIQUE (team_id, profile_id));
+  CREATE SCHEMA storage;
+  GRANT USAGE ON SCHEMA storage TO anon, authenticated, service_role;
+  CREATE TABLE storage.objects (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), bucket_id text NOT NULL,
+    name text NOT NULL, owner uuid, UNIQUE (bucket_id, name));
+  ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 `);
 // Migrações reais: código da equipe + handle_new_user, notas dos loops, avisos/missões do
 // Asafe (triggers em cultos/escala/repertório) e o catálogo com os seis campos obrigatórios.
@@ -89,6 +106,7 @@ await db.exec(await migration('20260627020000_team_join_codes.sql'));
 await db.exec('CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();');
 await db.exec(await migration('20260927120000_song_loop_notes.sql'));
 await db.exec(await migration('20260929120000_assistant_notifications.sql'));
+await db.exec(await migration('20260930010000_platform_admin_and_support.sql'));
 await db.exec(await migration('20260930120000_assistant_missions.sql'));
 
 // Produção hoje (cadastro de músicas aprovado, não publicado): o preflight recusa antes de
@@ -101,6 +119,11 @@ eq(gapsBefore.map((gap) => [gap.kind, `${gap.table}.${gap.column}`, gap.migratio
 await assert.rejects(preflightSchema({ store: pgliteStore() }), new RegExp(`songs: colunas .*is_draft.* → ${catalog}`)); checks++;
 eq((await sql(`SELECT count(*)::int AS n FROM auth.users`))[0].n, 0, 'nada gravado pelo preflight');
 await db.exec(await migration(catalog));
+// E as migrações da conformidade com as lojas (20261003*), na ordem do deploy: a demo
+// roda sobre o schema que vai para a produção junto com ela.
+for (const name of (await readdir(new URL('../migrations/', import.meta.url))).filter((n) => n >= '20261003' && n.endsWith('.sql')).sort()) {
+  await db.exec(await migration(name));
+}
 
 /** O que o supabase-js faria com a service_role, em SQL. Storage fica em memória. */
 function pgliteStore() {
@@ -259,18 +282,24 @@ try {
   eq((await run(applyDemo)).status, 'exists');
   eq((await sql('SELECT count(*)::int AS n FROM public.songs WHERE team_id = $1', [team]))[0].n, 6);
 
-  // Na base atual, apagar o dono direto esbarra nas FKs sem ON DELETE (created_by,
-  // notes_author_id...) mesmo dentro da equipe que iria em cascata. Por isso o reset
-  // apaga a equipe antes das contas.
+  // Apagar o dono direto falha: teams.owner_id é RESTRICT desde a exclusão de conta
+  // (antes, apagava a equipe inteira). Por isso o reset apaga a equipe antes das contas.
   await assert.rejects(sql('DELETE FROM auth.users WHERE email = $1', [LEADER.email]), (error) => error.code === '23503'); checks++;
 
-  // O revisor exclui a conta pelo app (equipe do dono e depois a conta); os membros ficam.
-  await sql('DELETE FROM public.teams WHERE id = $1', [team]);
-  await sql('DELETE FROM auth.users WHERE email = $1', [LEADER.email]);
-  eq(await count('songs'), 0, 'equipe apagada');
+  // O revisor exclui a conta pelo app, como as notas de revisão pedem: passa a equipe
+  // para a Ana (transfer_team_ownership) e exclui (delete_account_data + GoTrue). A
+  // equipe continua com a Ana, a conta de revisão fica pela metade e o reset limpa.
+  const [anaProfile] = await sql('SELECT id::text FROM public.profiles WHERE user_id = $1', [anaUser.id]);
+  await withRole(db, 'authenticated', leaderUser.id, (tx) => tx.query('SELECT public.transfer_team_ownership($1, $2)', [team, anaProfile.id]));
+  const removed = await withRole(db, 'service_role', null, async (tx) =>
+    (await tx.query('SELECT public.delete_account_data($1) AS r', [leaderUser.id])).rows[0].r);
+  eq([removed.deleted, removed.left_team_count], [true, 1], 'exclusão pelo app: sai da equipe');
+  await sql('DELETE FROM auth.users WHERE id = $1', [leaderUser.id]);
+  eq(await count('songs'), 6, 'a equipe continua com a nova dona');
   await assert.rejects(run(applyDemo), /--reset/); checks++;
   const reset = await run(resetDemo);
   eq(reset.users.length, MEMBERS.length);
+  eq(await count('songs'), 0, 'o reset apaga a equipe que ficou com a Ana');
   eq((await sql(`SELECT count(*)::int AS n FROM auth.users WHERE email LIKE '%revisao@maislouvor.com'`))[0].n, 0);
   const recreated = await run(applyDemo);
   eq(recreated.status, 'created');

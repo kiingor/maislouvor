@@ -11,7 +11,9 @@ import { platformSupabase as supabase } from "@/integrations/supabase/platform-c
 import { useToast } from "@/hooks/use-toast";
 import { displayDate, platformError, platformRpc, type PlatformSettings } from "@/lib/platform";
 
-const actionLabels: Record<string, string> = { ticket_reply: "Resposta enviada ao usuário", ticket_update: "Ticket atualizado", subscription_update: "Assinatura registrada", settings_update: "Configurações atualizadas" };
+const actionLabels: Record<string, string> = { ticket_reply: "Resposta enviada ao usuário", ticket_update: "Ticket atualizado", subscription_update: "Assinatura registrada", settings_update: "Configurações atualizadas",
+  // Conformidade com as lojas: exclusão de conta e moderação do chat.
+  account_deleted: "Conta excluída pelo usuário", team_ownership_transfer: "Propriedade de equipe transferida", chat_report_update: "Denúncia do chat analisada", chat_message_delete: "Mensagem do chat apagada" };
 
 function SettingsForm({ settings }: { settings: PlatformSettings }) {
   const [enabled, setEnabled] = useState(settings.support_enabled); const [email, setEmail] = useState(settings.support_email); const [announcement, setAnnouncement] = useState(settings.announcement);
