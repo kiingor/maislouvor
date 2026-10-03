@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
@@ -13,6 +13,8 @@ import { UserNotificationPrefs } from "@/components/UserNotificationPrefs";
 import { UserStatsCard } from "@/components/UserStatsCard";
 import { TeamAvailabilitySettings } from "@/components/TeamAvailabilitySettings";
 import { MyAssistantSettings, TeamAssistantSettings } from "@/components/AssistantSettings";
+import { BlockedUsersSettings } from "@/components/BlockedUsersSettings";
+import { TeamChatReports } from "@/components/TeamChatReports";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AppearanceSegmented } from "@/components/AppearanceControl";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -95,6 +97,9 @@ export default function TeamSettings() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const qc = useQueryClient();
+  // Aviso de denúncia no chat abre direto na aba Membros (?aba=membros).
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get("aba") === "membros" ? "members" : "profile";
 
   // Current user email
   const [userEmail, setUserEmail] = useState("");
@@ -322,7 +327,7 @@ export default function TeamSettings() {
   };
 
   return (
-    <Tabs defaultValue="profile" className="w-full">
+    <Tabs key={initialTab} defaultValue={initialTab} className="w-full">
       <PageHeader title="Usuário">
         <TabsList className="flex w-full lg:w-[440px]">
           <TabsTrigger value="profile" className="flex-1">Meu usuário</TabsTrigger>
@@ -495,6 +500,9 @@ export default function TeamSettings() {
 
             {/* Preferências de notificação */}
             <UserNotificationPrefs profileTableId={myProfile?.id ?? null} prefs={myNotificationPrefs} />
+
+            {/* Bloqueios do chat (denunciar/bloquear fica no toque longo da mensagem) */}
+            <BlockedUsersSettings />
           </div>
 
           <div className="space-y-7">
@@ -621,6 +629,9 @@ export default function TeamSettings() {
               </div>
             </section>
           )}
+
+          {/* Denúncias do chat (somente líder) */}
+          {isAdmin && currentTeam && <TeamChatReports key={currentTeam.id} teamId={currentTeam.id} />}
 
           {/* Lista de membros */}
           <section aria-labelledby="settings-members">
