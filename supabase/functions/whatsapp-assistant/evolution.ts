@@ -234,7 +234,7 @@ export interface EvolutionConfig {
 }
 
 export interface WhatsAppClient {
-  sendText(to: string, text: string, quote?: InboundMessage): Promise<void>;
+  sendText(to: string, text: string, quote?: InboundMessage, mentioned?: string[]): Promise<void>;
   sendPresence(to: string, delayMs: number): Promise<void>;
   groupInfo(groupJid: string): Promise<GroupInfo | null>;
 }
@@ -267,12 +267,14 @@ export function createEvolutionClient(config: EvolutionConfig, fetchImpl: typeof
   }
 
   return {
-    async sendText(to, text, quote) {
+    async sendText(to, text, quote, mentioned) {
       await call("POST", `/message/sendText/${instance}`, {
         number: to,
         text,
         delay: 600,
         linkPreview: false,
+        ...(mentioned?.length ? { mentioned: uniq(mentioned.map(normalizeJid))
+          .filter((id) => /^\d+@(s\.whatsapp\.net|lid)$/.test(id)) } : {}),
         // Nunca enviar mentionsEveryOne: na 2.3.7 até "false" marca o grupo inteiro.
         ...(quote
           ? { quoted: { key: quote.key, message: { conversation: quote.text || " " } } }

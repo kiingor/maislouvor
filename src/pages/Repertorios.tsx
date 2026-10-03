@@ -76,7 +76,7 @@ export default function Repertorios() {
     queryFn: async () => {
       if (!currentTeam) return { songs: [] as any[], repMap: {} as Record<string, string[]> };
       const [{ data: songs }, { data: reps }] = await Promise.all([
-        supabase.from("songs").select("id, title, artist, key_current, cover_path, theme, tags").eq("team_id", currentTeam.id).order("title"),
+        supabase.from("songs").select("id, title, artist, key_current, cover_path, theme, tags").eq("team_id", currentTeam.id).eq("is_draft" as never, false).order("title"),
         supabase.from("repertorios").select("id, name").eq("team_id", currentTeam.id),
       ]);
       const repNameById: Record<string, string> = Object.fromEntries((reps ?? []).map((r: any) => [r.id, r.name]));

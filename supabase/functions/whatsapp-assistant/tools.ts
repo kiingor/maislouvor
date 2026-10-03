@@ -13,13 +13,13 @@ export interface FunctionTool {
 type Schema = Record<string, unknown>;
 
 // Modo strict: todos os campos obrigatórios; opcional = aceita null.
-const nullable = (type: string, description: string, extra: Schema = {}): Schema => ({
+export const nullable = (type: string, description: string, extra: Schema = {}): Schema => ({
   type: [type, "null"],
   description,
   ...extra,
 });
 
-function tool(name: string, description: string, properties: Record<string, Schema> = {}): FunctionTool {
+export function tool(name: string, description: string, properties: Record<string, Schema> = {}): FunctionTool {
   return {
     type: "function",
     name,

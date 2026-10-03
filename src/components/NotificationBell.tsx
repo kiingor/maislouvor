@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { PopoverAnchor } from "@radix-ui/react-popover";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
-import { Bell, Check, Trash2 } from "lucide-react";
+import { Bell, Check, Trash2, MessageSquareText } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -54,7 +54,7 @@ export function NotificationBell({ variant = "icon", open: openProp, onOpenChang
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     if (!profileId) return;
     const { data } = await supabase
       .from("notifications")
@@ -68,11 +68,21 @@ export function NotificationBell({ variant = "icon", open: openProp, onOpenChang
       sender_profile: n.sender_profile ?? null,
     }));
     setNotifications(mapped);
-  };
+  }, [profileId]);
 
   useEffect(() => {
     fetchNotifications();
-  }, [profileId]);
+  }, [fetchNotifications]);
+
+  useEffect(() => {
+    if (!profileId) { setNotifications([]); return; }
+    const refresh = () => { void fetchNotifications(); };
+    const interval = window.setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    return () => { window.clearInterval(interval); window.removeEventListener("focus", refresh); };
+  }, [profileId, fetchNotifications]);
+
+  useEffect(() => { if (open) void fetchNotifications(); }, [open, fetchNotifications]);
 
   useEffect(() => {
     if (!profileId) return;
@@ -95,7 +105,7 @@ export function NotificationBell({ variant = "icon", open: openProp, onOpenChang
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profileId]);
+  }, [profileId, fetchNotifications]);
 
   const markAsRead = async (id: string) => {
     await supabase.from("notifications").update({ read: true } as any).eq("id", id);
@@ -220,7 +230,8 @@ export function NotificationBell({ variant = "icon", open: openProp, onOpenChang
                         {!n.read && <div className="mt-1.5 h-2.5 w-2.5 rounded-full bg-ios-blue shrink-0" aria-label="Não lida" />}
                         <div className="flex-1 min-w-0">
                           <p className="text-subhead font-semibold">{n.title}</p>
-                          {n.sender_profile?.full_name && (
+                          {n.type === "support_feedback" && <p className="flex items-center gap-1 text-caption1 text-muted-foreground"><MessageSquareText size={11} />Equipe +Louvor</p>}
+                          {n.type !== "support_feedback" && n.sender_profile?.full_name && (
                             <p className="text-caption1 text-muted-foreground">
                               por {n.sender_profile.full_name}
                             </p>

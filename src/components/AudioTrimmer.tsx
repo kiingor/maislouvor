@@ -8,7 +8,9 @@ interface AudioTrimmerProps {
   audioPath: string;
   teamId: string;
   songId: string;
-  onTrimmed: () => void;
+  onTrimmed: () => void | Promise<void>;
+  onBusyChange?: (busy: boolean) => void;
+  disabled?: boolean;
 }
 
 /**
@@ -28,7 +30,14 @@ function formatTime(s: number) {
   return `${m}:${sec.toString().padStart(2, "0")}.${ms}`;
 }
 
-export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrimmerProps) {
+export function AudioTrimmer({
+  audioPath,
+  teamId,
+  songId,
+  onTrimmed,
+  onBusyChange,
+  disabled,
+}: AudioTrimmerProps) {
   const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -43,7 +52,9 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
   const [playhead, setPlayhead] = useState(0);
-  const [dragging, setDragging] = useState<"start" | "end" | "playhead" | null>(null);
+  const [dragging, setDragging] = useState<"start" | "end" | "playhead" | null>(
+    null
+  );
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   // Redesenha a forma de onda quando o tema (classe .dark) ou a largura mudam.
   const [paintKey, setPaintKey] = useState(0);
@@ -53,7 +64,9 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const { data: urlData } = await supabase.storage.from("audio").createSignedUrl(audioPath, 3600);
+      const { data: urlData } = await supabase.storage
+        .from("audio")
+        .createSignedUrl(audioPath, 3600);
       if (!urlData?.signedUrl || cancelled) return;
       setSignedUrl(urlData.signedUrl);
 
@@ -74,101 +87,112 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [audioPath]);
 
   // Draw waveform on canvas
-  const drawWaveform = useCallback((buffer: AudioBuffer, start: number, end: number, currentPlayhead?: number) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+  const drawWaveform = useCallback(
+    (
+      buffer: AudioBuffer,
+      start: number,
+      end: number,
+      currentPlayhead?: number
+    ) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx.scale(dpr, dpr);
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
 
-    const w = rect.width;
-    const h = rect.height;
-    const channelData = buffer.getChannelData(0);
-    const sampleRate = buffer.sampleRate;
-    const totalSamples = channelData.length;
+      const w = rect.width;
+      const h = rect.height;
+      const channelData = buffer.getChannelData(0);
+      const sampleRate = buffer.sampleRate;
+      const totalSamples = channelData.length;
 
-    ctx.clearRect(0, 0, w, h);
+      ctx.clearRect(0, 0, w, h);
 
-    // Cores do sistema (o fundo é o preenchimento terciário do contêiner).
-    const barOut = tokenColor(canvas, "--muted-foreground", 0.45);
-    const tint = tokenColor(canvas, "--primary");
-    const band = tokenColor(canvas, "--primary", 0.07);
-    const surface = tokenColor(canvas, "--card");
-    const label = tokenColor(canvas, "--foreground");
+      // Cores do sistema (o fundo é o preenchimento terciário do contêiner).
+      const barOut = tokenColor(canvas, "--muted-foreground", 0.45);
+      const tint = tokenColor(canvas, "--primary");
+      const band = tokenColor(canvas, "--primary", 0.07);
+      const surface = tokenColor(canvas, "--card");
+      const label = tokenColor(canvas, "--foreground");
 
-    const startPx = (start / buffer.duration) * w;
-    const endPx = (end / buffer.duration) * w;
+      const startPx = (start / buffer.duration) * w;
+      const endPx = (end / buffer.duration) * w;
 
-    // Trecho selecionado: leve realce tintado
-    ctx.fillStyle = band;
-    ctx.fillRect(startPx, 0, Math.max(0, endPx - startPx), h);
+      // Trecho selecionado: leve realce tintado
+      ctx.fillStyle = band;
+      ctx.fillRect(startPx, 0, Math.max(0, endPx - startPx), h);
 
-    // Waveform bars
-    const barWidth = 2;
-    const gap = 1;
-    const step = barWidth + gap;
-    const numBars = Math.floor(w / step);
+      // Waveform bars
+      const barWidth = 2;
+      const gap = 1;
+      const step = barWidth + gap;
+      const numBars = Math.floor(w / step);
 
-    for (let i = 0; i < numBars; i++) {
-      const x = i * step;
-      const sampleIdx = Math.floor((i / numBars) * totalSamples);
-      const blockSize = Math.floor(totalSamples / numBars);
-      let sum = 0;
-      for (let j = 0; j < blockSize; j++) {
-        sum += Math.abs(channelData[sampleIdx + j] || 0);
+      for (let i = 0; i < numBars; i++) {
+        const x = i * step;
+        const sampleIdx = Math.floor((i / numBars) * totalSamples);
+        const blockSize = Math.floor(totalSamples / numBars);
+        let sum = 0;
+        for (let j = 0; j < blockSize; j++) {
+          sum += Math.abs(channelData[sampleIdx + j] || 0);
+        }
+        const avg = sum / blockSize;
+        const barH = avg * h * 0.85;
+
+        const inTrim = x >= startPx && x <= endPx;
+        ctx.fillStyle = inTrim ? tint : barOut;
+        ctx.fillRect(x, (h - barH) / 2, barWidth, barH || 1);
       }
-      const avg = sum / blockSize;
-      const barH = avg * h * 0.85;
 
-      const inTrim = x >= startPx && x <= endPx;
-      ctx.fillStyle = inTrim ? tint : barOut;
-      ctx.fillRect(x, (h - barH) / 2, barWidth, barH || 1);
-    }
-
-    // Trim handles (alças tintadas com pegas), sempre visíveis dentro do canvas
-    const handleW = 6;
-    [startPx, endPx].forEach((px) => {
-      const hx = Math.max(0, Math.min(w - handleW, px - handleW / 2));
-      ctx.fillStyle = tint;
-      ctx.beginPath();
-      if (typeof ctx.roundRect === "function") ctx.roundRect(hx, 0, handleW, h, 3);
-      else ctx.rect(hx, 0, handleW, h);
-      ctx.fill();
-      ctx.fillStyle = surface;
-      for (let d = -6; d <= 6; d += 6) {
+      // Trim handles (alças tintadas com pegas), sempre visíveis dentro do canvas
+      const handleW = 6;
+      [startPx, endPx].forEach((px) => {
+        const hx = Math.max(0, Math.min(w - handleW, px - handleW / 2));
+        ctx.fillStyle = tint;
         ctx.beginPath();
-        ctx.arc(hx + handleW / 2, h / 2 + d, 1.25, 0, Math.PI * 2);
+        if (typeof ctx.roundRect === "function")
+          ctx.roundRect(hx, 0, handleW, h, 3);
+        else ctx.rect(hx, 0, handleW, h);
         ctx.fill();
-      }
-    });
+        ctx.fillStyle = surface;
+        for (let d = -6; d <= 6; d += 6) {
+          ctx.beginPath();
+          ctx.arc(hx + handleW / 2, h / 2 + d, 1.25, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
 
-    // Playhead (contorno na cor da superfície para aparecer sobre as barras)
-    if (currentPlayhead !== undefined) {
-      const phPx = (currentPlayhead / buffer.duration) * w;
-      ctx.lineCap = "round";
-      ctx.strokeStyle = surface;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(phPx, 2);
-      ctx.lineTo(phPx, h - 2);
-      ctx.stroke();
-      ctx.strokeStyle = label;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(phPx, 2);
-      ctx.lineTo(phPx, h - 2);
-      ctx.stroke();
-    }
-  }, []);
+      // Playhead (contorno na cor da superfície para aparecer sobre as barras)
+      if (currentPlayhead !== undefined) {
+        const phPx = (currentPlayhead / buffer.duration) * w;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = surface;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(phPx, 2);
+        ctx.lineTo(phPx, h - 2);
+        ctx.stroke();
+        ctx.strokeStyle = label;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(phPx, 2);
+        ctx.lineTo(phPx, h - 2);
+        ctx.stroke();
+      }
+    },
+    []
+  );
 
   // Redraw on trim changes (and on theme/size changes)
   useEffect(() => {
@@ -198,48 +222,63 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
       // uma vez para acertar a largura final após a animação de abertura).
       let lastWidth = -1;
       ro = new ResizeObserver((entries) => {
-        const width = Math.round(entries[entries.length - 1]?.contentRect.width ?? 0);
+        const width = Math.round(
+          entries[entries.length - 1]?.contentRect.width ?? 0
+        );
         if (width === lastWidth) return;
         lastWidth = width;
         bump();
       });
       ro.observe(canvasRef.current);
     }
-    return () => { mo.disconnect(); ro?.disconnect(); };
+    return () => {
+      mo.disconnect();
+      ro?.disconnect();
+    };
   }, [loading]);
 
   // Mouse handling for dragging trim handles
-  const getTimeFromX = useCallback((clientX: number) => {
-    const canvas = canvasRef.current;
-    if (!canvas || !duration) return 0;
-    const rect = canvas.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    return pct * duration;
-  }, [duration]);
+  const getTimeFromX = useCallback(
+    (clientX: number) => {
+      const canvas = canvasRef.current;
+      if (!canvas || !duration) return 0;
+      const rect = canvas.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      return pct * duration;
+    },
+    [duration]
+  );
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    const time = getTimeFromX(e.clientX);
-    const startDist = Math.abs(time - trimStart);
-    const endDist = Math.abs(time - trimEnd);
-    const playheadDist = Math.abs(time - playhead);
-    const threshold = duration * 0.02;
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      const time = getTimeFromX(e.clientX);
+      const startDist = Math.abs(time - trimStart);
+      const endDist = Math.abs(time - trimEnd);
+      const playheadDist = Math.abs(time - playhead);
+      const threshold = duration * 0.02;
 
-    // Prioritize playhead if close
-    if (playheadDist < threshold && playheadDist <= startDist && playheadDist <= endDist) {
-      setDragging("playhead");
-    } else if (startDist < threshold && startDist <= endDist) {
-      setDragging("start");
-    } else if (endDist < threshold) {
-      setDragging("end");
-    } else {
-      // Click anywhere: seek playhead to that position
-      setPlayhead(time);
-      if (audioRef.current) {
-        audioRef.current.currentTime = time;
+      // Prioritize playhead if close
+      if (
+        playheadDist < threshold &&
+        playheadDist <= startDist &&
+        playheadDist <= endDist
+      ) {
+        setDragging("playhead");
+      } else if (startDist < threshold && startDist <= endDist) {
+        setDragging("start");
+      } else if (endDist < threshold) {
+        setDragging("end");
+      } else {
+        // Click anywhere: seek playhead to that position
+        setPlayhead(time);
+        if (audioRef.current) {
+          audioRef.current.currentTime = time;
+        }
+        setDragging("playhead");
       }
-      setDragging("playhead");
-    }
-  }, [getTimeFromX, trimStart, trimEnd, duration, playhead]);
+    },
+    [getTimeFromX, trimStart, trimEnd, duration, playhead]
+  );
 
   useEffect(() => {
     if (!dragging) return;
@@ -265,26 +304,33 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
   }, [dragging, getTimeFromX, trimStart, trimEnd, duration]);
 
   // Touch handling
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    const time = getTimeFromX(touch.clientX);
-    const startDist = Math.abs(time - trimStart);
-    const endDist = Math.abs(time - trimEnd);
-    const playheadDist = Math.abs(time - playhead);
-    const threshold = duration * 0.04;
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      const touch = e.touches[0];
+      const time = getTimeFromX(touch.clientX);
+      const startDist = Math.abs(time - trimStart);
+      const endDist = Math.abs(time - trimEnd);
+      const playheadDist = Math.abs(time - playhead);
+      const threshold = duration * 0.04;
 
-    if (playheadDist < threshold && playheadDist <= startDist && playheadDist <= endDist) {
-      setDragging("playhead");
-    } else if (startDist < threshold && startDist <= endDist) {
-      setDragging("start");
-    } else if (endDist < threshold) {
-      setDragging("end");
-    } else {
-      setPlayhead(time);
-      if (audioRef.current) audioRef.current.currentTime = time;
-      setDragging("playhead");
-    }
-  }, [getTimeFromX, trimStart, trimEnd, duration, playhead]);
+      if (
+        playheadDist < threshold &&
+        playheadDist <= startDist &&
+        playheadDist <= endDist
+      ) {
+        setDragging("playhead");
+      } else if (startDist < threshold && startDist <= endDist) {
+        setDragging("start");
+      } else if (endDist < threshold) {
+        setDragging("end");
+      } else {
+        setPlayhead(time);
+        if (audioRef.current) audioRef.current.currentTime = time;
+        setDragging("playhead");
+      }
+    },
+    [getTimeFromX, trimStart, trimEnd, duration, playhead]
+  );
 
   useEffect(() => {
     if (!dragging) return;
@@ -366,11 +412,15 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
 
     // Don't trim if nothing changed
     if (trimStart < 0.1 && trimEnd > duration - 0.1) {
-      toast({ title: "Nenhum corte aplicado", description: "Ajuste os marcadores para cortar" });
+      toast({
+        title: "Nenhum corte aplicado",
+        description: "Ajuste os marcadores para cortar",
+      });
       return;
     }
 
     setTrimming(true);
+    onBusyChange?.(true);
     try {
       const sampleRate = buffer.sampleRate;
       const startSample = Math.floor(trimStart * sampleRate);
@@ -378,8 +428,16 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
       const length = endSample - startSample;
       const numChannels = buffer.numberOfChannels;
 
-      const offlineCtx = new OfflineAudioContext(numChannels, length, sampleRate);
-      const newBuffer = offlineCtx.createBuffer(numChannels, length, sampleRate);
+      const offlineCtx = new OfflineAudioContext(
+        numChannels,
+        length,
+        sampleRate
+      );
+      const newBuffer = offlineCtx.createBuffer(
+        numChannels,
+        length,
+        sampleRate
+      );
 
       for (let ch = 0; ch < numChannels; ch++) {
         const src = buffer.getChannelData(ch);
@@ -394,35 +452,59 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
 
       // Upload replacing original
       const ext = audioPath.split(".").pop() || "wav";
-      const path = audioPath.endsWith(".wav") ? audioPath : audioPath.replace(/\.[^.]+$/, ".wav");
+      const path = audioPath.endsWith(".wav")
+        ? audioPath
+        : audioPath.replace(/\.[^.]+$/, ".wav");
 
-      const { error } = await supabase.storage.from("audio").upload(path, wavBlob, {
-        upsert: true,
-        contentType: "audio/wav",
-      });
+      const { error } = await supabase.storage
+        .from("audio")
+        .upload(path, wavBlob, {
+          upsert: true,
+          contentType: "audio/wav",
+        });
 
       if (error) throw error;
 
-      // If path changed (was mp3, now wav), update audio_path
-      if (path !== audioPath) {
-        await supabase.from("songs").update({ audio_path: path } as any).eq("id", songId);
-        // Remove old file
+      // Persist the recording revision before removing the former file.
+      const { error: saveError } = await supabase
+        .from("songs")
+        .update({
+          audio_path: path,
+          audio_revision: crypto.randomUUID(),
+        } as never)
+        .eq("id", songId);
+      if (saveError) throw saveError;
+      if (path !== audioPath)
         await supabase.storage.from("audio").remove([audioPath]);
-      }
+      await onTrimmed();
 
-      toast({ title: "Áudio cortado!", description: `Duração: ${formatTime(trimEnd - trimStart)}` });
-      onTrimmed();
+      toast({
+        title: "Áudio cortado!",
+        description: `Duração: ${formatTime(trimEnd - trimStart)}`,
+      });
     } catch (e: any) {
-      toast({ title: "Erro ao cortar áudio", description: e.message, variant: "destructive" });
+      toast({
+        title: "Erro ao cortar áudio",
+        description: e.message,
+        variant: "destructive",
+      });
     } finally {
       setTrimming(false);
+      onBusyChange?.(false);
     }
   };
 
   if (loading) {
     return (
-      <div role="status" className="flex items-center justify-center gap-2 py-6 text-footnote text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} aria-hidden="true" />
+      <div
+        role="status"
+        className="flex items-center justify-center gap-2 py-6 text-footnote text-muted-foreground"
+      >
+        <Loader2
+          className="h-4 w-4 animate-spin"
+          strokeWidth={2.25}
+          aria-hidden="true"
+        />
         Carregando waveform...
       </div>
     );
@@ -433,11 +515,17 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-        <span className="text-subhead font-semibold text-foreground">Cortar áudio</span>
+        <span className="text-subhead font-semibold text-foreground">
+          Cortar áudio
+        </span>
         <div className="flex items-center gap-1 text-footnote tabular-nums text-muted-foreground">
-          <span className="font-medium text-foreground">{formatTime(trimStart)}</span>
+          <span className="font-medium text-foreground">
+            {formatTime(trimStart)}
+          </span>
           <span aria-hidden="true">—</span>
-          <span className="font-medium text-foreground">{formatTime(trimEnd)}</span>
+          <span className="font-medium text-foreground">
+            {formatTime(trimEnd)}
+          </span>
           <span className="ml-1">({formatTime(trimEnd - trimStart)})</span>
         </div>
       </div>
@@ -465,9 +553,17 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
           className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-fill-secondary text-foreground transition-transform active:scale-95"
         >
           {playing ? (
-            <Pause className="h-[18px] w-[18px]" fill="currentColor" aria-hidden="true" />
+            <Pause
+              className="h-[18px] w-[18px]"
+              fill="currentColor"
+              aria-hidden="true"
+            />
           ) : (
-            <Play className="ml-0.5 h-[18px] w-[18px]" fill="currentColor" aria-hidden="true" />
+            <Play
+              className="ml-0.5 h-[18px] w-[18px]"
+              fill="currentColor"
+              aria-hidden="true"
+            />
           )}
         </button>
 
@@ -477,7 +573,11 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
             onClick={resetTrim}
             className="inline-flex min-h-[44px] items-center gap-1 rounded-[10px] px-2 text-subhead font-medium text-primary"
           >
-            <RotateCcw className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
+            <RotateCcw
+              className="h-4 w-4"
+              strokeWidth={2.25}
+              aria-hidden="true"
+            />
             Resetar
           </button>
         )}
@@ -487,9 +587,13 @@ export function AudioTrimmer({ audioPath, teamId, songId, onTrimmed }: AudioTrim
         <Button
           className="h-11 gap-1.5 rounded-full px-4 text-subhead font-semibold"
           onClick={applyTrim}
-          disabled={trimming || !hasChanges}
+          disabled={disabled || trimming || !hasChanges}
         >
-          {trimming ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Scissors aria-hidden="true" />}
+          {trimming ? (
+            <Loader2 className="animate-spin" aria-hidden="true" />
+          ) : (
+            <Scissors aria-hidden="true" />
+          )}
           {trimming ? "Cortando..." : "Aplicar corte"}
         </Button>
       </div>

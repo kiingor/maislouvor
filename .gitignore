@@ -28,3 +28,8 @@ worker-gpu/.env
 worker-gpu/.venv/
 worker-gpu/*cookies*.txt
 __pycache__/
+
+# Local release configuration and review artifacts.
+.env
+.env.*
+tmp/

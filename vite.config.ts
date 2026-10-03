@@ -21,13 +21,14 @@ export default defineConfig(({ mode }) => ({
       includeAssets: ["favicon.svg", "favicon.png", "favicon.ico", "apple-touch-icon.png", "icon-192.png"],
       workbox: {
         // Não intercepta o download do APK (senão o SW devolve a SPA → 404 interno).
-        navigateFallbackDenylist: [/^\/~oauth/, /\.apk$/],
+        directoryIndex: null,
+        navigateFallbackDenylist: [/^\/(?:\?|$)/, /^\/conheca(?:\/|$)/, /^\/~oauth/, /\.apk$/],
         // essentia.js (key detection) is a large, lazy-loaded chunk — fetch on demand, don't precache
         globIgnores: ["**/essentia*"],
         // O bundle principal passou de 2 MiB (limite padrão do Workbox) — eleva p/ precachear.
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         // Adiciona os handlers de Web Push (push / notificationclick) ao SW gerado.
-        importScripts: ["/push-sw.js"],
+        importScripts: ["/push-sw.js", "/landing-sw.js"],
         // Make new deploys take over right away instead of serving a stale shell.
         cleanupOutdatedCaches: true,
         clientsClaim: true,
@@ -41,7 +42,8 @@ export default defineConfig(({ mode }) => ({
         background_color: "#000000",
         display: "standalone",
         orientation: "any",
-        start_url: "/",
+        id: "/",
+        start_url: "/app",
         icons: [
           { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
           { src: "/favicon.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },

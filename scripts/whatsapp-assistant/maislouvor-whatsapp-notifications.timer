@@ -1,0 +1,11 @@
+[Unit]
+Description=+Louvor: conferir avisos e lembretes do Asafe a cada minuto
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=1min
+AccuracySec=5s
+Unit=maislouvor-whatsapp-notifications.service
+
+[Install]
+WantedBy=timers.target

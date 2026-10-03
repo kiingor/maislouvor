@@ -1,0 +1,14 @@
+[Unit]
+Description=+Louvor: avisos do Asafe nos grupos dos ministérios
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/stacks/maislouvor-whatsapp/dispatch-notifications.sh
+TimeoutStartSec=100
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true

@@ -142,7 +142,7 @@ export default function RepertorioDashboard() {
       const { data } = await supabase
         .from("songs")
         .select("id, title, artist, key_current, theme, audio_path, cifra_text, lyrics_text, tags")
-        .eq("team_id", currentTeam.id);
+        .eq("team_id", currentTeam.id).eq("is_draft" as never, false);
       return data ?? [];
     },
     enabled: !!currentTeam,

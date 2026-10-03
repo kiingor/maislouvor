@@ -2,15 +2,10 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import * as Tone from "tone";
 import { supabase } from "@/integrations/supabase/client";
 import { Slider } from "@/components/ui/slider";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MusicalKeyPicker } from "@/components/MusicalKeyPicker";
 import { Play, Pause, Volume2, VolumeX, RotateCcw, SlidersHorizontal, Loader2, Minus, Plus, Music2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { transposeKeyName, parseKeyName, detectKeyFromUrl, DetectedKey } from "@/lib/detectKey";
-
-const KEY_OPTIONS = [
-  "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
-  "Cm", "C#m", "Dm", "D#m", "Em", "Fm", "F#m", "Gm", "G#m", "Am", "A#m", "Bm",
-];
 
 interface Track {
   id: string;
@@ -38,11 +33,13 @@ export function StemPreviewPlayer({
   originalAudioPath,
   songId,
   songKey,
+  onKeyChange,
 }: {
   tracks: Track[];
   originalAudioPath?: string | null;
   songId?: string;
   songKey?: string | null;
+  onKeyChange?: (key: string) => void;
 }) {
   const [states, setStates] = useState<TrackState[]>([]);
   const playersRef = useRef<Map<string, Tone.Player>>(new Map());
@@ -59,6 +56,8 @@ export function StemPreviewPlayer({
   const [duration, setDuration] = useState(0);
   const [semitones, setSemitones] = useState(0);
   const [detectedKey, setDetectedKey] = useState<DetectedKey | null>(null);
+  const keyChange = useRef(onKeyChange);
+  keyChange.current = onKeyChange;
   const [detecting, setDetecting] = useState(false);
 
   const trackKey = useMemo(() => tracks.map((t) => t.id).join(","), [tracks]);
@@ -177,6 +176,7 @@ export function StemPreviewPlayer({
         const key = await detectKeyFromUrl(data.signedUrl);
         if (cancelled) return;
         setDetectedKey(key);
+        if(key)keyChange.current?.(key.name);
         if (key && songId) {
           supabase.from("songs").update({ key_original: key.name } as any).eq("id", songId).then(() => {});
         }
@@ -219,6 +219,7 @@ export function StemPreviewPlayer({
     const parsed = parseKeyName(name);
     if (!parsed) return;
     setDetectedKey(parsed);
+    onKeyChange?.(name);
     setSemitones(0);
     if (songId) supabase.from("songs").update({ key_original: name } as any).eq("id", songId).then(() => {});
   };
@@ -292,14 +293,7 @@ export function StemPreviewPlayer({
           ) : (
             <div className="flex items-center gap-2">
               <span className="text-footnote text-muted-foreground">Tom orig.</span>
-              <Select value={detectedKey?.name ?? ""} onValueChange={handleSetKey}>
-                <SelectTrigger className="h-11 w-[76px] rounded-full border-0 bg-fill-tertiary px-3 text-subhead font-semibold">
-                  <SelectValue placeholder="—" />
-                </SelectTrigger>
-                <SelectContent className="max-h-60">
-                  {KEY_OPTIONS.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <MusicalKeyPicker value={detectedKey?.name ?? ""} onChange={handleSetKey} label="Tom original das faixas" className="max-w-[200px]" />
             </div>
           )}
         </div>

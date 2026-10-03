@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { BarChart3, Bell, CalendarCheck, Check, ChevronLeft, LogOut, Megaphone, Menu, Monitor, Moon, Sun } from "lucide-react";
+import { BarChart3, Bell, CalendarCheck, Check, ChevronLeft, LogOut, Megaphone, Menu, Monitor, Moon, Sun, MessageSquareText, ShieldCheck } from "lucide-react";
+import { usePlatformAccess } from "@/contexts/PlatformAccessContext";
 import { APPEARANCE_OPTIONS, useAppearance, type Appearance } from "@/lib/appearance";
 import { cn } from "@/lib/utils";
 import { DESKTOP_QUERY, useMediaQuery, useShell } from "@/contexts/ShellContext";
@@ -34,6 +35,7 @@ export function TopBar({ onSendNotice, onLogout }: TopBarProps) {
   const { pathname } = useLocation();
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const { can, teams, currentTeam, switchTeam } = useTeam();
+  const { isPlatformAdmin } = usePlatformAccess();
   const [notifOpen, setNotifOpen] = useState(false);
   const [appearance, setAppearance] = useAppearance();
   const openNotifOnClose = useRef(false);
@@ -104,6 +106,15 @@ export function TopBar({ onSendNotice, onLogout }: TopBarProps) {
             Enviar aviso
           </DropdownMenuItem>
         )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => navigate("/app/sugestoes")}>
+          <MessageSquareText />
+          Sugestões e suporte
+        </DropdownMenuItem>
+        {isPlatformAdmin && <DropdownMenuItem onClick={() => navigate("/admin")}>
+          <ShieldCheck />
+          Gerenciador
+        </DropdownMenuItem>}
         <DropdownMenuSeparator />
         {/* Aparência (Automático · Claro · Escuro) — também em Usuário > Meu usuário. */}
         <DropdownMenuLabel>Aparência</DropdownMenuLabel>

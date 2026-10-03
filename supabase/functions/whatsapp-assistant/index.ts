@@ -23,6 +23,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createEvolutionClient } from "./evolution.ts";
 import { createHandler } from "./handler.ts";
 import { createOpenAi } from "./openai.ts";
+import { createNotificationDispatcher } from "./notifications.ts";
 
 const env = (name: string) => Deno.env.get(name)?.trim() ?? "";
 
@@ -39,14 +40,16 @@ async function rpc<T = unknown>(fn: string, args: Record<string, unknown>): Prom
   return data as T;
 }
 
+const whatsapp = createEvolutionClient({
+  baseUrl: env("WHATSAPP_EVOLUTION_URL"),
+  instance: INSTANCE,
+  apiKey: env("WHATSAPP_EVOLUTION_APIKEY"),
+  origin: env("WHATSAPP_EVOLUTION_ORIGIN") || undefined,
+});
+const dispatchNotifications = createNotificationDispatcher({ rpc, whatsapp });
 const handle = createHandler({
   rpc,
-  whatsapp: createEvolutionClient({
-    baseUrl: env("WHATSAPP_EVOLUTION_URL"),
-    instance: INSTANCE,
-    apiKey: env("WHATSAPP_EVOLUTION_APIKEY"),
-    origin: env("WHATSAPP_EVOLUTION_ORIGIN") || undefined,
-  }),
+  whatsapp,
   // Modelo e esforço de raciocínio vêm de assistant_config a cada pergunta.
   ask: createOpenAi({
     apiKey: env("ASSISTANT_OPENAI_API_KEY"),
@@ -80,6 +83,17 @@ Deno.serve(async (req) => {
     });
   }
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+
+  // Chamado pelo timer, com o MESMO segredo do webhook no cabeçalho. Não
+  // depende de alguém falar no grupo, de o app estar aberto ou da OpenAI.
+  if (new URL(req.url).pathname.endsWith("/notifications")) {
+    try {
+      return json({ ok: true, ...await dispatchNotifications() });
+    } catch {
+      console.error("[whatsapp-assistant] falha ao consumir fila de avisos");
+      return json({ error: "notification_dispatch_failed" }, 503);
+    }
+  }
 
   let payload: unknown;
   try {

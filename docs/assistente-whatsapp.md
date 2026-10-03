@@ -1,6 +1,6 @@
 # Assistente do +Louvor no WhatsApp (Asafe)
 
-Um número da plataforma entra nos grupos de WhatsApp dos ministérios e responde **só quando é chamado**: menção (`@Asafe`), resposta a uma mensagem dele ou `@Asafe` digitado sem escolher o contato. Ele consulta o app (escala, repertório, tons, disponibilidade) e faz duas ações da própria pessoa: confirmar ou recusar a escala e marcar disponibilidade.
+Um número da plataforma entra nos grupos de WhatsApp dos ministérios e responde quando é chamado: menção (`@Asafe`), resposta a uma mensagem dele ou `@Asafe` digitado sem escolher o contato. Ele consulta o app (escala, repertório, tons, disponibilidade) e faz duas ações da própria pessoa: confirmar ou recusar a escala e marcar disponibilidade. A extensão de [avisos automáticos](asafe-avisos-automaticos.md), ainda não publicada, leva cultos, escalas com menção, repertório, avisos do líder e lembretes da véspera aos grupos ativados.
 
 - **Nome padrão:** Asafe, o músico-chefe do rei Davi (1 Cr 16:5). Muda em `assistant_config.assistant_name`, sem deploy. O nome do perfil do WhatsApp é configurado no próprio celular.
 - **Personalidade:** levemente engraçado, cômico e caricato. É um "maestro" teatral que leva a escala a sério demais. Faz no máximo uma piada por resposta, a informação vem sempre primeiro e ele não faz humor com a pessoa, a fé, doença ou luto. Texto em `supabase/functions/whatsapp-assistant/persona.ts`.
@@ -100,7 +100,7 @@ Verificado em 27/09/2026: **não existe caminho oficial**. O "Sign in with ChatG
 
 ## Implantação
 
-Nada disto foi aplicado ainda. Cada passo mexe em produção e precisa de autorização. A ordem importa: banco, rede, instância, função, número e, por último, o site.
+O assistente básico já foi [publicado em 27/09](ux/release-20260927-whatsapp-assistant.md). Abaixo está o roteiro de instalação inicial; não repita a criação da instância existente. Para a extensão de avisos, use o [roteiro próprio](asafe-avisos-automaticos.md#publicação), ainda pendente de publicação. A ordem da instalação inicial é: banco, rede, instância, função, número e, por último, o site.
 
 **0. Pré-requisitos.** Um chip dedicado (não use número pessoal), com WhatsApp instalado e em uso normal alguns dias antes. No perfil, nome "Asafe · +Louvor" e foto. Uma API key da OpenAI num **projeto próprio**, com limite de gasto mensal no painel.
 
@@ -157,7 +157,7 @@ curl -s -H "x-webhook-secret: $(cat /opt/stacks/maislouvor-whatsapp/webhook-secr
 - **Logs:** `docker logs supabase-edge-functions 2>&1 | grep whatsapp-assistant`.
 - **Segredo do webhook:** é a única prova de que o evento veio da Evolution. Quem o tiver consegue forjar qualquer remetente. Por isso a Evolution chama pela rede interna, e o segredo fica só em `/opt/stacks/maislouvor-whatsapp` (600) e no `.env` do Supabase. Se vazar, gere outro e rode `configure` de novo.
 - O celular do número precisa abrir o WhatsApp pelo menos a cada 14 dias; senão os aparelhos conectados caem.
-- **Risco de banimento:** a conexão não é oficial. Para reduzir o risco, o assistente só responde quando chamado, nunca inicia conversa, avisa uma vez por período e o número é dedicado e "aquecido".
+- **Envio automático:** após publicar a extensão, o assistente também envia os avisos habilitados pelo líder nos grupos ativados. Os envios são agrupados e as retentativas são limitadas; não inicia conversas privadas. A conexão com a Evolution continua não oficial.
 - **Convivência com o Talitha Cume:** mesma Evolution, instância separada. O backend do Talitha filtra por nome de instância e os webhooks são por instância. O rótulo do aparelho conectado aparece como "Talitha Cume" (`CONFIG_SESSION_PHONE_CLIENT` do container). O backup e o restore do Talitha incluem a sessão do +Louvor. Não atualize a Evolution sem testar os dois.
 
 ## Testes
@@ -171,3 +171,7 @@ deno check supabase/functions/whatsapp-assistant/index.ts
 ```
 
 O teste de ponta a ponta roda o handler real contra o banco em memória, com WhatsApp e OpenAI simulados.
+
+## Missões agendadas
+
+O líder pode definir avisos únicos, diários ou semanais no próprio grupo e acompanhar a agenda no app. Exemplos, limites e migração em [Missões do Asafe](asafe-missoes.md). Usa a mesma fila e timer dos avisos automáticos.

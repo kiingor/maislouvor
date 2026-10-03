@@ -3,8 +3,18 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
 import { useToast } from "@/hooks/use-toast";
+import { MusicalKeyPicker } from "@/components/MusicalKeyPicker";
+import { TrackUpload } from "@/components/TrackUpload";
+import { SongRegistrationLoops } from "@/components/SongRegistrationLoops";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { songRpc } from "@/lib/songCatalog";
+import { Check, CheckCircle2, Repeat, Search } from "lucide-react";
 import { PageHeader } from "@/components/shell/PageHeader";
-import { ToolbarButton } from "@/components/shell/ToolbarButton";
 import { CoverUpload } from "@/components/CoverUpload";
 import { AudioUpload } from "@/components/AudioUpload";
 import { SongAudioAttachments } from "@/components/SongAudioAttachments";
@@ -13,12 +23,40 @@ import { StemPreviewPlayer } from "@/components/StemPreviewPlayer";
 import { SongRepertoriosCard } from "@/components/SongRepertoriosCard";
 import { AutoGrowTextarea } from "@/components/AutoGrowTextarea";
 import { CifraHighlightTextarea } from "@/components/CifraHighlightTextarea";
-import { transposeCifra, detectKeyFromCifra } from "@/lib/chordpro";
+import {
+  transposeCifra,
+  transposeCifraToKey,
+  transposeKeyName,
+  detectKeyFromCifra,
+} from "@/lib/chordpro";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { AlertTriangle, CalendarDays, ChevronRight, Clock, Gauge, Loader2, MoreHorizontal, Music2, Plus, RotateCcw, Sparkles, Trash2, X, Youtube } from "lucide-react";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import {
+  AlertTriangle,
+  CalendarDays,
+  ChevronRight,
+  Clock,
+  Gauge,
+  Loader2,
+  MoreHorizontal,
+  Music2,
+  Plus,
+  RotateCcw,
+  Sparkles,
+  Trash2,
+  X,
+  Youtube,
+} from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { detectBpmFromUrl } from "@/lib/detectBpm";
 import { useState, useEffect, useId, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -54,10 +92,12 @@ const rowBase =
   "relative flex min-h-[52px] items-center gap-3 px-4 py-1.5 before:pointer-events-none before:absolute before:right-0 before:top-0 before:border-t before:border-separator first:before:hidden";
 const rowSep16 = "before:left-4";
 const rowSep58 = "before:left-[58px]";
-const rowIcon = "grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[8px] bg-fill-tertiary text-muted-foreground";
+const rowIcon =
+  "grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[8px] bg-fill-tertiary text-muted-foreground";
 const rowSymbol = "h-[17px] w-[17px]";
 /** Linha de ação tintada (toque = leve realce, como numa célula iOS). */
-const actionRow = "w-full text-left transition-colors hover:bg-fill-quaternary active:bg-fill-tertiary disabled:pointer-events-none";
+const actionRow =
+  "w-full text-left transition-colors hover:bg-fill-quaternary active:bg-fill-tertiary disabled:pointer-events-none";
 const actionRowDimmed = "[&:disabled>*]:opacity-40";
 /** Campo sem moldura dentro de uma linha: o card já é a superfície (placeholder = label terciário). */
 const bareInput =
@@ -66,12 +106,26 @@ const groupLabel = "mx-4 mb-1.5 block text-footnote text-muted-foreground";
 const helperText = "mx-1 mt-2 text-footnote text-muted-foreground";
 
 /** Cabeçalho de seção: Title3 + qualificador opcional em Subhead secundário + ação à direita. */
-function SectionHeader({ id, title, qualifier, action }: { id: string; title: string; qualifier?: ReactNode; action?: ReactNode }) {
+function SectionHeader({
+  id,
+  title,
+  qualifier,
+  action,
+}: {
+  id: string;
+  title: string;
+  qualifier?: ReactNode;
+  action?: ReactNode;
+}) {
   return (
     <div className="mx-1 mb-2 flex flex-wrap items-end justify-between gap-x-3">
       <h2 id={id} className="min-w-0 break-words text-title3 text-foreground">
         {title}
-        {qualifier && <span className="block text-subhead font-normal text-muted-foreground">{qualifier}</span>}
+        {qualifier && (
+          <span className="block text-subhead font-normal text-muted-foreground">
+            {qualifier}
+          </span>
+        )}
       </h2>
       {action}
     </div>
@@ -79,11 +133,27 @@ function SectionHeader({ id, title, qualifier, action }: { id: string; title: st
 }
 
 /** Linha de formulário: rótulo à esquerda (Body) e campo ocupando o resto. */
-function FieldRow({ label, htmlFor, alignTop, children }: { label: string; htmlFor?: string; alignTop?: boolean; children: ReactNode }) {
+function FieldRow({
+  label,
+  htmlFor,
+  alignTop,
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  alignTop?: boolean;
+  children: ReactNode;
+}) {
   const Label = htmlFor ? "label" : "span";
   return (
     <div className={cn(rowBase, rowSep16, "py-0", alignTop && "items-start")}>
-      <Label htmlFor={htmlFor} className={cn("w-[72px] shrink-0 text-body text-foreground", alignTop ? "pt-[15px]" : "")}>
+      <Label
+        htmlFor={htmlFor}
+        className={cn(
+          "w-[72px] shrink-0 text-body text-foreground",
+          alignTop ? "pt-[15px]" : ""
+        )}
+      >
         {label}
       </Label>
       <div className="min-w-0 flex-1">{children}</div>
@@ -91,8 +161,22 @@ function FieldRow({ label, htmlFor, alignTop, children }: { label: string; htmlF
   );
 }
 
-export default function SongEditor() {
-  const { id } = useParams<{ id: string }>();
+interface SongEditorProps {
+  songId?: string;
+  embedded?: boolean;
+  initialRepertorioId?: string;
+  registerSaveOnClose?: (save: () => Promise<boolean>) => void;
+  onFinished?: () => void;
+}
+export default function SongEditor({
+  songId,
+  embedded = false,
+  initialRepertorioId,
+  registerSaveOnClose,
+  onFinished,
+}: SongEditorProps = {}) {
+  const { id: routeId } = useParams<{ id: string }>();
+  const id = songId || routeId;
   const navigate = useNavigate();
   const { currentTeam, can } = useTeam();
   const canEdit = can("musicas", "editar");
@@ -100,16 +184,33 @@ export default function SongEditor() {
   const qc = useQueryClient();
   const uid = useId();
   const ids = {
-    identity: `${uid}-identity`, media: `${uid}-media`, processing: `${uid}-processing`, data: `${uid}-data`,
-    content: `${uid}-content`, history: `${uid}-history`,
-    title: `${uid}-title`, artist: `${uid}-artist`, theme: `${uid}-theme`, tag: `${uid}-tag`,
-    mediaUrl: `${uid}-media-url`, bpm: `${uid}-bpm`, duration: `${uid}-duration`,
+    identity: `${uid}-identity`,
+    media: `${uid}-media`,
+    processing: `${uid}-processing`,
+    data: `${uid}-data`,
+    content: `${uid}-content`,
+    history: `${uid}-history`,
+    title: `${uid}-title`,
+    artist: `${uid}-artist`,
+    theme: `${uid}-theme`,
+    tag: `${uid}-tag`,
+    audio: `${uid}-audio`,
+    key: `${uid}-key`,
+    teamKey: `${uid}-team-key`,
+    cifra: `${uid}-cifra`,
+    mediaUrl: `${uid}-media-url`,
+    bpm: `${uid}-bpm`,
+    duration: `${uid}-duration`,
   };
 
   const { data: song, isLoading } = useQuery({
     queryKey: ["song", id],
     queryFn: async () => {
-      const { data } = await supabase.from("songs").select("*").eq("id", id!).single();
+      const { data } = await supabase
+        .from("songs")
+        .select("*")
+        .eq("id", id!)
+        .single();
       return data;
     },
     enabled: !!id,
@@ -123,7 +224,9 @@ export default function SongEditor() {
   const { data: canEditAdditionalAudio = false } = useQuery({
     queryKey: ["song-audio-edit-permission", id, currentTeam?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("can_edit_song_audio", { p_song_id: id! });
+      const { data, error } = await supabase.rpc("can_edit_song_audio", {
+        p_song_id: id!,
+      });
       return !error && data === true;
     },
     enabled: !!id && !!song && song.team_id === currentTeam?.id,
@@ -166,7 +269,10 @@ export default function SongEditor() {
         .select("stems_status, stems_error")
         .eq("id", id!)
         .single();
-      return data as { stems_status: string; stems_error: string | null } | null;
+      return data as {
+        stems_status: string;
+        stems_error: string | null;
+      } | null;
     },
     enabled: !!id,
     refetchInterval: (query) =>
@@ -179,9 +285,16 @@ export default function SongEditor() {
     if (!s) return;
     if (prevStemsStatus.current === "processing" && s === "done") {
       refetchTracks();
-      toast({ title: "Faixas separadas!", description: "As faixas geradas pela IA já estão disponíveis." });
+      toast({
+        title: "Faixas separadas!",
+        description: "As faixas geradas pela IA já estão disponíveis.",
+      });
     } else if (prevStemsStatus.current === "processing" && s === "error") {
-      toast({ title: "Erro na separação", description: stemsState?.stems_error || "Tente novamente.", variant: "destructive" });
+      toast({
+        title: "Erro na separação",
+        description: stemsState?.stems_error || "Tente novamente.",
+        variant: "destructive",
+      });
     }
     prevStemsStatus.current = s;
   }, [stemsState?.stems_status, stemsState?.stems_error, refetchTracks]);
@@ -190,23 +303,74 @@ export default function SongEditor() {
     if (!id || !audioPath) return;
     setSeparating(true);
     try {
-      const { data, error } = await supabase.functions.invoke("separate-stems", {
-        body: { song_id: id, audio_path: audioPath },
-      });
+      const { data, error } = await supabase.functions.invoke(
+        "separate-stems",
+        {
+          body: { song_id: id, audio_path: audioPath },
+        }
+      );
       if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || "Falha ao iniciar separação");
+      if (!data?.success)
+        throw new Error(data?.error || "Falha ao iniciar separação");
       toast({
         title: "Separação iniciada",
-        description: "Leva alguns minutos. As faixas aparecem aqui automaticamente quando ficarem prontas.",
+        description:
+          "Leva alguns minutos. As faixas aparecem aqui automaticamente quando ficarem prontas.",
       });
       qc.invalidateQueries({ queryKey: ["song-stems", id] });
     } catch (e: any) {
-      toast({ title: "Erro ao iniciar separação", description: e.message, variant: "destructive" });
+      toast({
+        title: "Erro ao iniciar separação",
+        description: e.message,
+        variant: "destructive",
+      });
     } finally {
       setSeparating(false);
     }
   };
 
+  const [step, setStep] = useState(1),
+    [prepareTab, setPrepareTab] = useState("recording");
+  const [errors, setErrors] = useState<Record<string, string>>({}),
+    [previewOpen, setPreviewOpen] = useState(false),
+    [loopsOpen, setLoopsOpen] = useState(false);
+  const [destinations, setDestinations] = useState<string[]>(
+    initialRepertorioId ? [initialRepertorioId] : []
+  );
+  const [recordingSource, setRecordingSource] = useState<string | null>(null);
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const [audioVersion, setAudioVersion] = useState(0);
+  const scrollBody = useRef<HTMLDivElement>(null);
+  const isDraft = Boolean(
+    (song as unknown as { is_draft?: boolean })?.is_draft
+  );
+  const { data: repertorios = [] } = useQuery({
+    queryKey: ["song-registration-repertorios", currentTeam?.id],
+    enabled: !!currentTeam && isDraft,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("repertorios")
+        .select("id,name")
+        .eq("team_id", currentTeam!.id)
+        .order("name");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+  const { data: pendingAdditional = 0 } = useQuery({
+    queryKey: ["song-pending-additional", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("song_audio_attachments" as never)
+        .select("id", { count: "exact", head: true })
+        .eq("song_id", id!)
+        .neq("status", "ready");
+      if (error) throw error;
+      return count || 0;
+    },
+    refetchInterval: (query) => (Number(query.state.data) > 0 ? 4000 : false),
+  });
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
   const [keyOriginal, setKeyOriginal] = useState("");
@@ -251,6 +415,14 @@ export default function SongEditor() {
     setLyricsText((song as any).lyrics_text || "");
     setCoverPath(song.cover_path || null);
     setAudioPath((song as any).audio_path || null);
+    setRecordingSource(
+      (song as unknown as { recording_source_url?: string })
+        .recording_source_url || null
+    );
+    const savedDestinations = (
+      song as unknown as { draft_repertorio_ids?: string[] }
+    ).draft_repertorio_ids;
+    if (savedDestinations?.length) setDestinations(savedDestinations);
     setTags((song as any).tags || []);
     setTheme((song as any).theme || "");
     const songBpm = (song as any).bpm;
@@ -265,7 +437,9 @@ export default function SongEditor() {
     let cancelled = false;
     let audio: HTMLAudioElement | null = null;
     (async () => {
-      const { data } = await supabase.storage.from("audio").createSignedUrl(audioPath, 3600);
+      const { data } = await supabase.storage
+        .from("audio")
+        .createSignedUrl(audioPath, 3600);
       if (cancelled || !data?.signedUrl) return;
       audio = new Audio();
       audio.preload = "metadata";
@@ -280,75 +454,124 @@ export default function SongEditor() {
     })();
     return () => {
       cancelled = true;
-      if (audio) { audio.src = ""; audio = null; }
+      if (audio) {
+        audio.src = "";
+        audio = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioPath]);
+  }, [audioPath, audioVersion]);
 
   const handleDetectBpm = async () => {
     if (!audioPath) return;
     setDetectingBpm(true);
     try {
-      const { data } = await supabase.storage.from("audio").createSignedUrl(audioPath, 3600);
-      if (!data?.signedUrl) throw new Error("Não foi possível acessar o áudio.");
+      const { data } = await supabase.storage
+        .from("audio")
+        .createSignedUrl(audioPath, 3600);
+      if (!data?.signedUrl)
+        throw new Error("Não foi possível acessar o áudio.");
       const detected = await detectBpmFromUrl(data.signedUrl);
       if (detected) {
         setBpm(String(detected));
-        toast({ title: `BPM detectado: ${detected}`, description: "Revise e salve a música." });
+        toast({
+          title: `BPM detectado: ${detected}`,
+          description: "Revise e salve a música.",
+        });
       } else {
-        toast({ title: "Não foi possível detectar o BPM", description: "Informe manualmente.", variant: "destructive" });
+        toast({
+          title: "Não foi possível detectar o BPM",
+          description: "Informe manualmente.",
+          variant: "destructive",
+        });
       }
     } catch (e: any) {
-      toast({ title: "Erro ao detectar BPM", description: e.message, variant: "destructive" });
+      toast({
+        title: "Erro ao detectar BPM",
+        description: e.message,
+        variant: "destructive",
+      });
     } finally {
       setDetectingBpm(false);
     }
   };
 
-  const handleSave = async () => {
-    if (!id || !title.trim()) return;
+  const handleSave = async (silent = false): Promise<boolean> => {
+    if (!id || readOnly) return false;
     setSaving(true);
-    const { error } = await supabase
-      .from("songs")
-      .update({
-        title: title.trim(),
-        artist: artist.trim() || null,
-        media_url: mediaUrl.trim() || null,
-        cifra_text: cifraText || null,
-        lyrics_text: lyricsText || null,
-        cover_path: coverPath,
-        audio_path: audioPath,
-        tags: tags.length > 0 ? tags : [],
-        theme: theme.trim() || null,
-        bpm: bpm.trim() ? Math.round(Number(bpm)) || null : null,
-        duration_seconds: parseDurationToSeconds(durationInput),
-      } as any)
-      .eq("id", id);
-    setSaving(false);
-
-    if (error) {
-      toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Música salva" });
-      qc.invalidateQueries({ queryKey: ["song", id] });
-      qc.invalidateQueries({ queryKey: ["repertorio-songs"] });
+    const pendingTag = tagInput.trim();
+    const savedTags =
+      pendingTag && !tags.includes(pendingTag) ? [...tags, pendingTag] : tags;
+    try {
+      const { error } = await supabase
+        .from("songs")
+        .update({
+          title: title.trim(),
+          artist: artist.trim() || null,
+          key_original: keyOriginal || null,
+          key_current: keyCurrent || keyOriginal || null,
+          media_url: mediaUrl.trim() || null,
+          cifra_text: cifraText || null,
+          lyrics_text: lyricsText || null,
+          recording_source_url: recordingSource,
+          ...(isDraft ? { draft_repertorio_ids: destinations } : {}),
+          tags: savedTags,
+          theme: theme.trim() || null,
+          bpm: bpm.trim() ? Math.round(Number(bpm)) || null : null,
+          duration_seconds: parseDurationToSeconds(durationInput),
+        } as never)
+        .eq("id", id);
+      if (error) throw error;
+      setTags(savedTags);
+      setTagInput("");
+      for (const name of [
+        "song",
+        "repertorio-songs",
+        "library-songs",
+        "dashboard-songs",
+        "song-catalog",
+        "song-drafts",
+      ])
+        void qc.invalidateQueries({ queryKey: [name] });
+      if (!silent)
+        toast({
+          title: isDraft ? "Rascunho salvo" : "Música salva",
+          description: isDraft
+            ? "Continue depois. O rascunho fica fora da busca."
+            : undefined,
+        });
+      return true;
+    } catch (error) {
+      toast({
+        title: "Erro ao salvar",
+        description: (error as Error).message,
+        variant: "destructive",
+      });
+      return false;
+    } finally {
+      setSaving(false);
     }
   };
 
-  const readOnly = !canEdit;
+  const readOnly = !canEdit || (!!song && song.team_id !== currentTeam?.id);
 
   const handleDeleteSong = async () => {
     if (!id) return;
     const { error } = await supabase.from("songs").delete().eq("id", id);
     if (error) {
-      toast({ title: "Erro ao excluir", description: error.message, variant: "destructive" });
+      toast({
+        title: "Erro ao excluir",
+        description: error.message,
+        variant: "destructive",
+      });
       return;
     }
     toast({ title: "Música excluída" });
     qc.invalidateQueries({ queryKey: ["library-songs"] });
     qc.invalidateQueries({ queryKey: ["repertorio-songs"] });
     qc.invalidateQueries({ queryKey: ["dashboard-songs"] });
-    navigate("/app/repertorios");
+    if (onFinished) onFinished();
+    else navigate("/app/repertorios");
   };
 
   // Persist a single column immediately — used right after an upload so an
@@ -356,99 +579,165 @@ export default function SongEditor() {
   // cover/audio. We write straight to the DB WITHOUT invalidating the song
   // query, so other unsaved edits in the form (cifra, título…) aren't clobbered.
   const persistField = async (fields: Record<string, any>) => {
-    if (!id || readOnly) return;
-    const { error } = await supabase.from("songs").update(fields as any).eq("id", id);
+    if (!id || readOnly) return false;
+    const { error } = await supabase
+      .from("songs")
+      .update(fields as any)
+      .eq("id", id);
     if (error) {
-      toast({ title: "Erro ao salvar arquivo", description: error.message, variant: "destructive" });
+      toast({
+        title: "Erro ao salvar arquivo",
+        description: error.message,
+        variant: "destructive",
+      });
+      return false;
     }
+    return true;
   };
 
+  // Keep background imports visible after a draft is reopened; React Query owns the poll lifecycle.
+  const { data: importJob } = useQuery({
+    queryKey: ["song-youtube-import", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("yt_import_jobs" as never)
+        .select("id,status,error,url")
+        .eq("song_id", id!)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      return (data?.[0] || null) as unknown as {
+        id: string;
+        status: string;
+        error: string | null;
+        url: string;
+      } | null;
+    },
+    refetchInterval: (query) =>
+      ["queued", "processing"].includes(
+        (query.state.data as { status: string } | null)?.status || ""
+      )
+        ? 4000
+        : false,
+  });
+  const handledImport = useRef("");
+  useEffect(() => {
+    if (!importJob) return;
+    if (["queued", "processing"].includes(importJob.status)) {
+      setImportingYt(true);
+      return;
+    }
+    const token = importJob.id + ":" + importJob.status;
+    if (handledImport.current === token) return;
+    handledImport.current = token;
+    setImportingYt(false);
+    if (importJob.status === "done") {
+      let alive = true;
+      void supabase
+        .from("songs")
+        .select("audio_path,cover_path")
+        .eq("id", id!)
+        .single()
+        .then(({ data }) => {
+          if (!alive || !data) return;
+          setAudioPath(data.audio_path || null);
+          setAudioVersion((version) => version + 1);
+          void refetchTracks();
+          void qc.invalidateQueries({ queryKey: ["song-stems", id] });
+          if (data.cover_path) setCoverPath(data.cover_path);
+        });
+      return () => {
+        alive = false;
+      };
+    }
+    if (importJob.status === "error")
+      setYtCookieExpired(
+        /COOKIE_EXPIRED|cookies for the authentication|sign in to confirm|not a bot/i.test(
+          importJob.error || ""
+        )
+      );
+  }, [importJob, id]);
   const handleImportYoutube = async () => {
     const url = mediaUrl.trim();
-    if (!id || !url) return;
-    // O campo "Link de mídia" É a fonte do import — garante que fique salvo.
-    persistField({ media_url: url });
+    if (!id || !url || importingYt || stemsProcessing) return;
     setImportingYt(true);
     setYtCookieExpired(false);
     try {
-      const { data, error } = await supabase.functions.invoke("import-youtube", {
-        body: { song_id: id, url },
-      });
+      if (
+        !(await persistField({
+          media_url: url,
+          recording_source_url: url,
+          audio_path: null,
+          audio_revision: crypto.randomUUID(),
+        }))
+      )
+        throw new Error("Não foi possível salvar a versão da gravação.");
+      setAudioPath(null);
+      setAudioVersion((version) => version + 1);
+      void qc.invalidateQueries({ queryKey: ["song-stems", id] });
+      setRecordingSource(url);
+      setDurationInput("");
+      void refetchTracks();
+      const { data, error } = await supabase.functions.invoke(
+        "import-youtube",
+        { body: { song_id: id, url } }
+      );
       if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || "Falha ao enfileirar");
-      // Cache hit: esse vídeo já estava no acervo → a edge function já copiou o áudio.
+      if (!data?.success)
+        throw new Error(
+          data?.error || "Não foi possível iniciar a importação."
+        );
       if (data.cached) {
-        const { data: s } = await supabase.from("songs").select("audio_path, cover_path").eq("id", id).single();
-        if ((s as any)?.audio_path) setAudioPath((s as any).audio_path);
-        if ((s as any)?.cover_path) setCoverPath((s as any).cover_path);
-        toast({ title: "Áudio reaproveitado!", description: "Esse vídeo já estava no acervo — sem precisar baixar de novo." });
+        const { data: ready } = await supabase
+          .from("songs")
+          .select("audio_path,cover_path")
+          .eq("id", id)
+          .single();
+        setAudioPath(ready?.audio_path || null);
+        setAudioVersion((version) => version + 1);
+        if (ready?.cover_path) setCoverPath(ready.cover_path);
+        toast({
+          title: "Áudio preparado",
+          description:
+            "A gravação já estava no acervo. Você pode cortar e separar as faixas.",
+        });
         setImportingYt(false);
-        return;
+      } else {
+        void qc.invalidateQueries({ queryKey: ["song-youtube-import", id] });
+        toast({
+          title: "Importação iniciada",
+          description:
+            "O áudio aparecerá aqui quando estiver pronto. Você pode salvar um rascunho.",
+        });
       }
-      toast({
-        title: "Baixando do YouTube…",
-        description: "O download roda no worker do seu PC. O áudio aparece aqui quando ficar pronto.",
-      });
-      const start = Date.now();
-      const poll = async () => {
-        const { data: jrows } = await supabase
-          .from("yt_import_jobs" as any)
-          .select("status, error")
-          .eq("song_id", id)
-          .order("created_at", { ascending: false })
-          .limit(1);
-        const j: any = jrows?.[0];
-        if (j?.status === "done") {
-          const { data: s } = await supabase.from("songs").select("audio_path, cover_path").eq("id", id).single();
-          const ap = (s as any)?.audio_path;
-          if (ap) setAudioPath(ap);
-          if ((s as any)?.cover_path) setCoverPath((s as any).cover_path);
-          toast({ title: "Áudio importado do YouTube!", description: "Capa e áudio prontos — pode separar em faixas." });
-          setImportingYt(false);
-          return;
-        }
-        if (j?.status === "error") {
-          const raw = j.error || "";
-          // Cookie do YouTube expirado → só o administrador renova. Mensagem clara + aviso fixo.
-          const cookieExpired = /COOKIE_EXPIRED|cookies for the authentication|sign in to confirm|not a bot/i.test(raw);
-          if (cookieExpired) {
-            setYtCookieExpired(true);
-            toast({
-              title: "Importação do YouTube indisponível",
-              description: "O acesso ao YouTube expirou. Avise o administrador do app para renovar.",
-              variant: "destructive",
-            });
-          } else {
-            toast({ title: "Erro ao baixar do YouTube", description: raw || "Tente outro link.", variant: "destructive" });
-          }
-          setImportingYt(false);
-          return;
-        }
-        if (Date.now() - start > 300000) {
-          toast({
-            title: "Ainda processando…",
-            description: "Se o worker do seu PC estiver offline, o download espera na fila. Recarregue em instantes.",
-          });
-          setImportingYt(false);
-          return;
-        }
-        setTimeout(poll, 4000);
-      };
-      setTimeout(poll, 4000);
-    } catch (e: any) {
-      toast({ title: "Erro ao importar do YouTube", description: e?.message, variant: "destructive" });
+    } catch (error) {
       setImportingYt(false);
+      toast({
+        title: "Erro ao importar gravação",
+        description: (error as Error).message,
+        variant: "destructive",
+      });
     }
   };
 
   // Transposição da cifra — 100% offline (lib/chordpro, sem IA/custo). Transpõe o
   // texto no lugar; ao salvar, esse tom vira o padrão da música. `tomDelta` guarda
   // o deslocamento líquido desde que a cifra foi carregada, pra "voltar ao original".
-  const tomDown = () => { setCifraText((t) => transposeCifra(t, -1)); setTomDelta((d) => d - 1); };
-  const tomUp = () => { setCifraText((t) => transposeCifra(t, 1)); setTomDelta((d) => d + 1); };
+  const tomDown = () => {
+    setCifraText((t) => transposeCifra(t, -1));
+    setKeyCurrent((key) => transposeKeyName(key || keyOriginal, -1));
+    setTomDelta((d) => d - 1);
+  };
+  const tomUp = () => {
+    setCifraText((t) => transposeCifra(t, 1));
+    setKeyCurrent((key) => transposeKeyName(key || keyOriginal, 1));
+    setTomDelta((d) => d + 1);
+  };
   const tomReset = () => {
     if (tomDelta === 0) return;
     setCifraText((t) => transposeCifra(t, -tomDelta));
+    setKeyCurrent((key) => transposeKeyName(key || keyOriginal, -tomDelta));
     setTomDelta(0);
   };
 
@@ -459,7 +748,8 @@ export default function SongEditor() {
     if (/^https?:\/\/\S+$/i.test(trimmed)) {
       toast({
         title: "Cole o conteúdo completo",
-        description: "O link sozinho do Moises pode importar música errada. Abra o link, copie tudo (Ctrl+A / Ctrl+C) e cole aqui.",
+        description:
+          "O link sozinho do Moises pode importar música errada. Abra o link, copie tudo (Ctrl+A / Ctrl+C) e cole aqui.",
         variant: "destructive",
       });
       return;
@@ -483,11 +773,18 @@ export default function SongEditor() {
       if (d.cifra_text) setCifraText(d.cifra_text);
       if (d.lyrics_text) setLyricsText(d.lyrics_text);
 
-      toast({ title: "Dados importados do Moises!", description: "Revise e salve a música." });
+      toast({
+        title: "Dados importados do Moises!",
+        description: "Revise e salve a música.",
+      });
       setShowMoisesModal(false);
       setMoisesText("");
     } catch (e: any) {
-      toast({ title: "Erro ao importar", description: e.message, variant: "destructive" });
+      toast({
+        title: "Erro ao importar",
+        description: e.message,
+        variant: "destructive",
+      });
     } finally {
       setImportingMoises(false);
     }
@@ -504,495 +801,1428 @@ export default function SongEditor() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="animate-in-up">
-        <PageHeader title="Música" back />
-        <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]" aria-busy="true">
-          <div className="h-96 rounded-card bg-card animate-pulse motion-reduce:animate-none" />
-          <div className="h-96 rounded-card bg-card animate-pulse motion-reduce:animate-none" />
-        </div>
-      </div>
+  useEffect(() => {
+    registerSaveOnClose?.(() =>
+      readOnly ? Promise.resolve(true) : handleSave(true)
     );
-  }
-
-  if (!song) {
-    return (
-      <div className="animate-in-up">
-        <PageHeader title="Música" back />
-        <div className="flex flex-col items-center gap-3 rounded-card bg-card px-4 py-10 text-center">
-          <Music2 className="h-7 w-7 text-label-tertiary" aria-hidden="true" />
-          <p className="text-body text-muted-foreground">Música não encontrada.</p>
-          <Button variant="secondary" onClick={() => navigate(-1)}>
-            Voltar
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  const headerActions = readOnly ? undefined : (
-    <>
-      {/* HIG > Toolbars: ação destrutiva fora de destaque, num menu; Salvar é a ação principal. */}
-      <DropdownMenu modal={false}>
-        <DropdownMenuTrigger asChild>
-          <ToolbarButton icon={<MoreHorizontal strokeWidth={2.2} />} aria-label="Mais opções" title="Mais opções" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" sideOffset={8}>
-          <DropdownMenuItem onSelect={() => setDeleteOpen(true)} className="text-ios-red focus:text-ios-red">
-            <Trash2 />
-            Excluir música
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <ToolbarButton
-        prominent
-        label={saving ? "Salvando..." : "Salvar"}
-        onClick={handleSave}
-        disabled={saving || !title.trim()}
-      />
-    </>
-  );
-
-  const importBusy = importingYt;
+  }, [
+    registerSaveOnClose,
+    title,
+    artist,
+    keyOriginal,
+    keyCurrent,
+    mediaUrl,
+    cifraText,
+    lyricsText,
+    coverPath,
+    audioPath,
+    recordingSource,
+    tags,
+    tagInput,
+    theme,
+    bpm,
+    durationInput,
+    destinations,
+    readOnly,
+  ]);
+  const sourceChanged =
+    !!audioPath && !!recordingSource && recordingSource !== mediaUrl.trim();
+  const importBusy =
+    importingYt || ["queued", "processing"].includes(importJob?.status || "");
   const separatingBusy = separating || stemsProcessing;
-
+  const checks = [
+    { field: "title", label: "Nome da música", done: !!title.trim() },
+    { field: "artist", label: "Artista", done: !!artist.trim() },
+    { field: "key", label: "Tom original", done: !!keyOriginal },
+    { field: "theme", label: "Tema", done: !!theme.trim() },
+    { field: "cifra", label: "Cifra", done: !!cifraText.trim() },
+    {
+      field: "audio",
+      label: "Gravação preparada",
+      done: !!audioPath && !sourceChanged && !importBusy,
+    },
+  ];
+  const filled = checks.filter((check) => check.done).length;
+  const ready =
+    filled === 6 &&
+    !importBusy &&
+    !separatingBusy &&
+    !mediaBusy &&
+    pendingAdditional === 0;
+  const validate = (next: number) => {
+    const missing = checks.filter(
+      (check) =>
+        !check.done &&
+        (next === 2
+          ? ["title", "artist", "key", "theme"].includes(check.field)
+          : true)
+    );
+    if (!missing.length && !sourceChanged) return true;
+    const messages: Record<string, string> = {
+      title: "Informe o nome da música.",
+      artist: "Informe o artista ou ministério desta versão.",
+      key: "Selecione o tom original.",
+      theme: "Informe o tema principal.",
+      cifra: "Cole a cifra completa para a equipe ensaiar.",
+      audio: sourceChanged
+        ? "O link mudou. Importe a gravação desta versão novamente."
+        : "Importe o áudio pelo link da gravação ou escolha um arquivo.",
+    };
+    setErrors(
+      Object.fromEntries(
+        missing.map((check) => [check.field, messages[check.field]])
+      )
+    );
+    const first = missing[0]?.field || "audio";
+    if (first === "audio" || first === "cifra") {
+      setStep(2);
+      setPrepareTab(first === "audio" ? "recording" : "content");
+    } else setStep(1);
+    setTimeout(() => {
+      const field = document.getElementById(
+        first === "audio" ? ids.mediaUrl : ids[first as keyof typeof ids]
+      );
+      field?.focus();
+      field?.scrollIntoView({ block: "nearest" });
+    }, 0);
+    return false;
+  };
+  const nextStep = async () => {
+    if (!validate(step + 1)) return;
+    if (
+      step === 2 &&
+      (importBusy || separatingBusy || mediaBusy || pendingAdditional)
+    ) {
+      toast({
+        title: "Preparação em andamento",
+        description: "Conclua as importações e a separação antes de revisar.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!(await handleSave(true))) return;
+    setErrors({});
+    setStep(step + 1);
+    scrollBody.current?.scrollTo(0, 0);
+  };
+  const finish = async () => {
+    if (isDraft && (!validate(3) || !ready)) return;
+    if (!(await handleSave(true))) return;
+    if (isDraft) {
+      setSaving(true);
+      try {
+        await songRpc("publish_song_registration", {
+          p_song_id: id,
+          p_repertorio_ids: destinations,
+        });
+        toast({
+          title: destinations.length
+            ? "Música cadastrada e adicionada"
+            : "Música cadastrada na biblioteca",
+        });
+        for (const key of [
+          "song",
+          "song-drafts",
+          "song-catalog",
+          "library-songs",
+          "repertorio-songs",
+          "dashboard-songs",
+        ])
+          void qc.invalidateQueries({ queryKey: [key] });
+        if (onFinished) onFinished();
+        else navigate("/app/repertorios");
+      } catch (error) {
+        toast({
+          title: "Não foi possível cadastrar",
+          description: (error as Error).message,
+          variant: "destructive",
+        });
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      toast({ title: "Música salva" });
+      onFinished?.();
+    }
+  };
+  const fieldClass =
+    "h-11 w-full min-w-0 rounded-[11px] border border-separator bg-background px-3 text-base text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary sm:text-sm";
+  const labelClass = "mb-1.5 block text-xs font-semibold";
+  const cardClass =
+    "min-w-0 rounded-[19px] border border-separator bg-card p-4 sm:p-[18px]";
+  const fieldError = (field: string) =>
+    errors[field] ? (
+      <p
+        id={ids[field as keyof typeof ids] + "-error"}
+        role="alert"
+        className="mt-1.5 text-xs text-destructive"
+      >
+        {errors[field]}
+      </p>
+    ) : null;
+  const setOriginal = (next: string) => {
+    if (!keyCurrent || keyCurrent === keyOriginal) setKeyCurrent(next);
+    setKeyOriginal(next);
+    setErrors((previous) => ({ ...previous, key: "" }));
+  };
+  if (isLoading)
+    return (
+      <div
+        role="status"
+        className="flex min-h-40 items-center justify-center gap-2 p-6 text-sm"
+      >
+        <Loader2 className="h-5 w-5 animate-spin" />
+        Carregando cadastro…
+      </div>
+    );
+  if (!song)
+    return (
+      <div className="p-6 text-center">
+        <p>Música não encontrada.</p>
+        <Button
+          variant="secondary"
+          onClick={() => (onFinished ? onFinished() : navigate(-1))}
+        >
+          Voltar
+        </Button>
+      </div>
+    );
   return (
-    <div className="animate-in-up">
-      <PageHeader title={song.title?.trim() || "Música"} subtitle={song.artist || undefined} back actions={headerActions} />
-
-      <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] lg:items-start lg:gap-x-6">
-        {/* === Coluna esquerda: cadastro === */}
-        <div className="min-w-0 space-y-7">
-          {/* Identidade */}
-          <section aria-labelledby={ids.identity}>
-            <SectionHeader id={ids.identity} title="Identidade" qualifier="Capa, nome e como a equipe encontra a música" />
-            <div className="mb-4 flex justify-center">
-              <div className="w-40">
-                <CoverUpload
-                  songId={id!}
-                  teamId={currentTeam?.id || ""}
-                  coverPath={coverPath}
-                  onUpload={(path) => { setCoverPath(path); persistField({ cover_path: path }); }}
-                  readOnly={readOnly}
-                />
-              </div>
-            </div>
-            <div className={groupCard}>
-              <FieldRow label="Título" htmlFor={ids.title}>
-                <input id={ids.title} className={bareInput} value={title} onChange={(e) => setTitle(e.target.value)} readOnly={readOnly} />
-              </FieldRow>
-              <FieldRow label="Artista" htmlFor={ids.artist}>
-                <input id={ids.artist} className={bareInput} value={artist} onChange={(e) => setArtist(e.target.value)} readOnly={readOnly} />
-              </FieldRow>
-              <FieldRow label="Tema" htmlFor={ids.theme}>
-                <input id={ids.theme} className={bareInput} value={theme} onChange={(e) => setTheme(e.target.value)} readOnly={readOnly} placeholder="Ex: Adoração, Celebração..." />
-              </FieldRow>
-              {(!readOnly || tags.length > 0) && (
-                <FieldRow label="Tags" htmlFor={readOnly ? undefined : ids.tag} alignTop>
-                  {tags.length > 0 && (
-                    <ul className="flex flex-wrap gap-1.5 py-3" aria-label="Tags">
-                      {tags.map((tag, i) => (
+    <div
+      className={cn(
+        "flex min-h-0 flex-col",
+        embedded ? "flex-1" : "animate-in-up"
+      )}
+    >
+      {!embedded && (
+        <PageHeader
+          title={isDraft ? "Cadastrar nova música" : title || "Música"}
+          subtitle="Informações, gravação e conteúdo para o ensaio"
+          back
+        />
+      )}
+      <div
+        ref={scrollBody}
+        className={cn(
+          "min-h-0 overflow-x-hidden overscroll-contain",
+          embedded ? "flex-1 overflow-y-auto px-4 pb-5 pt-4 sm:px-6" : "pb-6"
+        )}
+      >
+        <ol
+          className="mb-4 grid grid-cols-[1fr_1.3fr_.8fr] gap-2 text-xs sm:grid-cols-3"
+          aria-label="Etapas do cadastro"
+        >
+          {["Informações", "Preparar música", "Revisar"].map((label, index) => (
+            <li key={label}>
+              <button
+                type="button"
+                aria-current={step === index + 1 ? "step" : undefined}
+                disabled={saving || mediaBusy}
+                onClick={() => {
+                  if (!isDraft || index + 1 <= step || validate(index + 1)) {
+                    setStep(index + 1);
+                    setErrors({});
+                    scrollBody.current?.scrollTo(0, 0);
+                  }
+                }}
+                className={cn(
+                  "flex min-h-11 w-full items-center gap-1.5 border-b-2 pb-2 text-left",
+                  step === index + 1
+                    ? "border-foreground font-semibold text-foreground"
+                    : "border-separator text-muted-foreground"
+                )}
+              >
+                <span
+                  className={cn(
+                    "grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px]",
+                    step === index + 1
+                      ? "bg-prominent text-prominent-foreground"
+                      : "bg-fill-tertiary"
+                  )}
+                >
+                  {index + 1}
+                </span>
+                <span>{label}</span>
+              </button>
+            </li>
+          ))}
+        </ol>
+        <div className="grid min-w-0 items-start gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_205px]">
+          <div className="min-w-0 space-y-3">
+            {step === 1 && (
+              <section className={cardClass} aria-labelledby={ids.identity}>
+                <h2 id={ids.identity} className="text-base font-semibold">
+                  Qual música vamos cadastrar?
+                </h2>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  Identifique a versão e organize como a equipe vai encontrá-la.
+                </p>
+                <div className="my-4 flex flex-wrap items-center gap-3 border-b border-separator pb-4">
+                  <CoverUpload
+                    compact
+                    songId={id!}
+                    teamId={song.team_id}
+                    coverPath={coverPath}
+                    onBusyChange={setMediaBusy}
+                    onUpload={async (path) => {
+                      if (!(await persistField({ cover_path: path })))
+                        throw new Error(
+                          "Não foi possível vincular a capa ao cadastro."
+                        );
+                      setCoverPath(path);
+                    }}
+                    readOnly={readOnly || mediaBusy}
+                  />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold">
+                      Capa da música{" "}
+                      <span className="font-normal text-muted-foreground">
+                        Opcional
+                      </span>
+                    </p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      JPG, PNG ou WebP · até 5 MB
+                    </p>
+                    {coverPath && !readOnly && (
+                      <Button
+                        variant="ghost"
+                        className="mt-1 px-0 text-xs"
+                        onClick={() => {
+                          setCoverPath(null);
+                          void persistField({ cover_path: null });
+                        }}
+                      >
+                        Remover capa
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+                  <div className="min-w-0">
+                    <label htmlFor={ids.title} className={labelClass}>
+                      Nome da música
+                    </label>
+                    <input
+                      id={ids.title}
+                      className={fieldClass}
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      readOnly={readOnly}
+                      aria-invalid={!!errors.title}
+                      aria-describedby={
+                        errors.title ? ids.title + "-error" : undefined
+                      }
+                    />
+                    {fieldError("title")}
+                  </div>
+                  <div className="min-w-0">
+                    <label htmlFor={ids.artist} className={labelClass}>
+                      Artista ou ministério
+                    </label>
+                    <input
+                      id={ids.artist}
+                      className={fieldClass}
+                      value={artist}
+                      onChange={(e) => setArtist(e.target.value)}
+                      readOnly={readOnly}
+                      aria-invalid={!!errors.artist}
+                      aria-describedby={
+                        errors.artist ? ids.artist + "-error" : undefined
+                      }
+                    />
+                    {fieldError("artist")}
+                  </div>
+                  <div className="min-w-0">
+                    <label htmlFor={ids.key} className={labelClass}>
+                      Tom original
+                    </label>
+                    <MusicalKeyPicker
+                      id={ids.key}
+                      value={keyOriginal}
+                      onChange={setOriginal}
+                      disabled={readOnly}
+                      required
+                      label="Tom original"
+                      invalid={!!errors.key}
+                      describedBy={errors.key ? ids.key + "-error" : undefined}
+                    />
+                    {fieldError("key")}
+                  </div>
+                  <div className="min-w-0">
+                    <label htmlFor={ids.teamKey} className={labelClass}>
+                      Tom da equipe{" "}
+                      <span className="font-normal text-muted-foreground">
+                        Opcional
+                      </span>
+                    </label>
+                    <MusicalKeyPicker
+                      id={ids.teamKey}
+                      value={keyCurrent === keyOriginal ? "" : keyCurrent}
+                      onChange={(key) => setKeyCurrent(key || keyOriginal)}
+                      disabled={readOnly}
+                      label="Tom da equipe"
+                      emptyLabel="Igual ao original"
+                      allowEmpty
+                    />
+                    <p className="mt-1.5 text-[11px] text-muted-foreground">
+                      A transposição fica na etapa de preparação.
+                    </p>
+                  </div>
+                  <div className="min-w-0 sm:col-span-2">
+                    <label htmlFor={ids.theme} className={labelClass}>
+                      Tema principal
+                    </label>
+                    <input
+                      id={ids.theme}
+                      className={fieldClass}
+                      list={uid + "-themes"}
+                      value={theme}
+                      onChange={(e) => setTheme(e.target.value)}
+                      readOnly={readOnly}
+                      placeholder="Ex.: Gratidão, Adoração…"
+                      aria-invalid={!!errors.theme}
+                      aria-describedby={
+                        errors.theme ? ids.theme + "-error" : undefined
+                      }
+                    />
+                    <datalist id={uid + "-themes"}>
+                      {[
+                        "Adoração",
+                        "Celebração",
+                        "Gratidão",
+                        "Comunhão",
+                        "Entrega",
+                        "Esperança",
+                      ].map((value) => (
+                        <option key={value}>{value}</option>
+                      ))}
+                    </datalist>
+                    {fieldError("theme")}
+                  </div>
+                  <div className="min-w-0 sm:col-span-2">
+                    <label htmlFor={ids.tag} className={labelClass}>
+                      Tags{" "}
+                      <span className="font-normal text-muted-foreground">
+                        Opcional
+                      </span>
+                    </label>
+                    {!readOnly && (
+                      <div className="flex gap-2">
+                        <input
+                          id={ids.tag}
+                          value={tagInput}
+                          onChange={(e) => setTagInput(e.target.value)}
+                          className={fieldClass}
+                          placeholder="Ex.: abertura, ceia, acústico"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              addTag();
+                            }
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          aria-label="Adicionar tag"
+                          onClick={addTag}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                    <p className="mt-1.5 text-[11px] text-muted-foreground">
+                      Use tags para facilitar a busca da equipe.
+                    </p>
+                    <ul
+                      className="mt-2 flex flex-wrap gap-1"
+                      aria-label="Tags adicionadas"
+                    >
+                      {tags.map((tag) => (
                         <li
-                          key={i}
-                          className={cn(
-                            "inline-flex min-h-7 items-center gap-0.5 rounded-full bg-fill-tertiary py-1 text-footnote font-medium text-foreground",
-                            readOnly ? "px-2.5" : "pl-2.5 pr-1",
-                          )}
+                          key={tag}
+                          className="inline-flex min-h-11 items-center rounded-full bg-fill-tertiary pl-3 text-xs"
                         >
                           {tag}
-                          {!readOnly && (
+                          {!readOnly ? (
                             <button
                               type="button"
-                              onClick={() => setTags(tags.filter((_, j) => j !== i))}
-                              aria-label={`Remover tag ${tag}`}
-                              className="relative grid h-5 w-5 place-items-center rounded-full text-muted-foreground transition-colors hover:text-foreground after:absolute after:-inset-3"
+                              onClick={() =>
+                                setTags(tags.filter((value) => value !== tag))
+                              }
+                              aria-label={"Remover tag " + tag}
+                              className="grid h-11 w-11 place-items-center"
                             >
-                              <X className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
+                              <X className="h-3 w-3" />
                             </button>
+                          ) : (
+                            <span className="w-3" />
                           )}
                         </li>
                       ))}
                     </ul>
-                  )}
-                  {!readOnly && (
-                    <div className={cn("flex items-center gap-1", tags.length > 0 && "-mt-1")}>
-                      <input
-                        id={ids.tag}
-                        className={bareInput}
-                        value={tagInput}
-                        onChange={(e) => setTagInput(e.target.value)}
-                        placeholder="Nova tag..."
-                        enterKeyHint="done"
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            addTag();
-                          }
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={addTag}
-                        disabled={!tagInput.trim()}
-                        aria-label="Adicionar tag"
-                        className="-mr-2 grid h-11 w-11 shrink-0 place-items-center transition-opacity disabled:opacity-40"
-                      >
-                        <span className="grid h-7 w-7 place-items-center rounded-full bg-prominent text-prominent-foreground">
-                          <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
-                        </span>
-                      </button>
-                    </div>
-                  )}
-                </FieldRow>
-              )}
-            </div>
-          </section>
-
-          {/* Mídia & áudio */}
-          <section aria-labelledby={ids.media}>
-            <SectionHeader id={ids.media} title="Mídia & áudio" qualifier="Referência e arquivo da música" />
-            <label htmlFor={ids.mediaUrl} className={groupLabel}>Link de mídia</label>
-            <div className={groupCard}>
-              <div className={cn(rowBase, rowSep16, "py-0")}>
-                <input
-                  id={ids.mediaUrl}
-                  className={bareInput}
-                  value={mediaUrl}
-                  onChange={(e) => setMediaUrl(e.target.value)}
-                  readOnly={readOnly}
-                  placeholder="Link do YouTube, Spotify..."
-                  inputMode="url"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                />
-              </div>
-            </div>
-            {youtubeId && (
-              <div className="mt-3 aspect-video overflow-hidden rounded-card bg-fill-tertiary">
-                <iframe
-                  src={`https://www.youtube.com/embed/${youtubeId}`}
-                  className="h-full w-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  title="YouTube preview"
-                />
-              </div>
-            )}
-            {(!readOnly || audioPath) && (
-              <div className="mt-6">
-                <p className={groupLabel}>Áudio da música</p>
-                <div className={groupCard}>
-                  {!readOnly && !audioPath ? (
-                    <>
-                      {/* Duas formas de obter o áudio: arquivo OU o link do YouTube acima */}
-                      <AudioUpload
-                        songId={id!}
-                        teamId={currentTeam?.id || ""}
-                        audioPath={audioPath}
-                        onUpload={(path) => { setAudioPath(path); persistField({ audio_path: path }); }}
-                        readOnly={readOnly}
-                        compact
-                      />
-                      <button
-                        type="button"
-                        className={cn(rowBase, rowSep58, actionRow, !importBusy && actionRowDimmed)}
-                        onClick={handleImportYoutube}
-                        disabled={importingYt || !youtubeId}
-                        aria-busy={importBusy || undefined}
-                        title={youtubeId ? "Importar áudio do link do YouTube" : "Cole um link do YouTube no campo Link de mídia acima"}
-                      >
-                        <span className={cn(rowIcon, "text-primary")} aria-hidden="true">
-                          {importingYt ? <Loader2 className={cn(rowSymbol, "animate-spin")} /> : <Youtube className={rowSymbol} />}
-                        </span>
-                        <span className="min-w-0 flex-1 text-body text-primary">{importingYt ? "Baixando..." : "Do YouTube"}</span>
-                      </button>
-                    </>
-                  ) : (
-                    <AudioUpload
-                      songId={id!}
-                      teamId={currentTeam?.id || ""}
-                      audioPath={audioPath}
-                      onUpload={(path) => { setAudioPath(path); persistField({ audio_path: path }); }}
-                      readOnly={readOnly}
-                      compact
-                    />
-                  )}
-                </div>
-                {!readOnly && !audioPath && (
-                  <>
-                    {!youtubeId && !importingYt && (
-                      <p className={helperText}>
-                        Para importar do YouTube, cole o link no campo <strong className="font-semibold text-foreground">Link de mídia</strong> acima.
-                      </p>
-                    )}
-                    {importingYt && <p className={helperText}>Baixando do YouTube… pode levar ~1 min.</p>}
-                    {ytCookieExpired && !importingYt && (
-                      <div className={cn(groupCard, "mt-3 flex items-start gap-3 px-4 py-3")}>
-                        <AlertTriangle className="mt-px h-[22px] w-[22px] shrink-0 text-ios-red" aria-hidden="true" />
-                        <p className="min-w-0 text-footnote text-foreground">
-                          O acesso ao YouTube expirou. <strong className="font-semibold">Avise o administrador do app</strong> para renovar o login — depois é só tentar importar de novo.
-                        </p>
+                    {!readOnly && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {["abertura", "ceia", "acústico"]
+                          .filter((tag) => !tags.includes(tag))
+                          .map((tag) => (
+                            <Button
+                              key={tag}
+                              variant="ghost"
+                              className="text-xs"
+                              onClick={() => setTags([...tags, tag])}
+                            >
+                              {tag}
+                            </Button>
+                          ))}
                       </div>
                     )}
-                  </>
-                )}
-              </div>
+                  </div>
+                </div>
+              </section>
             )}
-          </section>
-
-          <SongAudioAttachments
-            key={song.id}
-            songId={song.id}
-            teamId={song.team_id}
-            readOnly={!canEditAdditionalAudio}
-          />
-
-          {/* Processamento (aparece quando há áudio) */}
-          {audioPath && (!readOnly || tracks.length > 0) && (
-            <section aria-labelledby={ids.processing}>
-              <SectionHeader id={ids.processing} title="Processamento" qualifier="Corte e separação por IA" />
-              {!readOnly && (
-                <>
-                  <div className={groupCard}>
-                    <div className="px-4 pb-3 pt-3.5">
-                      <AudioTrimmer
-                        key={audioPath}
-                        audioPath={audioPath}
-                        teamId={currentTeam?.id || ""}
-                        songId={id!}
-                        onTrimmed={() => {
-                          qc.invalidateQueries({ queryKey: ["song", id] });
-                        }}
+            {step === 2 && (
+              <>
+                <Tabs value={prepareTab} onValueChange={setPrepareTab}>
+                  <TabsList className="mb-3 w-full">
+                    <TabsTrigger
+                      value="recording"
+                      className="min-w-0 flex-1 text-xs"
+                    >
+                      Gravação
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="content"
+                      className="min-w-0 flex-1 text-xs"
+                    >
+                      Cifra e letra
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="tracks"
+                      className="min-w-0 flex-1 text-xs"
+                    >
+                      Faixas
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="recording" className="space-y-3">
+                    <section className={cardClass} aria-labelledby={ids.media}>
+                      <h2 id={ids.media} className="text-base font-semibold">
+                        Qual gravação vamos usar?
+                      </h2>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        Cole o link da versão que a equipe vai tocar. Depois,
+                        prepare o áudio para separar os instrumentos.
+                      </p>
+                      <label
+                        htmlFor={ids.mediaUrl}
+                        className={cn(labelClass, "mt-4")}
+                      >
+                        Link da gravação
+                      </label>
+                      <input
+                        id={ids.mediaUrl}
+                        type="url"
+                        className={fieldClass}
+                        value={mediaUrl}
+                        onChange={(e) => setMediaUrl(e.target.value)}
+                        readOnly={readOnly || importBusy || separatingBusy}
+                        placeholder="Cole o link do YouTube…"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        aria-invalid={!!errors.audio}
+                        aria-describedby={
+                          errors.audio ? ids.audio + "-error" : undefined
+                        }
+                      />
+                      {sourceChanged && (
+                        <p
+                          className="mt-2 text-xs text-destructive"
+                          role="alert"
+                        >
+                          O link mudou. Importe esta gravação novamente antes de
+                          continuar.
+                        </p>
+                      )}
+                      {fieldError("audio")}
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {!readOnly && (
+                          <Button
+                            onClick={() => void handleImportYoutube()}
+                            disabled={
+                              !youtubeId ||
+                              importBusy ||
+                              separatingBusy ||
+                              mediaBusy
+                            }
+                          >
+                            {importBusy ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Youtube className="mr-2 h-4 w-4" />
+                            )}
+                            {importBusy
+                              ? "Importando gravação…"
+                              : "Importar áudio da gravação"}
+                          </Button>
+                        )}
+                        {youtubeId && (
+                          <Button
+                            variant="outline"
+                            onClick={() => setPreviewOpen(true)}
+                          >
+                            Conferir versão
+                          </Button>
+                        )}
+                      </div>
+                      <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                        Use o YouTube para importar. Links de outros serviços
+                        ficam salvos para consulta; você pode enviar o arquivo
+                        abaixo.
+                      </p>
+                      {importJob?.status === "error" && !audioPath && (
+                        <p
+                          role="alert"
+                          className="mt-2 text-xs text-destructive"
+                        >
+                          {ytCookieExpired
+                            ? "O acesso ao YouTube expirou. Avise o administrador para renovar e tente novamente."
+                            : "A importação não concluiu. Tente novamente ou envie um arquivo."}
+                        </p>
+                      )}
+                      <div className="mt-4 border-t border-separator pt-3">
+                        <p className="mb-2 text-xs text-muted-foreground">
+                          Ou escolha um arquivo de áudio
+                        </p>
+                        <AudioUpload
+                          songId={id!}
+                          teamId={song.team_id}
+                          audioPath={audioPath}
+                          compact
+                          onBusyChange={setMediaBusy}
+                          readOnly={readOnly || importBusy || separatingBusy}
+                          onUpload={async (path) => {
+                            if (
+                              !(await persistField({
+                                audio_path: path,
+                                recording_source_url: null,
+                                audio_revision: crypto.randomUUID(),
+                              }))
+                            )
+                              throw new Error(
+                                "Não foi possível vincular o áudio ao cadastro."
+                              );
+                            setAudioPath(path);
+                            setAudioVersion((version) => version + 1);
+                            setRecordingSource(null);
+                            setDurationInput("");
+                            await refetchTracks();
+                            void qc.invalidateQueries({
+                              queryKey: ["song-stems", id],
+                            });
+                          }}
+                        />
+                      </div>
+                    </section>
+                    <div className={cardClass}>
+                      {" "}
+                      <section aria-labelledby={ids.data}>
+                        <SectionHeader
+                          id={ids.data}
+                          title="Dados musicais"
+                          qualifier={
+                            audioPath
+                              ? "Detectados do áudio — ajuste se precisar"
+                              : "Disponível após adicionar o áudio"
+                          }
+                        />
+                        <div className={groupCard}>
+                          {audioPath ? (
+                            <>
+                              <div className={cn(rowBase, rowSep58, "py-0")}>
+                                <span className={rowIcon} aria-hidden="true">
+                                  <Gauge className={rowSymbol} />
+                                </span>
+                                <label
+                                  htmlFor={ids.bpm}
+                                  className="min-w-0 flex-1 text-body text-foreground"
+                                >
+                                  BPM
+                                </label>
+                                <input
+                                  id={ids.bpm}
+                                  type="number"
+                                  inputMode="numeric"
+                                  min={40}
+                                  max={240}
+                                  value={bpm}
+                                  onChange={(e) => setBpm(e.target.value)}
+                                  readOnly={readOnly}
+                                  placeholder="100"
+                                  className={cn(
+                                    bareInput,
+                                    "w-16 flex-none text-right tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                  )}
+                                />
+                                {!readOnly && (
+                                  <button
+                                    type="button"
+                                    onClick={handleDetectBpm}
+                                    disabled={detectingBpm}
+                                    title="Detectar BPM do áudio"
+                                    aria-label="Detectar BPM do áudio"
+                                    className="-mr-2 grid h-11 w-11 shrink-0 place-items-center text-primary"
+                                  >
+                                    <span className="grid h-8 w-8 place-items-center rounded-full bg-fill-tertiary transition-colors active:bg-fill-secondary">
+                                      {detectingBpm ? (
+                                        <Loader2
+                                          className="h-4 w-4 animate-spin"
+                                          strokeWidth={2.25}
+                                          aria-hidden="true"
+                                        />
+                                      ) : (
+                                        <Sparkles
+                                          className="h-4 w-4"
+                                          strokeWidth={2.25}
+                                          aria-hidden="true"
+                                        />
+                                      )}
+                                    </span>
+                                  </button>
+                                )}
+                              </div>
+                              <div className={cn(rowBase, rowSep58, "py-0")}>
+                                <span className={rowIcon} aria-hidden="true">
+                                  <Clock className={rowSymbol} />
+                                </span>
+                                <label
+                                  htmlFor={ids.duration}
+                                  className="min-w-0 flex-1 text-body text-foreground"
+                                >
+                                  Duração
+                                </label>
+                                <input
+                                  id={ids.duration}
+                                  value={durationInput}
+                                  onChange={(e) =>
+                                    setDurationInput(e.target.value)
+                                  }
+                                  readOnly={readOnly}
+                                  placeholder="mm:ss"
+                                  inputMode="numeric"
+                                  className={cn(
+                                    bareInput,
+                                    "w-20 flex-none text-right tabular-nums",
+                                    !readOnly && "mr-12"
+                                  )}
+                                />
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex items-center gap-3 px-4 py-4">
+                              <Gauge
+                                className="h-7 w-7 shrink-0 text-label-tertiary"
+                                aria-hidden="true"
+                              />
+                              <p className="min-w-0 text-body text-muted-foreground">
+                                Adicione o áudio acima para detectar BPM e
+                                duração automaticamente.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </section>
+                    </div>
+                    {audioPath && !sourceChanged && (
+                      <section className={cardClass}>
+                        <h2 className="text-base font-semibold">
+                          Preparar para a separação
+                        </h2>
+                        <p className="mb-3 mt-1 text-xs text-muted-foreground">
+                          Corte o início e o fim, se precisar, e separe os
+                          instrumentos.
+                        </p>
+                        {!readOnly && (
+                          <>
+                            <AudioTrimmer
+                              key={audioPath + ":" + audioVersion}
+                              disabled={
+                                separatingBusy || importBusy || mediaBusy
+                              }
+                              onBusyChange={setMediaBusy}
+                              audioPath={audioPath}
+                              teamId={song.team_id}
+                              songId={id!}
+                              onTrimmed={async () => {
+                                const { data } = await supabase
+                                  .from("songs")
+                                  .select("audio_path")
+                                  .eq("id", id!)
+                                  .single();
+                                if (data) setAudioPath(data.audio_path);
+                                setAudioVersion((version) => version + 1);
+                                setDurationInput("");
+                                await refetchTracks();
+                                void qc.invalidateQueries({
+                                  queryKey: ["song-stems", id],
+                                });
+                              }}
+                            />
+                            <Button
+                              className="mt-3 w-full whitespace-normal"
+                              onClick={() => void handleSeparateStems()}
+                              disabled={
+                                separatingBusy || importBusy || mediaBusy
+                              }
+                            >
+                              {separatingBusy ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Sparkles className="mr-2 h-4 w-4" />
+                              )}
+                              {separatingBusy
+                                ? "Separando faixas…"
+                                : "Separar em faixas (IA)"}
+                            </Button>
+                            {stemsState?.stems_status === "error" && (
+                              <p className="mt-2 text-xs text-destructive">
+                                {stemsState.stems_error ||
+                                  "A separação falhou. Tente novamente."}
+                              </p>
+                            )}
+                          </>
+                        )}
+                        {tracks.length > 0 && (
+                          <Button
+                            variant="ghost"
+                            className="mt-2"
+                            onClick={() => setPrepareTab("tracks")}
+                          >
+                            Conferir {tracks.length} faixas
+                          </Button>
+                        )}
+                      </section>
+                    )}
+                    <div className={cardClass}>
+                      <SongAudioAttachments
+                        key={song.id}
+                        songId={song.id}
+                        teamId={song.team_id}
+                        readOnly={!canEditAdditionalAudio}
                       />
                     </div>
-                    <button
-                      type="button"
-                      className={cn(rowBase, rowSep16, actionRow, !separatingBusy && actionRowDimmed)}
-                      onClick={handleSeparateStems}
-                      disabled={separating || stemsProcessing}
-                      aria-busy={separatingBusy || undefined}
-                    >
-                      <span className={cn(rowIcon, "text-primary")} aria-hidden="true">
-                        {separatingBusy ? <Loader2 className={cn(rowSymbol, "animate-spin")} /> : <Sparkles className={rowSymbol} />}
-                      </span>
-                      <span className="min-w-0 flex-1 text-body text-primary">
-                        {separatingBusy ? "Separando faixas... (alguns min)" : "Separar em faixas (IA)"}
-                      </span>
-                    </button>
-                  </div>
-                  <p className={helperText}>Gera Vocais, Bateria, Baixo, Guitarra, Teclado e Outros a partir do áudio.</p>
-                </>
-              )}
-              {tracks.length > 0 && (
-                <div className={readOnly ? undefined : "mt-6"}>
-                  <StemPreviewPlayer
-                    tracks={tracks}
-                    originalAudioPath={audioPath}
-                    songId={id}
-                    songKey={(song as any)?.key_original}
-                  />
-                </div>
-              )}
-            </section>
-          )}
-
-          {/* Dados musicais (BPM/Duração: travados até ter áudio) */}
-          <section aria-labelledby={ids.data}>
-            <SectionHeader
-              id={ids.data}
-              title="Dados musicais"
-              qualifier={audioPath ? "Detectados do áudio — ajuste se precisar" : "Disponível após adicionar o áudio"}
-            />
-            <div className={groupCard}>
-              {audioPath ? (
-                <>
-                  <div className={cn(rowBase, rowSep58, "py-0")}>
-                    <span className={rowIcon} aria-hidden="true"><Gauge className={rowSymbol} /></span>
-                    <label htmlFor={ids.bpm} className="min-w-0 flex-1 text-body text-foreground">BPM</label>
-                    <input
-                      id={ids.bpm}
-                      type="number"
-                      inputMode="numeric"
-                      min={40}
-                      max={240}
-                      value={bpm}
-                      onChange={(e) => setBpm(e.target.value)}
-                      readOnly={readOnly}
-                      placeholder="100"
-                      className={cn(
-                        bareInput,
-                        "w-16 flex-none text-right tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
-                      )}
-                    />
-                    {!readOnly && (
-                      <button
-                        type="button"
-                        onClick={handleDetectBpm}
-                        disabled={detectingBpm}
-                        title="Detectar BPM do áudio"
-                        aria-label="Detectar BPM do áudio"
-                        className="-mr-2 grid h-11 w-11 shrink-0 place-items-center text-primary"
-                      >
-                        <span className="grid h-8 w-8 place-items-center rounded-full bg-fill-tertiary transition-colors active:bg-fill-secondary">
-                          {detectingBpm ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} aria-hidden="true" /> : <Sparkles className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />}
-                        </span>
-                      </button>
+                  </TabsContent>
+                  <TabsContent value="content" className={cardClass}>
+                    {" "}
+                    <section aria-labelledby={ids.content} className="min-w-0">
+                      <SectionHeader
+                        id={ids.content}
+                        title="Cifra e letra"
+                        qualifier="Conteúdo completo para a equipe ensaiar"
+                        action={
+                          !readOnly && (
+                            <Button
+                              variant="ghost"
+                              onClick={() => setShowMoisesModal(true)}
+                            >
+                              Importar do Moises
+                            </Button>
+                          )
+                        }
+                      />
+                      <Tabs defaultValue="cifra" className="w-full">
+                        <TabsList className="w-full">
+                          <TabsTrigger value="cifra" className="flex-1">
+                            Cifra
+                          </TabsTrigger>
+                          <TabsTrigger value="lyrics" className="flex-1">
+                            Letra
+                          </TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="cifra">
+                          {/* Controle de tom — transpõe a cifra offline; salva como padrão da música */}
+                          {!readOnly && cifraText.trim() && (
+                            <div className="mb-3 flex items-center justify-between gap-3 pl-1">
+                              <span className="min-w-0 text-subhead text-muted-foreground">
+                                Transpor cifra{" "}
+                                {tomDelta !== 0 && (
+                                  <span className="font-semibold tabular-nums text-foreground">
+                                    ({tomDelta > 0 ? "+" : ""}
+                                    {tomDelta})
+                                  </span>
+                                )}
+                              </span>
+                              <div className="flex shrink-0 items-center gap-2">
+                                <div className="flex h-11 items-center overflow-hidden rounded-full bg-fill-tertiary text-subhead text-foreground">
+                                  <button
+                                    type="button"
+                                    onClick={tomDown}
+                                    className="h-full min-w-[44px] px-3 font-semibold transition-colors active:bg-fill-secondary"
+                                    title="Descer ½ tom"
+                                  >
+                                    −1
+                                  </button>
+                                  <span
+                                    className="h-5 w-px bg-separator"
+                                    aria-hidden="true"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={tomReset}
+                                    className="h-full min-w-[3.25rem] px-2 text-center font-bold text-primary transition-colors active:bg-fill-secondary"
+                                    title="Tom atual — toque para voltar ao original"
+                                  >
+                                    {detectKeyFromCifra(cifraText) ?? "Tom"}
+                                  </button>
+                                  <span
+                                    className="h-5 w-px bg-separator"
+                                    aria-hidden="true"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={tomUp}
+                                    className="h-full min-w-[44px] px-3 font-semibold transition-colors active:bg-fill-secondary"
+                                    title="Subir ½ tom"
+                                  >
+                                    +1
+                                  </button>
+                                </div>
+                                {tomDelta !== 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={tomReset}
+                                    className="grid h-11 w-11 place-items-center rounded-full bg-fill-tertiary text-muted-foreground transition-colors active:bg-fill-secondary"
+                                    title="Voltar ao tom original"
+                                    aria-label="Voltar ao tom original"
+                                  >
+                                    <RotateCcw
+                                      className="h-4 w-4"
+                                      strokeWidth={2.25}
+                                      aria-hidden="true"
+                                    />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          <CifraHighlightTextarea
+                            id={ids.cifra}
+                            aria-label="Cifra completa"
+                            value={cifraText}
+                            onChange={(e) => setCifraText(e.target.value)}
+                            readOnly={readOnly}
+                            className="w-full"
+                            placeholder="Cole ou digite a cifra aqui..."
+                            aria-invalid={!!errors.cifra}
+                            aria-describedby={
+                              errors.cifra ? ids.cifra + "-error" : undefined
+                            }
+                          />
+                          {errors.cifra && (
+                            <p
+                              id={ids.cifra + "-error"}
+                              className="mt-2 text-xs text-destructive"
+                              role="alert"
+                            >
+                              {errors.cifra}
+                            </p>
+                          )}
+                          {!readOnly && keyCurrent && (
+                            <Button
+                              variant="ghost"
+                              className="mt-2 text-xs"
+                              onClick={() => {
+                                const from =
+                                  detectKeyFromCifra(cifraText) || keyOriginal;
+                                setCifraText((text) =>
+                                  transposeCifraToKey(text, from, keyCurrent)
+                                );
+                                setTomDelta(0);
+                              }}
+                            >
+                              Usar tom da equipe ({keyCurrent})
+                            </Button>
+                          )}
+                        </TabsContent>
+                        <TabsContent value="lyrics">
+                          <AutoGrowTextarea
+                            aria-label="Letra da música"
+                            value={lyricsText}
+                            onChange={(e) => setLyricsText(e.target.value)}
+                            readOnly={readOnly}
+                            className="block w-full min-h-[260px] max-h-[70vh] rounded-card bg-card px-4 py-3.5 text-body leading-7 text-foreground resize-none placeholder:text-label-tertiary focus:outline-none focus-visible:outline-none"
+                            placeholder="Cole ou digite a letra aqui. Use [tags] para separar as partes (ex: [Refrão], [Verso 1])..."
+                          />
+                        </TabsContent>
+                      </Tabs>
+                    </section>
+                  </TabsContent>
+                  <TabsContent value="tracks" className={cardClass}>
+                    <h2 className="text-base font-semibold">
+                      Faixas para o ensaio
+                    </h2>
+                    <p className="mb-3 mt-1 text-xs text-muted-foreground">
+                      Ouça cada instrumento e ajuste a mistura para estudar sua
+                      parte.
+                    </p>
+                    {tracks.length &&
+                    !sourceChanged &&
+                    !importBusy &&
+                    !loopsOpen ? (
+                      <StemPreviewPlayer
+                        tracks={tracks}
+                        originalAudioPath={audioPath}
+                        songId={id}
+                        songKey={keyOriginal}
+                        onKeyChange={setOriginal}
+                      />
+                    ) : (
+                      <p className="py-5 text-sm text-muted-foreground">
+                        {separatingBusy
+                          ? "As faixas aparecem aqui quando a separação concluir."
+                          : "Importe a gravação e separe em faixas, ou envie as faixas prontas abaixo."}
+                      </p>
                     )}
+                    <div className="mt-4 border-t border-separator pt-4">
+                      <TrackUpload
+                        songId={id!}
+                        teamId={song.team_id}
+                        tracks={tracks}
+                        onTracksChange={() => void refetchTracks()}
+                        readOnly={readOnly || separatingBusy || importBusy}
+                      />
+                    </div>
+                    {audioPath && (
+                      <Button
+                        variant="outline"
+                        className="mt-4 w-full whitespace-normal"
+                        onClick={() => setLoopsOpen(true)}
+                      >
+                        <Repeat className="mr-2 h-4 w-4" />
+                        Trechos para repetir no ensaio
+                      </Button>
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </>
+            )}
+            {step === 3 && (
+              <>
+                <section className={cardClass}>
+                  <div className="flex items-center gap-3 border-b border-separator pb-4">
+                    <span className="grid h-[62px] w-[55px] shrink-0 place-items-center rounded-[15px] bg-fill-tertiary text-xl font-semibold">
+                      {keyOriginal || "—"}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="break-words text-xl font-semibold">
+                        {title || "Música sem nome"}
+                      </h2>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {artist || "Artista pendente"}
+                      </p>
+                    </div>
+                    <Button variant="ghost" onClick={() => setStep(1)}>
+                      Editar
+                    </Button>
                   </div>
-                  <div className={cn(rowBase, rowSep58, "py-0")}>
-                    <span className={rowIcon} aria-hidden="true"><Clock className={rowSymbol} /></span>
-                    <label htmlFor={ids.duration} className="min-w-0 flex-1 text-body text-foreground">Duração</label>
-                    <input
-                      id={ids.duration}
-                      value={durationInput}
-                      onChange={(e) => setDurationInput(e.target.value)}
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    {tags.join(" · ")}
+                  </p>
+                  <dl className="mt-3 text-xs">
+                    {[
+                      ["Tema", theme || "Pendente"],
+                      [
+                        "Tom da equipe",
+                        keyCurrent || keyOriginal || "Pendente",
+                      ],
+                      [
+                        "BPM / duração",
+                        `${bpm ? bpm + " BPM" : "BPM não informado"} · ${
+                          durationInput || "duração não informada"
+                        }`,
+                      ],
+                      ["Capa", coverPath ? "Imagem adicionada" : "Sem capa"],
+                      ["Link da gravação", mediaUrl || "Sem link"],
+                      [
+                        "Áudio preparado",
+                        audioPath
+                          ? sourceChanged
+                            ? "Versão precisa ser reimportada"
+                            : "Gravação pronta"
+                          : "Pendente",
+                      ],
+                      [
+                        "Faixas",
+                        tracks.length
+                          ? `${tracks.length} faixas preparadas`
+                          : "Sem faixas",
+                      ],
+                      [
+                        "Cifra / letra",
+                        `${
+                          cifraText.trim()
+                            ? cifraText.split("\n").length + " linhas de cifra"
+                            : "Cifra pendente"
+                        } · ${
+                          lyricsText.trim()
+                            ? "letra adicionada"
+                            : "sem letra separada"
+                        }`,
+                      ],
+                      [
+                        "Áudios adicionais",
+                        pendingAdditional
+                          ? "Há importações pendentes"
+                          : "Confira na etapa de gravação",
+                      ],
+                    ].map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="flex items-start justify-between gap-3 border-b border-separator py-2.5"
+                      >
+                        <dt className="shrink-0 text-muted-foreground">
+                          {label}
+                        </dt>
+                        <dd className="min-w-0 max-w-[65%] break-words text-right">
+                          {value}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <Button
+                    variant="ghost"
+                    className="mt-2 px-0 text-xs"
+                    onClick={() => setStep(2)}
+                  >
+                    Editar gravação, cifra e faixas
+                  </Button>
+                  <div className="mt-3 flex items-start gap-2 rounded-[12px] bg-fill-tertiary p-3 text-xs">
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    <p>
+                      {ready
+                        ? "Pronta para entrar no repertório. A equipe encontrará a cifra e a gravação preparada."
+                        : "Confira as informações pendentes ou salve um rascunho para continuar depois."}
+                    </p>
+                  </div>
+                </section>
+                {isDraft ? (
+                  <section className={cardClass}>
+                    <h2 className="text-base font-semibold">
+                      Adicionar aos repertórios
+                    </h2>
+                    <p className="mb-2 mt-1 text-xs text-muted-foreground">
+                      A música fica na biblioteca e nos repertórios que você
+                      escolher.
+                    </p>
+                    {repertorios.map((rep) => (
+                      <label
+                        key={rep.id}
+                        className="flex min-h-[60px] cursor-pointer items-center gap-3 border-t border-separator first:border-t-0"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={destinations.includes(rep.id)}
+                          onChange={(e) =>
+                            setDestinations((previous) =>
+                              e.target.checked
+                                ? [...previous, rep.id]
+                                : previous.filter((value) => value !== rep.id)
+                            )
+                          }
+                          className="h-5 w-5 accent-foreground"
+                        />
+                        <span className="min-w-0 flex-1 truncate text-sm">
+                          {rep.name}
+                        </span>
+                        {rep.id === initialRepertorioId && (
+                          <span className="text-[10px] text-muted-foreground">
+                            Origem
+                          </span>
+                        )}
+                      </label>
+                    ))}
+                    {!repertorios.length && (
+                      <p className="mt-3 text-xs text-muted-foreground">
+                        Você pode cadastrar somente na biblioteca.
+                      </p>
+                    )}
+                  </section>
+                ) : (
+                  <div className={cardClass}>
+                    <SongRepertoriosCard
+                      songId={id!}
+                      teamId={song.team_id}
                       readOnly={readOnly}
-                      placeholder="mm:ss"
-                      inputMode="numeric"
-                      className={cn(bareInput, "w-20 flex-none text-right tabular-nums", !readOnly && "mr-12")}
                     />
                   </div>
-                </>
-              ) : (
-                <div className="flex items-center gap-3 px-4 py-4">
-                  <Gauge className="h-7 w-7 shrink-0 text-label-tertiary" aria-hidden="true" />
-                  <p className="min-w-0 text-body text-muted-foreground">
-                    Adicione o áudio acima para detectar BPM e duração automaticamente.
-                  </p>
+                )}
+                <div className={cardClass}>
+                  {" "}
+                  <section
+                    aria-labelledby={ids.history}
+                    className="min-w-0 lg:col-span-2"
+                  >
+                    <SectionHeader
+                      id={ids.history}
+                      title="Histórico"
+                      qualifier={
+                        songHistory.length > 0
+                          ? `Tocada ${songHistory.length}x`
+                          : undefined
+                      }
+                    />
+                    {songHistory.length === 0 ? (
+                      <div
+                        className={cn(
+                          groupCard,
+                          "flex items-center gap-3 px-4 py-4"
+                        )}
+                      >
+                        <CalendarDays
+                          className="h-7 w-7 shrink-0 text-label-tertiary"
+                          aria-hidden="true"
+                        />
+                        <p className="min-w-0 text-body text-muted-foreground">
+                          Ainda não foi tocada em nenhum culto.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <ul className={groupCard}>
+                          {songHistory
+                            .slice(0, 8)
+                            .map((culto: any, idx: number) => (
+                              <li
+                                key={culto.id + "-" + idx}
+                                className="relative before:pointer-events-none before:absolute before:left-4 before:right-0 before:top-0 before:z-[1] before:border-t before:border-separator first:before:hidden"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    navigate(`/app/cultos/${culto.id}`)
+                                  }
+                                  className="flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-fill-quaternary active:bg-fill-tertiary"
+                                >
+                                  <span className="min-w-0 flex-1 truncate text-body text-foreground">
+                                    {culto.name}
+                                  </span>
+                                  <span className="shrink-0 text-subhead tabular-nums text-muted-foreground">
+                                    {new Date(culto.date).toLocaleDateString(
+                                      "pt-BR"
+                                    )}
+                                  </span>
+                                  <ChevronRight
+                                    className="h-3.5 w-3.5 shrink-0 text-label-tertiary"
+                                    strokeWidth={2.5}
+                                    aria-hidden="true"
+                                  />
+                                </button>
+                              </li>
+                            ))}
+                        </ul>
+                        <p className={helperText}>
+                          Última vez:{" "}
+                          {formatDistanceToNow(new Date(songHistory[0].date), {
+                            addSuffix: true,
+                            locale: ptBR,
+                          })}
+                        </p>
+                      </>
+                    )}
+                  </section>
                 </div>
-              )}
+                {!readOnly && (
+                  <Button
+                    variant="ghost"
+                    className="text-destructive"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {isDraft ? "Descartar rascunho" : "Excluir música"}
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+          <aside className="hidden rounded-[19px] border border-separator p-4 min-[900px]:block">
+            <h3 className="text-xs font-semibold">Para uma música completa</h3>
+            <div
+              className="my-3 h-1 overflow-hidden rounded-full bg-separator"
+              role="progressbar"
+              aria-label="Dados preenchidos"
+              aria-valuenow={filled}
+              aria-valuemin={0}
+              aria-valuemax={6}
+            >
+              <div
+                className="h-full bg-foreground"
+                style={{ width: (filled / 6) * 100 + "%" }}
+              />
             </div>
-          </section>
-
-          {/* Repertórios — aloca a música em vários repertórios (muitos-para-muitos) */}
-          {id && currentTeam?.id && (
-            <SongRepertoriosCard songId={id} teamId={currentTeam.id} readOnly={readOnly} />
+            <p className="text-[11px] text-muted-foreground">
+              {filled} de 6 informações preenchidas
+            </p>
+            <ul className="my-3 space-y-2 text-xs">
+              {checks.map((check) => (
+                <li key={check.field} className="flex items-center gap-2">
+                  {check.done ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+                  ) : (
+                    <span className="h-3.5 w-3.5 rounded-full border border-separator" />
+                  )}
+                  {check.label}
+                  <span className="sr-only">
+                    : {check.done ? "preenchido" : "pendente"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              Falta algum detalhe? Salve um rascunho e continue depois. Ele fica
+              fora da busca de músicas.
+            </p>
+          </aside>
+        </div>
+      </div>
+      <footer
+        className={cn(
+          "flex shrink-0 items-center justify-between gap-2 border-t border-separator bg-background px-4 py-3 sm:px-6",
+          !embedded && "sticky bottom-0"
+        )}
+      >
+        {!readOnly ? (
+          <Button
+            variant="ghost"
+            className="h-auto min-h-11 max-w-[120px] whitespace-normal px-0 text-left text-xs"
+            onClick={async () => {
+              if (await handleSave()) onFinished?.();
+            }}
+            disabled={saving || mediaBusy}
+          >
+            {isDraft ? "Salvar rascunho" : "Salvar alterações"}
+          </Button>
+        ) : (
+          <span />
+        )}
+        <div className="flex min-w-0 gap-2">
+          <Button
+            variant="secondary"
+            disabled={saving || mediaBusy}
+            onClick={() => {
+              if (step > 1) setStep(step - 1);
+              else if (onFinished && readOnly) {
+                onFinished();
+              } else if (onFinished) {
+                void handleSave(true).then((saved) => {
+                  if (saved) onFinished();
+                });
+              } else navigate(-1);
+            }}
+          >
+            {step === 1 ? "Voltar" : "Voltar"}
+          </Button>
+          {!readOnly && (
+            <Button
+              disabled={
+                saving || mediaBusy || (step === 3 && isDraft && !ready)
+              }
+              onClick={() => void (step === 3 ? finish() : nextStep())}
+              className="h-auto min-h-11 min-w-0 whitespace-normal text-xs sm:text-sm"
+            >
+              {saving ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : null}
+              {step === 3
+                ? isDraft
+                  ? destinations.length
+                    ? "Cadastrar e adicionar"
+                    : "Cadastrar na biblioteca"
+                  : "Salvar música"
+                : "Continuar"}
+            </Button>
           )}
         </div>
-
-        {/* === Coluna direita: Conteúdo === */}
-        <section aria-labelledby={ids.content} className="min-w-0 lg:sticky lg:top-8">
-          <SectionHeader id={ids.content} title="Conteúdo" qualifier="Cifra e letra para o time" />
-          <Tabs defaultValue="cifra" className="w-full">
-            <TabsList className="w-full">
-              <TabsTrigger value="cifra" className="flex-1">Cifra</TabsTrigger>
-              <TabsTrigger value="lyrics" className="flex-1">Letra</TabsTrigger>
-            </TabsList>
-            <TabsContent value="cifra">
-              {/* Controle de tom — transpõe a cifra offline; salva como padrão da música */}
-              {!readOnly && cifraText.trim() && (
-                <div className="mb-3 flex items-center justify-between gap-3 pl-1">
-                  <span className="min-w-0 text-subhead text-muted-foreground">
-                    Transpor cifra{" "}
-                    {tomDelta !== 0 && (
-                      <span className="font-semibold tabular-nums text-foreground">({tomDelta > 0 ? "+" : ""}{tomDelta})</span>
-                    )}
-                  </span>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <div className="flex h-11 items-center overflow-hidden rounded-full bg-fill-tertiary text-subhead text-foreground">
-                      <button type="button" onClick={tomDown} className="h-full min-w-[44px] px-3 font-semibold transition-colors active:bg-fill-secondary" title="Descer ½ tom">−1</button>
-                      <span className="h-5 w-px bg-separator" aria-hidden="true" />
-                      <button
-                        type="button"
-                        onClick={tomReset}
-                        className="h-full min-w-[3.25rem] px-2 text-center font-bold text-primary transition-colors active:bg-fill-secondary"
-                        title="Tom atual — toque para voltar ao original"
-                      >
-                        {detectKeyFromCifra(cifraText) ?? "Tom"}
-                      </button>
-                      <span className="h-5 w-px bg-separator" aria-hidden="true" />
-                      <button type="button" onClick={tomUp} className="h-full min-w-[44px] px-3 font-semibold transition-colors active:bg-fill-secondary" title="Subir ½ tom">+1</button>
-                    </div>
-                    {tomDelta !== 0 && (
-                      <button
-                        type="button"
-                        onClick={tomReset}
-                        className="grid h-11 w-11 place-items-center rounded-full bg-fill-tertiary text-muted-foreground transition-colors active:bg-fill-secondary"
-                        title="Voltar ao tom original"
-                        aria-label="Voltar ao tom original"
-                      >
-                        <RotateCcw className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-              <CifraHighlightTextarea
-                value={cifraText}
-                onChange={(e) => setCifraText(e.target.value)}
-                readOnly={readOnly}
-                className="w-full"
-                placeholder="Cole ou digite a cifra aqui..."
-              />
-            </TabsContent>
-            <TabsContent value="lyrics">
-              <AutoGrowTextarea
-                value={lyricsText}
-                onChange={(e) => setLyricsText(e.target.value)}
-                readOnly={readOnly}
-                className="block w-full min-h-[260px] max-h-[70vh] rounded-card bg-card px-4 py-3.5 text-body leading-7 text-foreground resize-none placeholder:text-label-tertiary focus:outline-none focus-visible:outline-none"
-                placeholder="Cole ou digite a letra aqui. Use [tags] para separar as partes (ex: [Refrão], [Verso 1])..."
-              />
-            </TabsContent>
-          </Tabs>
-        </section>
-
-        {/* === Histórico — referência, largura total === */}
-        <section aria-labelledby={ids.history} className="min-w-0 lg:col-span-2">
-          <SectionHeader
-            id={ids.history}
-            title="Histórico"
-            qualifier={songHistory.length > 0 ? `Tocada ${songHistory.length}x` : undefined}
-          />
-          {songHistory.length === 0 ? (
-            <div className={cn(groupCard, "flex items-center gap-3 px-4 py-4")}>
-              <CalendarDays className="h-7 w-7 shrink-0 text-label-tertiary" aria-hidden="true" />
-              <p className="min-w-0 text-body text-muted-foreground">Ainda não foi tocada em nenhum culto.</p>
-            </div>
-          ) : (
-            <>
-              <ul className={groupCard}>
-                {songHistory.slice(0, 8).map((culto: any, idx: number) => (
-                  <li
-                    key={culto.id + "-" + idx}
-                    className="relative before:pointer-events-none before:absolute before:left-4 before:right-0 before:top-0 before:z-[1] before:border-t before:border-separator first:before:hidden"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/app/cultos/${culto.id}`)}
-                      className="flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-fill-quaternary active:bg-fill-tertiary"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-body text-foreground">{culto.name}</span>
-                      <span className="shrink-0 text-subhead tabular-nums text-muted-foreground">
-                        {new Date(culto.date).toLocaleDateString("pt-BR")}
-                      </span>
-                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-label-tertiary" strokeWidth={2.5} aria-hidden="true" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <p className={helperText}>
-                Última vez: {formatDistanceToNow(new Date(songHistory[0].date), { addSuffix: true, locale: ptBR })}
-              </p>
-            </>
+      </footer>
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent>
+          <DialogTitle>Conferir gravação</DialogTitle>
+          <DialogDescription>
+            Confira se é a versão que a equipe vai tocar.
+          </DialogDescription>
+          {previewOpen && youtubeId && (
+            <iframe
+              src={`https://www.youtube.com/embed/${youtubeId}`}
+              className="aspect-video w-full rounded-[13px]"
+              title="Prévia da gravação"
+              allowFullScreen
+            />
           )}
-        </section>
-      </div>
-
+          <Button variant="secondary" onClick={() => setPreviewOpen(false)}>
+            Voltar ao cadastro
+          </Button>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={loopsOpen} onOpenChange={setLoopsOpen}>
+        <DialogContent
+          hideClose
+          className="max-h-[85dvh] gap-0 overflow-hidden p-0"
+        >
+          <DialogTitle className="sr-only">
+            Trechos para repetir no ensaio
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Crie e ouça trechos da gravação.
+          </DialogDescription>
+          {loopsOpen && audioPath && (
+            <SongRegistrationLoops
+              songId={id!}
+              audioPath={audioPath}
+              onClose={() => setLoopsOpen(false)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showMoisesModal} onOpenChange={setShowMoisesModal}>
+        <DialogContent>
+          <DialogTitle>Importar do Moises</DialogTitle>
+          <DialogDescription>
+            Cole o texto completo da cifra ou dos acordes exportados. Um link
+            sozinho não contém a cifra.
+          </DialogDescription>
+          <textarea
+            className="min-h-56 w-full rounded-[11px] border border-separator bg-background p-3 text-sm"
+            aria-label="Texto exportado do Moises"
+            value={moisesText}
+            onChange={(e) => setMoisesText(e.target.value)}
+          />
+          <Button
+            disabled={importingMoises || !moisesText.trim()}
+            onClick={() => void handleImportMoises()}
+          >
+            {importingMoises ? "Importando…" : "Importar e conferir"}
+          </Button>
+        </DialogContent>
+      </Dialog>
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir "{title || "música"}"?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {isDraft
+                ? "Descartar este rascunho?"
+                : `Excluir ${title || "música"}?`}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              A música será removida da biblioteca e de todos os repertórios e cultos onde aparece. Esta ação não pode ser desfeita.
+              A música e seus vínculos serão removidos. Esta ação não pode ser
+              desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteSong} className={buttonVariants({ variant: "destructive" })}>
-              Excluir
+            <AlertDialogAction
+              onClick={() => void handleDeleteSong()}
+              className={buttonVariants({ variant: "destructive" })}
+            >
+              {isDraft ? "Descartar" : "Excluir"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
