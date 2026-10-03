@@ -52,7 +52,7 @@ export const ASSISTANT_TOOLS: FunctionTool[] = [
   tool("buscar_musica", "Procura músicas da equipe por título ou artista: tom, tom original, BPM, tema, link, última vez tocada e próximo culto em que está no repertório.", {
     termo: { type: "string", description: "Parte do título ou do artista." },
   }),
-  tool("disponibilidade_equipe", "Quem está disponível, indisponível ou sem resposta num dia (sem motivos), e os cultos daquele dia.", {
+  tool("disponibilidade_equipe", "Quem está disponível, indisponível ou sem resposta num dia (sem motivos; quem não compartilha dados com o assistente fica de fora), e os cultos daquele dia.", {
     data: { type: "string", description: DATE },
   }),
   tool("minha_disponibilidade", "Dias que quem perguntou marcou como disponível ou indisponível.", {

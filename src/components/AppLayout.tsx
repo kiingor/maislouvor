@@ -17,6 +17,7 @@ import { AppearanceSegmented } from "@/components/AppearanceControl";
 import { TopBar } from "@/components/shell/TopBar";
 import { TabBar } from "@/components/shell/TabBar";
 import { ScrollEdge } from "@/components/shell/ScrollEdge";
+import { AssistantConsentGate } from "@/components/assistant/AssistantConsentGate";
 
 function AppLayoutInner() {
   const navigate = useNavigate();
@@ -168,6 +169,8 @@ function AppLayoutInner() {
         <TopBar onSendNotice={() => setNotifModalOpen(true)} onLogout={handleLogout} />
         <TabBar hidden={shell.hideTabBar} />
         <SendNotificationModal open={notifModalOpen} onOpenChange={setNotifModalOpen} />
+        {/* Aviso de IA do assistente no WhatsApp (líderes pendentes e aviso único de membro). */}
+        <AssistantConsentGate />
       </div>
     </div>
   );
