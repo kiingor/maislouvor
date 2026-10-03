@@ -28,6 +28,7 @@ import {
 } from "./lib/routeLoaders";
 const AuthCallback = lazy(() => import("./pages/AuthCallback"));
 const Download = lazy(() => import("./pages/Download"));
+const DeleteAccountInfo = lazy(() => import("./pages/DeleteAccountInfo"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const SignUp = lazy(() => import("./pages/SignUp"));
 // Documentos públicos (lojas/LGPD): abrem sem login, também dentro do app nativo.
@@ -154,6 +155,8 @@ const App = () => {
           <Route path="/privacidade" element={<PrivacyPolicy />} />
           <Route path="/termos" element={<TermsOfUse />} />
           <Route path="/suporte" element={<Support />} />
+          {/* Pública (sem login): exigida pelo Google Play para a exclusão de conta. */}
+          <Route path="/excluir-conta" element={<DeleteAccountInfo />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/invite/:token" element={<AcceptInvite />} />

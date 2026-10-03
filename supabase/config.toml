@@ -3,6 +3,11 @@ project_id = "hhqzapwtuyzchismcuie"
 [functions.import-song-audio]
 verify_jwt = true
 
+# Exclusão da própria conta: só com sessão. A function ainda confere o usuário
+# pelo token (nunca por um id no corpo) e exige a confirmação digitada.
+[functions.delete-account]
+verify_jwt = true
+
 # verify_jwt = false deixa a function acessível sem nenhuma credencial.
 #
 # Em 16/08/2026 havia 11 funções assim, três delas chamando o gateway de IA pago

@@ -14,6 +14,7 @@ import { UserStatsCard } from "@/components/UserStatsCard";
 import { TeamAvailabilitySettings } from "@/components/TeamAvailabilitySettings";
 import { MyAssistantSettings, TeamAssistantSettings } from "@/components/AssistantSettings";
 import { SettingsAboutGroup } from "@/components/legal/SettingsAboutGroup";
+import { DeleteAccountSection } from "@/components/account/DeleteAccountSection";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AppearanceSegmented } from "@/components/AppearanceControl";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -518,6 +519,9 @@ export default function TeamSettings() {
 
             {/* Sobre: Termos, Privacidade, Suporte, Excluir conta e versão do app */}
             <SettingsAboutGroup />
+
+            {/* Excluir conta (App Store 5.1.1(v) / Google Play): prévia, transferência e confirmação na folha */}
+            <DeleteAccountSection />
 
             {/* Sair (destrutivo, em grupo próprio no fim, como no app Ajustes) */}
             <div className={GROUP}>
