@@ -12,6 +12,7 @@ import {
   reportStatusLabels,
   type ChatReport,
 } from "@/lib/chatModeration";
+import { REPORT_REVIEW_TIME } from "@/lib/legal";
 import { cn } from "@/lib/utils";
 
 /* Lista agrupada no estilo do app Ajustes (mesmas medidas de TeamSettings). */
@@ -91,10 +92,10 @@ export function TeamChatReports({ teamId }: { teamId: string }) {
       <p className={GROUP_FOOTER}>
         {overdue > 0 && (
           <span className="font-semibold text-ios-red">
-            {overdue === 1 ? "1 passou do prazo de 24 horas. " : `${overdue} passaram do prazo de 24 horas. `}
+            {overdue === 1 ? `1 passou do prazo de ${REPORT_REVIEW_TIME}. ` : `${overdue} passaram do prazo de ${REPORT_REVIEW_TIME}. `}
           </span>
         )}
-        Analise cada denúncia em até 24 horas. A equipe do +Louvor também recebe as denúncias, e as que forem sobre
+        Analise cada denúncia em até {REPORT_REVIEW_TIME}. A equipe do +Louvor também recebe as denúncias, e as que forem sobre
         alguém da liderança ficam só com ela.
       </p>
       {actions.dialogs}

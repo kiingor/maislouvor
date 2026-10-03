@@ -42,7 +42,8 @@ function profileReturns(result: { data: unknown; error: unknown }) {
 }
 
 function Where() {
-  return <p data-testid="where">{useLocation().pathname}</p>;
+  const { pathname, hash } = useLocation();
+  return <p data-testid="where">{pathname + hash}</p>;
 }
 
 /** Outro aviso do app logado (ex.: o do Asafe) consultando se pode abrir. */
@@ -116,6 +117,26 @@ describe("TermsGate", () => {
       expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     },
   );
+
+  it("never blocks the in-app account deletion section", async () => {
+    profileReturns({ data: outdated, error: null });
+    renderAt("/app/settings#excluir-conta");
+    await waitFor(() => expect(mocks.getSession).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("offers account deletion to whoever does not agree, without accepting", async () => {
+    profileReturns({ data: outdated, error: null });
+    renderAt("/app/home");
+
+    const link = await screen.findByRole("link", { name: "Excluir minha conta" });
+    expect(link).toHaveAttribute("href", "/app/settings#excluir-conta");
+    fireEvent.click(link);
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.getByTestId("where")).toHaveTextContent("/app/settings#excluir-conta");
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
 
   it("does nothing without a session", async () => {
     mocks.getSession.mockResolvedValue({ data: { session: null } });

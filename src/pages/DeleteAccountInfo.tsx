@@ -3,16 +3,26 @@ import { Link } from "react-router-dom";
 import { ChevronRight, Clock, Mail, Smartphone, Trash2, Users, AlertTriangle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
+import { LegalInline } from "@/components/legal/LegalText";
+import { value } from "@/content/legal/types";
+import { DELETE_CONFIRMATION } from "@/lib/accountDeletion";
 import {
-  BACKUP_RETENTION_DAYS,
+  BACKUP_RETENTION,
   DELETE_ACCOUNT_SETTINGS_PATH,
-  DELETE_CONFIRMATION,
-  DELETE_REQUEST_EMAIL,
-  DELETE_REQUEST_RESPONSE_DAYS,
-} from "@/lib/accountDeletion";
+  isLegalPlaceholder,
+  LEGAL_PATHS,
+  MY_SETTINGS_IN_APP,
+  PRIVACY_EMAIL,
+  PRIVACY_REQUEST_RESPONSE_DAYS,
+} from "@/lib/legal";
 
 const LOGIN_TO_DELETE = `/login?redirect=${encodeURIComponent(DELETE_ACCOUNT_SETTINGS_PATH)}`;
 const MAIL_SUBJECT = encodeURIComponent("Excluir minha conta do +Louvor");
+
+/** Valor de src/lib/legal.ts: destacado enquanto estiver pendente (como nas páginas jurídicas). */
+function LegalValue({ text }: { text: string }) {
+  return isLegalPlaceholder(text) ? <LegalInline text={value(text)} /> : <>{text}</>;
+}
 
 function Card({ icon: Icon, title, children }: { icon: LucideIcon; title: string; children: ReactNode }) {
   return (
@@ -30,7 +40,7 @@ function Card({ icon: Icon, title, children }: { icon: LucideIcon; title: string
 
 /**
  * Página pública (sem login) sobre a exclusão de conta — exigida pelo Google Play e
- * útil para a App Store. Também abre dentro do app nativo (Ajustes › Como funciona).
+ * útil para a App Store. Também abre dentro do app nativo (Usuário › Meu usuário › Como funciona).
  */
 export default function DeleteAccountInfo() {
   return (
@@ -51,7 +61,7 @@ export default function DeleteAccountInfo() {
             <ol className="list-decimal space-y-1 pl-4">
               <li>Entre na sua conta no app ou em maislouvor.com.</li>
               <li>
-                Abra <strong className="font-semibold text-foreground">Ajustes › Meu usuário</strong>.
+                Abra <strong className="font-semibold text-foreground">{MY_SETTINGS_IN_APP}</strong>.
               </li>
               <li>
                 Toque em <strong className="font-semibold text-foreground">Excluir minha conta</strong>, confira o
@@ -86,29 +96,37 @@ export default function DeleteAccountInfo() {
           <Card icon={Users} title="O que continua com a equipe">
             <p>
               Músicas já cadastradas, repertórios, cultos e avisos que você criou pertencem à equipe e continuam
-              disponíveis para os outros membros, sem o seu nome. Guardamos apenas o registro de que a exclusão foi feita, sem dados
-              pessoais.
+              disponíveis para os outros membros, sem o seu nome.
+            </p>
+            <p>
+              Denúncias do chat que envolvem você continuam com a moderação, sem ligação com a sua conta: a cópia da
+              mensagem denunciada fica pelo tempo da apuração e o anexo dela, até a denúncia ser analisada. Fora isso,
+              guardamos só o registro de que a exclusão foi feita, sem dados pessoais.
             </p>
           </Card>
 
           <Card icon={Clock} title="Prazo">
             <p>
               A exclusão é imediata. Cópias de segurança que ainda contenham seus dados são substituídas em até{" "}
-              {BACKUP_RETENTION_DAYS} dias.
+              <LegalValue text={BACKUP_RETENTION} />.
             </p>
           </Card>
 
           <Card icon={Mail} title="Não consegue entrar?">
             <p>
               Envie um e-mail para{" "}
-              <a
-                href={`mailto:${DELETE_REQUEST_EMAIL}?subject=${MAIL_SUBJECT}`}
-                className="font-medium text-primary underline-offset-2 hover:underline"
-              >
-                {DELETE_REQUEST_EMAIL}
-              </a>{" "}
+              {isLegalPlaceholder(PRIVACY_EMAIL) ? (
+                <LegalValue text={PRIVACY_EMAIL} />
+              ) : (
+                <a
+                  href={`mailto:${PRIVACY_EMAIL}?subject=${MAIL_SUBJECT}`}
+                  className="font-medium text-primary underline-offset-2 hover:underline"
+                >
+                  {PRIVACY_EMAIL}
+                </a>
+              )}{" "}
               a partir do endereço cadastrado na conta. Confirmamos que o pedido é seu e excluímos a conta em até{" "}
-              {DELETE_REQUEST_RESPONSE_DAYS} dias.
+              {PRIVACY_REQUEST_RESPONSE_DAYS} dias.
             </p>
           </Card>
 
@@ -121,9 +139,9 @@ export default function DeleteAccountInfo() {
 
         <nav aria-label="Mais informações" className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
           {[
-            { to: "/privacidade", label: "Política de Privacidade" },
-            { to: "/termos", label: "Termos de Uso" },
-            { to: "/suporte", label: "Suporte" },
+            { to: LEGAL_PATHS.privacy, label: "Política de Privacidade" },
+            { to: LEGAL_PATHS.terms, label: "Termos de Uso" },
+            { to: LEGAL_PATHS.support, label: "Suporte" },
           ].map((item) => (
             <Link
               key={item.to}

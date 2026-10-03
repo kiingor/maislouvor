@@ -4,11 +4,13 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { firePush } from "@/lib/push";
+import { REPORT_REVIEW_TIME } from "@/lib/legal";
 import {
   REPORT_DETAILS_MAX,
   REPORT_REASONS,
   REPORT_RECEIVED_DESCRIPTION,
   REPORT_RECEIVED_TITLE,
+  REPORT_REVIEW_HINT,
   blockUser,
   chatModerationError,
   firstName,
@@ -82,7 +84,7 @@ export function ReportMessageDialog({ open, onOpenChange, message, teamId, alrea
       // Push para a liderança; o aviso no app já foi criado pela RPC. Sem conteúdo da
       // mensagem; com o nome da equipe, para quem lidera mais de uma.
       if (teamId && !result.already_reported && result.notify_profile_ids?.length) {
-        const body = result.team_name ? `${result.team_name} · Analise em até 24 horas.` : "Analise em até 24 horas.";
+        const body = result.team_name ? `${result.team_name} · ${REPORT_REVIEW_HINT}` : REPORT_REVIEW_HINT;
         void firePush(
           teamId,
           result.notify_profile_ids.map((profileId) => ({
@@ -116,7 +118,7 @@ export function ReportMessageDialog({ open, onOpenChange, message, teamId, alrea
           }}
         />
         <DialogDescription className="sr-only">
-          Escolha o motivo da denúncia. A liderança da equipe e a equipe do +Louvor vão analisar em até 24 horas.
+          Escolha o motivo da denúncia. A liderança da equipe e a equipe do +Louvor vão analisar em até {REPORT_REVIEW_TIME}.
         </DialogDescription>
         <form id={FORM_ID} onSubmit={handleSubmit} className="space-y-6">
           {message && (
@@ -183,7 +185,7 @@ export function ReportMessageDialog({ open, onOpenChange, message, teamId, alrea
 
           <p className="mx-4 text-footnote text-muted-foreground">
             Quem enviou a mensagem não é avisado da denúncia. A liderança da equipe e a equipe do +Louvor analisam
-            cada denúncia em até 24 horas e podem apagar a mensagem ou remover a pessoa da equipe.
+            cada denúncia em até {REPORT_REVIEW_TIME} e podem apagar a mensagem ou remover a pessoa da equipe.
           </p>
         </form>
       </DialogContent>

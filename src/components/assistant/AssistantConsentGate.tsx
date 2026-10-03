@@ -4,6 +4,7 @@ import { useTeam } from "@/contexts/TeamContext";
 import { useToast } from "@/hooks/use-toast";
 import { AssistantAiConsentDialog } from "@/components/assistant/AssistantAiConsentDialog";
 import { AssistantDeclineConfirm } from "@/components/assistant/AssistantDeclineConfirm";
+import { useTermsAccepted } from "@/components/legal/useTermsAcceptance";
 import {
   ASSISTANT_CONSENT_PROMPTS_KEY,
   consentErrorMessage,
@@ -21,6 +22,8 @@ import {
  *   o aviso volta enquanto não houver uma escolha registrada no banco.
  * "Desativar" e "Não permitir" apagam/desligam coisas: pedem confirmação antes.
  * Sem a migração no banco, a consulta falha e nada aparece.
+ * Espera o aceite dos Termos (TermsGate): os dois avisos nunca abrem juntos, e
+ * ninguém decide sobre a IA antes de aceitar os Termos e a Privacidade.
  */
 export function AssistantConsentGate() {
   const { profileId } = useTeam();
@@ -30,16 +33,17 @@ export function AssistantConsentGate() {
   // Fechado (ou decidido) nesta abertura do app; não fica salvo no aparelho.
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const termsAccepted = useTermsAccepted();
 
   const { data } = useQuery({
     queryKey: [...ASSISTANT_CONSENT_PROMPTS_KEY, profileId],
     queryFn: fetchConsentPrompts,
-    enabled: Boolean(profileId),
+    enabled: Boolean(profileId) && termsAccepted,
     staleTime: Infinity,
     retry: false,
   });
 
-  if (!data || !profileId) return null;
+  if (!termsAccepted || !data || !profileId) return null;
   const name = data.assistant_name || "Asafe";
   const team = data.teams[0];
 

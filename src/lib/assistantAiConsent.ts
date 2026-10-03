@@ -8,26 +8,32 @@ import { Capacitor } from "@capacitor/core";
 import { assistantConsentSupabase } from "@/integrations/supabase/assistant-consent-client";
 import type { AssistantConsentScope } from "@/integrations/supabase/assistant-consent-types";
 import { appOrigin } from "@/lib/appUrl";
+import {
+  ASAFE_AI_PROVIDER,
+  ASAFE_HISTORY_RETENTION_DAYS,
+  ASAFE_PROVIDER_RETENTION,
+  LEGAL_PATHS,
+} from "@/lib/legal";
 
 export type { AssistantConsentScope };
 
 export const ASSISTANT_AI_CONSENT_VERSION = "2026-10-03";
 
-/** Provedor de IA do assistente no WhatsApp (edge function whatsapp-assistant, openai.ts). */
-export const ASSISTANT_AI_PROVIDER = "OpenAI (Estados Unidos)";
+/** Provedor de IA do assistente no WhatsApp (o mesmo citado na Política de Privacidade, src/lib/legal.ts). */
+export const ASSISTANT_AI_PROVIDER = ASAFE_AI_PROVIDER;
 
 /** Página pública da política (rota fora de /app, sem login). */
-export const PRIVACY_PATH = "/privacidade";
+export const PRIVACY_PATH = LEGAL_PATHS.privacy;
 
 /**
- * Retenção. O +Louvor apaga assistant_messages com mais de 30 dias
- * (assistant_purge). A chamada à OpenAI vai com store: false; a frase sobre a
- * política da API da OpenAI precisa ser conferida pelo jurídico a cada versão.
+ * Retenção. O +Louvor apaga assistant_messages depois do prazo de
+ * assistant_purge. A chamada à OpenAI vai com store: false; a frase sobre a
+ * política da API da OpenAI fica em src/lib/legal.ts (a mesma da Política de
+ * Privacidade) e precisa ser conferida pelo jurídico a cada versão.
  */
 export const ASSISTANT_AI_RETENTION = {
-  app: "O +Louvor guarda as perguntas e respostas do assistente por 30 dias (histórico curto e auditoria) e depois apaga.",
-  provider:
-    "A conversa é enviada à OpenAI sem pedido de armazenamento. Pela política da API da OpenAI, os dados podem ficar guardados por até 30 dias para segurança e não são usados para treinar modelos.",
+  app: `O +Louvor guarda as perguntas e respostas do assistente por ${ASAFE_HISTORY_RETENTION_DAYS} dias (histórico curto e auditoria) e depois apaga.`,
+  provider: ASAFE_PROVIDER_RETENTION,
 } as const;
 
 /** O que vai para a OpenAI quando alguém chama o assistente. */

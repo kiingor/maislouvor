@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { chatModerationSupabase } from "@/integrations/supabase/chat-moderation-client";
+import { REPORT_REVIEW_TIME } from "@/lib/legal";
 import type {
   ChatDeletedRole,
   ChatModerationFunctions,
@@ -42,7 +43,11 @@ export const deletedRoleLabels: Record<ChatDeletedRole, string> = {
 
 /** Confirmação mostrada a quem denuncia (lida junto: título + descrição). */
 export const REPORT_RECEIVED_TITLE = "Recebemos sua denúncia.";
-export const REPORT_RECEIVED_DESCRIPTION = "A liderança e a equipe do +Louvor vão analisar em até 24 horas.";
+// O prazo é o mesmo prometido nos Termos de Uso (src/lib/legal.ts) e o do "prazo
+// vencido" de list_chat_reports (interval '24 hours' na migração).
+export const REPORT_RECEIVED_DESCRIPTION = `A liderança e a equipe do +Louvor vão analisar em até ${REPORT_REVIEW_TIME}.`;
+/** Lembrete do prazo para quem analisa (push e listas da liderança). */
+export const REPORT_REVIEW_HINT = `Analise em até ${REPORT_REVIEW_TIME}.`;
 
 export const REPORT_DETAILS_MAX = 500;
 export const RESOLUTION_NOTE_MAX = 1000;

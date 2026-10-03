@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryStorage } from "@/test/memoryStorage";
 import {
   clearPendingAcceptance,
+  DELETE_ACCOUNT_SETTINGS_PATH,
   formatLegalDate,
   hasCurrentAcceptance,
   hasPendingAcceptance,
@@ -40,6 +41,15 @@ describe("legal constants", () => {
     for (const path of ["/", "/login", "/signup", "/privacidade", "/termos", "/suporte", "/excluir-conta", "/invite/x", "/playlist/x", "/culto/x", "/baixar", "/application", "/administrar"]) {
       expect(requiresTermsAcceptance(path)).toBe(false);
     }
+  });
+
+  it("never gates the in-app account deletion section", () => {
+    expect(DELETE_ACCOUNT_SETTINGS_PATH).toBe("/app/settings#excluir-conta");
+    expect(requiresTermsAcceptance("/app/settings", "#excluir-conta")).toBe(false);
+    expect(requiresTermsAcceptance("/app/settings/", "#excluir-conta")).toBe(false);
+    expect(requiresTermsAcceptance("/app/settings")).toBe(true);
+    expect(requiresTermsAcceptance("/app/settings", "#outra-secao")).toBe(true);
+    expect(requiresTermsAcceptance("/app/home", "#excluir-conta")).toBe(true);
   });
 
   it("compares both document versions", () => {
@@ -139,12 +149,22 @@ describe("legal documents content", () => {
     expect(privacy).toMatch(/Qualquer pessoa com o link/);
     // Apple 5.1.1(i): terceiros com proteção igual à desta política.
     expect(privacy).toMatch(/proteção igual ou superior à descrita nesta Política/);
-    // Asafe: descreve o reconhecimento pelo telefone e o envio de nomes da escala.
-    expect(privacy).toMatch(/telefone cadastrado no perfil/);
+    // Asafe (opt-in por pessoa): só reconhece quem permite, com a tolerância de
+    // quem já usava, e ainda assim nomes da escala podem ir à OpenAI.
+    expect(privacy).toMatch(/só de quem permite o uso dos próprios dados/);
+    expect(privacy).toMatch(/Quem já usava o Asafe antes do aviso/);
     expect(privacy).toMatch(/seu nome pode ser enviado quando um colega consulta uma escala/);
+    // Exclusão: rascunhos apagados e o que fica (prova de denúncias, sem ligação com a conta).
+    expect(privacy).toMatch(/rascunhos de músicas que você não chegou a cadastrar/);
+    expect(privacy).toMatch(/denúncias do chat que envolvem você, com a cópia da mensagem denunciada/);
+    // Chat: filtro automático e quem vê as denúncias.
+    expect(privacy).toMatch(/filtro automático/);
+    expect(privacy).toMatch(/A pessoa denunciada não é avisada/);
     const terms = all(termsOfUse);
     expect(terms).toMatch(/Tolerância zero/);
     expect(terms).toMatch(/24 horas/);
+    expect(terms).toMatch(/Usuários bloqueados/);
+    expect(terms).toMatch(/sem essa permissão, ele não reconhece a pessoa/);
     expect(terms).toMatch(/stdeula/);
     expect(terms).toMatch(/youtube\.com\/t\/terms/);
   });

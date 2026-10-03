@@ -7,11 +7,13 @@ import { AssistantAiConsentDialog } from "@/components/assistant/AssistantAiCons
 import { AssistantConsentGate } from "@/components/assistant/AssistantConsentGate";
 import { ASSISTANT_AI_CONSENT_VERSION, consentErrorMessage, consentVersionLabel } from "@/lib/assistantAiConsent";
 
-const mocks = vi.hoisted(() => ({ rpc: vi.fn(), toast: vi.fn(), profileId: "profile-1" as string | null }));
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), toast: vi.fn(), profileId: "profile-1" as string | null, termsAccepted: true }));
 
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: mocks.rpc } }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: mocks.toast }) }));
 vi.mock("@/contexts/TeamContext", () => ({ useTeam: () => ({ profileId: mocks.profileId }) }));
+// O aviso do Asafe espera o aceite dos Termos (TermsGate); aqui o aceite já está em dia.
+vi.mock("@/components/legal/useTermsAcceptance", () => ({ useTermsAccepted: () => mocks.termsAccepted }));
 
 function renderWithQuery(ui: ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -392,6 +394,19 @@ describe("AssistantConsentGate", () => {
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith("revoke_assistant_consent", { p_scope: "member_link", p_team_id: null }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("waits for the Terms acceptance before asking anything", async () => {
+    mocks.termsAccepted = false;
+    try {
+      mocks.rpc.mockResolvedValue({ data: { version: ASSISTANT_AI_CONSENT_VERSION, assistant_name: "Asafe", teams: [], member_notice: true }, error: null });
+      const { container } = renderWithQuery(<AssistantConsentGate />);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mocks.rpc).not.toHaveBeenCalled();
+      expect(container).toBeEmptyDOMElement();
+    } finally {
+      mocks.termsAccepted = true;
+    }
   });
 
   it("stays quiet when the backend does not have the consent migration yet", async () => {

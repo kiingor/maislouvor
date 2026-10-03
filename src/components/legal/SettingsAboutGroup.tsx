@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { ChevronRight, FileText, Info, LifeBuoy, ShieldCheck, UserX } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { LEGAL_PATHS } from "@/lib/legal";
+import { DELETE_ACCOUNT_ANCHOR, LEGAL_PATHS } from "@/lib/legal";
 
 /* Mesmas peças de lista agrupada da tela de Ajustes (TeamSettings). */
 const ROW_BODY = "flex min-h-[52px] min-w-0 flex-1 items-center gap-3 border-t border-separator py-2 pr-4 group-first/row:border-t-0";
@@ -15,9 +15,6 @@ function IconTile({ icon: Icon }: { icon: LucideIcon }) {
     </span>
   );
 }
-
-/** Âncora da seção de exclusão nesta mesma tela (DeleteAccountSection, branch de exclusão de conta). */
-const DELETE_ACCOUNT_ANCHOR = "excluir-conta";
 
 /**
  * Com a exclusão já nesta tela, vai até ela em vez de sair do app para a página

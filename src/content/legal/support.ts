@@ -8,6 +8,7 @@ import {
   DELETE_ACCOUNT_IN_APP,
   LEGAL_PATHS,
   MIN_AGE,
+  MY_SETTINGS_IN_APP,
   PRIVACY_EMAIL,
   REPORT_REVIEW_TIME,
   SUPPORT_EMAIL,
@@ -34,7 +35,8 @@ export const supportPage: LegalDocumentContent = {
       title: "Denunciar abuso",
       blocks: [
         [
-          "No chat, toque e segure a mensagem (ou abra o menu dela) e escolha **Denunciar**. Você também pode **bloquear** a pessoa.",
+          "No chat, toque e segure a mensagem (no computador, clique com o botão direito ou no botão “…”) e escolha **Denunciar**.",
+          `No mesmo menu você pode **bloquear** a pessoa: as mensagens dela ficam escondidas para você, e a lista fica em **${MY_SETTINGS_IN_APP} › Usuários bloqueados**.`,
           `Fora do app, escreva para ${mail(SUPPORT_EMAIL)} com o assunto “Denúncia”, contando o que aconteceu, a equipe e, se possível, enviando capturas de tela.`,
           `Analisamos as denúncias em até **${REPORT_REVIEW_TIME}** e removemos o conteúdo que viola os ${link("Termos de Uso", LEGAL_PATHS.terms)}.`,
         ],
@@ -74,7 +76,11 @@ export const supportPage: LegalDocumentContent = {
             },
             {
               q: "Como desativo o Asafe, o assistente no WhatsApp?",
-              a: `Para você: desligue **${ASAFE_ALLOW_LABEL}** em **Usuário › Meu usuário**; o Asafe deixa de reconhecer você e apaga o seu histórico com ele. Para toda a equipe: líderes desativam o assistente na aba **Equipe**.`,
+              a: `Para você: desligue **${ASAFE_ALLOW_LABEL}** em **${MY_SETTINGS_IN_APP}** (ou toque em **Não permitir** no aviso); o Asafe deixa de reconhecer você e apaga o seu histórico com ele. Para toda a equipe: líderes desativam o assistente em **Usuário › Equipe**.`,
+            },
+            {
+              q: "Não concordo com os Termos atualizados. E agora?",
+              a: `No aviso de aceite, toque em **Sair** ou em **Excluir minha conta**: não é preciso aceitar os termos para excluir a conta. Veja o que é apagado na ${link("Política de Privacidade", `${LEGAL_PATHS.privacy}#exclusao`)}.`,
             },
             {
               q: `O ${APP_NAME} vende meus dados?`,

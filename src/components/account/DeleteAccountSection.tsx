@@ -10,9 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { DELETE_ACCOUNT_ANCHOR, LEGAL_PATHS } from "@/lib/legal";
 import {
   AccountDeletionError,
-  DELETE_ACCOUNT_ANCHOR,
   DELETE_CONFIRMATION,
   clearLocalAccountData,
   fetchDeletionPreview,
@@ -282,7 +282,7 @@ function DeleteAccountDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   );
 }
 
-/** Ajustes › Meu usuário › Excluir minha conta (App Store 5.1.1(v) / Google Play). */
+/** Usuário › Meu usuário › Excluir minha conta (App Store 5.1.1(v) / Google Play). */
 export function DeleteAccountSection() {
   const [open, setOpen] = useState(false);
   const location = useLocation();
@@ -307,7 +307,7 @@ export function DeleteAccountSection() {
       </div>
       <p className={GROUP_FOOTER}>
         Apaga seu perfil e seus dados pessoais.{" "}
-        <Link to="/excluir-conta" className="font-medium text-primary">
+        <Link to={LEGAL_PATHS.deleteAccount} className="font-medium text-primary">
           Como funciona
         </Link>
       </p>

@@ -15,14 +15,22 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { acceptCurrentTerms, isOutdatedTermsError, termsAcceptanceQueryKey } from "@/integrations/supabase/legal-client";
-import { APP_NAME, clearPendingAcceptance, formatLegalDate, LEGAL_EFFECTIVE_DATE, LEGAL_PATHS } from "@/lib/legal";
+import {
+  APP_NAME,
+  clearPendingAcceptance,
+  DELETE_ACCOUNT_SETTINGS_PATH,
+  formatLegalDate,
+  LEGAL_EFFECTIVE_DATE,
+  LEGAL_PATHS,
+} from "@/lib/legal";
 
 const LINK = "font-semibold text-primary underline underline-offset-[3px]";
 
 /**
- * Pedido de aceite que não se fecha (sem Esc, sem tocar fora): a pessoa aceita
- * ou sai da conta. Os links abrem os documentos — páginas públicas, fora do
- * bloqueio — e Voltar traz de volta para cá.
+ * Pedido de aceite que não se fecha (sem Esc, sem tocar fora): a pessoa aceita,
+ * sai da conta ou vai excluí-la (a seção de exclusão em Usuário › Meu usuário
+ * fica fora do bloqueio). Os links abrem os documentos — páginas públicas, fora
+ * do bloqueio — e Voltar traz de volta para cá.
  */
 export default function TermsGateDialog({ userId, updated }: { userId: string; updated: boolean }) {
   const queryClient = useQueryClient();
@@ -94,6 +102,12 @@ export default function TermsGateDialog({ userId, updated }: { userId: string; u
             Sair
           </AlertDialogCancel>
         </AlertDialogFooter>
+        <p className="text-center text-footnote text-muted-foreground">
+          Não concorda?{" "}
+          <Link to={DELETE_ACCOUNT_SETTINGS_PATH} className={LINK}>
+            Excluir minha conta
+          </Link>
+        </p>
       </AlertDialogContent>
     </AlertDialog>
   );

@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { accountDeletionSupabase } from "@/integrations/supabase/account-deletion-client";
+import { DELETE_ACCOUNT_ANCHOR, DELETE_ACCOUNT_SETTINGS_PATH } from "@/lib/legal";
 import {
   DELETE_CONFIRMATION,
   isDeletionConfirmed,
@@ -11,20 +12,10 @@ import {
 
 export { DELETE_CONFIRMATION, type DeletionCandidate, type DeletionPreview, type DeletionTeam, type DeletionTeamAction };
 
-/* ------------------------------------------------------------------
-   PLACEHOLDERS para o integrador: confirmar antes de publicar e, quando
-   src/lib/legal.ts (branch das páginas legais) entrar, apontar para lá.
-   ------------------------------------------------------------------ */
-/** PLACEHOLDER: e-mail para quem não consegue entrar pedir a exclusão. */
-export const DELETE_REQUEST_EMAIL = "privacidade@maislouvor.com";
-/** PLACEHOLDER: dias até as cópias de segurança com os dados apagados serem substituídas. */
-export const BACKUP_RETENTION_DAYS = 30;
-/** PLACEHOLDER: prazo para atender um pedido por e-mail (LGPD, art. 19: até 15 dias). */
-export const DELETE_REQUEST_RESPONSE_DAYS = 15;
-
-/** Âncora da seção em Ajustes › Meu usuário (a página pública leva direto para ela). */
-export const DELETE_ACCOUNT_ANCHOR = "excluir-conta";
-export const DELETE_ACCOUNT_SETTINGS_PATH = `/app/settings#${DELETE_ACCOUNT_ANCHOR}`;
+/* O e-mail para pedidos, os prazos (backups, resposta por e-mail) e os caminhos
+   (/excluir-conta e a seção em Usuário › Meu usuário) ficam em src/lib/legal.ts,
+   a mesma fonte dos Termos e da Política de Privacidade. */
+export { DELETE_ACCOUNT_ANCHOR, DELETE_ACCOUNT_SETTINGS_PATH };
 
 export const isConfirmationTyped = (text: string) => isDeletionConfirmed({ confirmation: text });
 

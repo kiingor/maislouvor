@@ -20,6 +20,9 @@ const TermsGateDialog = lazy(() => import("./TermsGateDialog"));
  * fora das rotas: páginas públicas (login, cadastro, convite, links públicos e
  * os próprios documentos) nunca são bloqueadas.
  *
+ * Quem não concorda pode sair ou excluir a conta: o link do diálogo leva à
+ * seção de exclusão em Usuário › Meu usuário, que não é bloqueada.
+ *
  * Quem já aceitou no cadastro (caixa marcada ou "Ao continuar com o Google"),
  * mas ainda não tinha sessão para gravar, tem o aceite registrado aqui sem
  * ver o pedido de novo. Se o servidor não responder, o app segue liberado: o
@@ -29,8 +32,9 @@ const TermsGateDialog = lazy(() => import("./TermsGateDialog"));
  * useTermsAccepted() (./useTermsAcceptance), para não abrirem juntos.
  */
 export function TermsGate() {
-  const { pathname } = useLocation();
-  const gated = requiresTermsAcceptance(pathname);
+  const { pathname, hash } = useLocation();
+  // A seção de exclusão da conta (Usuário › Meu usuário) fica fora do bloqueio.
+  const gated = requiresTermsAcceptance(pathname, hash);
   const queryClient = useQueryClient();
   const { session, userId, query: acceptance } = useTermsAcceptance(gated);
 

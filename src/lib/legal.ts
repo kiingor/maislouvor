@@ -45,6 +45,12 @@ export const EMAIL_PROVIDER = "PREENCHER: provedor de envio de e-mails (SMTP)";
 /** Quanto tempo uma cópia de segurança pode guardar dados já excluídos. */
 export const BACKUP_RETENTION = "PREENCHER: prazo de rotação dos backups (ex.: 30 dias)";
 
+/**
+ * Prazo para atender pedidos de titulares feitos por e-mail, inclusive a
+ * exclusão de conta de quem não consegue entrar (LGPD, art. 19, II: até 15 dias).
+ */
+export const PRIVACY_REQUEST_RESPONSE_DAYS = 15;
+
 /** Prazo de resposta do suporte (compromisso exibido na página /suporte). */
 export const SUPPORT_RESPONSE_TIME = "até 2 dias úteis";
 /** Prazo para analisar denúncias de conteúdo (exigência da App Store, 1.2). */
@@ -53,10 +59,33 @@ export const REPORT_REVIEW_TIME = "24 horas";
 export const MIN_AGE = 13;
 
 // Rótulos de telas citados nos documentos (mudou a tela? ajuste aqui).
-/** Onde fica a exclusão de conta no app (DeleteAccountSection, branch de exclusão de conta). */
-export const DELETE_ACCOUNT_IN_APP = "Usuário › Meu usuário › Excluir minha conta";
-/** Interruptor do Asafe em Usuário › Meu usuário (branch do consentimento do Asafe). */
+/** Aba do app com os ajustes pessoais (barra de abas e menu lateral: "Usuário"). */
+export const MY_SETTINGS_IN_APP = "Usuário › Meu usuário";
+/** Onde fica a exclusão de conta no app (DeleteAccountSection). */
+export const DELETE_ACCOUNT_IN_APP = `${MY_SETTINGS_IN_APP} › Excluir minha conta`;
+/** Âncora da seção de exclusão em Usuário › Meu usuário (DeleteAccountSection). */
+export const DELETE_ACCOUNT_ANCHOR = "excluir-conta";
+/**
+ * A seção de exclusão dentro do app. A página pública /excluir-conta leva para
+ * cá depois do login, e o pedido de aceite dos termos (TermsGate) não bloqueia
+ * este endereço: ninguém precisa aceitar os termos para excluir a conta.
+ */
+export const DELETE_ACCOUNT_SETTINGS_PATH = `/app/settings#${DELETE_ACCOUNT_ANCHOR}`;
+/** Interruptor do Asafe em Usuário › Meu usuário (AssistantSettings). */
 export const ASAFE_ALLOW_LABEL = "Permitir que o Asafe use meus dados";
+
+/* Asafe (assistente no WhatsApp): o que os documentos e o aviso de IA do app
+   (src/lib/assistantAiConsent.ts) dizem sobre o provedor e a retenção. */
+/** Provedor de IA do Asafe (edge function whatsapp-assistant, openai.ts). */
+export const ASAFE_AI_PROVIDER = "OpenAI (Estados Unidos)";
+/** O +Louvor apaga as perguntas e respostas do Asafe depois disto (assistant_purge). */
+export const ASAFE_HISTORY_RETENTION_DAYS = 30;
+/**
+ * Retenção no provedor, conforme a política pública da API da OpenAI (chamada
+ * com store: false). Conferir com o jurídico a cada versão do aviso.
+ */
+export const ASAFE_PROVIDER_RETENTION =
+  "A conversa é enviada à OpenAI sem pedido de armazenamento. Pela política da API da OpenAI, os dados podem ficar guardados por até 30 dias para segurança e não são usados para treinar modelos.";
 
 /** Rotas públicas (fora de /app, sem login). Use sempre estes caminhos nos links. */
 export const LEGAL_PATHS = {
@@ -112,10 +141,13 @@ export function hasCurrentAcceptance(record: TermsAcceptance | null | undefined)
 
 /**
  * Rotas em que o aceite é obrigatório: o app logado e o painel da plataforma.
- * Páginas públicas (login, cadastro, convite, links públicos e os próprios
- * documentos) nunca são bloqueadas.
+ * Páginas públicas (login, cadastro, convite, links públicos, os próprios
+ * documentos e /excluir-conta) nunca são bloqueadas. A seção de exclusão da
+ * conta dentro do app (DELETE_ACCOUNT_SETTINGS_PATH) também não: quem não
+ * concorda com os termos precisa conseguir excluir a conta sem aceitá-los.
  */
-export function requiresTermsAcceptance(pathname: string): boolean {
+export function requiresTermsAcceptance(pathname: string, hash = ""): boolean {
+  if (`${pathname.replace(/\/+$/, "")}${hash}` === DELETE_ACCOUNT_SETTINGS_PATH) return false;
   return ["/app", "/admin"].some((root) => pathname === root || pathname.startsWith(`${root}/`));
 }
 
