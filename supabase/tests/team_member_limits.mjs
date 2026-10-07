@@ -1,0 +1,145 @@
+// No network: real billing and invite SQL in isolated PostgreSQL/WASM.
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { PGlite } from '@electric-sql/pglite';
+const db = new PGlite();
+const owner = '10000000-0000-4000-8000-000000000001';
+const member = '10000000-0000-4000-8000-000000000002';
+const outsider = '10000000-0000-4000-8000-000000000003';
+const team = '30000000-0000-4000-8000-000000000001';
+const otherTeam = '30000000-0000-4000-8000-000000000002';
+const fresh = '30000000-0000-4000-8000-000000000003';
+const freshManual = '30000000-0000-4000-8000-000000000004';
+let checks = 0;
+const check = (actual, expected) => { assert.deepEqual(actual, expected); checks++; };
+const value = async (sql, params = []) => (await db.query(sql, params)).rows[0]?.result;
+const fail = async (sql, params = [], code = '42501') => { await assert.rejects(db.query(sql, params), e => e.code === code); checks++; };
+const quotaFail = async (operation) => { await assert.rejects(operation, e => e.code === 'P0001' && e.hint === 'TEAM_MEMBER_LIMIT_REACHED'); checks++; };
+const asUser = async (id) => db.exec(`RESET ROLE; SET ROLE authenticated; SELECT set_config('test.uid', '${id}', false)`);
+const capacity = id => value('SELECT public.get_team_member_capacity($1) AS result', [id]);
+const invite = async (id, profile) => value('INSERT INTO public.team_invites(team_id, email) VALUES ($1, $2) RETURNING id AS result', [id, `${profile}@example.test`]);
+const accept = async (id, profile) => value('SELECT public.accept_team_invite($1, $2, $3) AS result', [id, profile, `${profile}@example.test`]);
+try {
+  await db.exec(`
+    CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
+    CREATE SCHEMA auth;
+    GRANT USAGE ON SCHEMA auth, public TO authenticated, anon, service_role;
+    CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT nullif(current_setting('test.uid', true), '')::uuid $$;
+    CREATE TABLE auth.users(id uuid PRIMARY KEY, email text, created_at timestamptz DEFAULT now(), last_sign_in_at timestamptz, email_confirmed_at timestamptz, raw_user_meta_data jsonb);
+    CREATE TABLE public.profiles(id uuid PRIMARY KEY, user_id uuid UNIQUE REFERENCES auth.users, full_name text, avatar_url text);
+    CREATE TYPE public.team_role AS ENUM ('admin', 'editor', 'viewer');
+    CREATE TABLE public.teams(id uuid PRIMARY KEY, name text, owner_id uuid REFERENCES public.profiles, created_at timestamptz DEFAULT now());
+    CREATE TABLE public.team_members(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), team_id uuid REFERENCES public.teams, profile_id uuid REFERENCES public.profiles, role public.team_role DEFAULT 'viewer', instruments text[], created_at timestamptz DEFAULT now(), UNIQUE(team_id, profile_id));
+    CREATE TABLE public.songs(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), team_id uuid REFERENCES public.teams, title text, created_at timestamptz DEFAULT now());
+    CREATE TABLE public.repertorios(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), team_id uuid REFERENCES public.teams, name text, created_at timestamptz DEFAULT now());
+    CREATE TABLE public.cultos(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), team_id uuid REFERENCES public.teams, name text, date date, created_at timestamptz DEFAULT now());
+    CREATE TABLE public.team_invites(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), team_id uuid REFERENCES public.teams, accepted boolean DEFAULT false, email text, role public.team_role DEFAULT 'viewer', token uuid DEFAULT gen_random_uuid(), expires_at timestamptz DEFAULT now() + interval '7 days');
+    CREATE TABLE public.notifications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), profile_id uuid REFERENCES public.profiles, type text, title text, body text, link text, team_id uuid REFERENCES public.teams, read boolean DEFAULT false, created_at timestamptz DEFAULT now());
+    CREATE FUNCTION public.get_my_profile_id() RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$ SELECT id FROM public.profiles WHERE user_id = auth.uid() $$;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
+    INSERT INTO auth.users(id) VALUES ('${owner}'), ('${member}'), ('${outsider}');
+    INSERT INTO public.profiles(id, user_id) VALUES ('${owner}', '${owner}'), ('${member}', '${member}'), ('${outsider}', '${outsider}');
+    INSERT INTO public.teams(id, name, owner_id) VALUES ('${team}', 'Equipe de teste', '${owner}'), ('${otherTeam}', 'Outra equipe', '${outsider}');
+    INSERT INTO public.team_members(team_id, profile_id, role) VALUES ('${team}', '${owner}', 'admin'), ('${team}', '${member}', 'admin');
+  `);
+  await db.exec('GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role');
+  for (const name of ['20260930010000_platform_admin_and_support.sql', '20261006220000_revenuecat_billing.sql'])
+    await db.exec(await readFile(new URL(`../migrations/${name}`, import.meta.url), 'utf8'));
+  await db.exec(`INSERT INTO public.account_subscriptions(team_id, plan, status, notes, monthly_amount)
+    VALUES ('${team}', 'pro', 'active', 'Keep internal contract', 49.90)`);
+  await db.exec(await readFile(new URL('../migrations/20261006210000_billing_runtime_prerequisites.sql', import.meta.url), 'utf8'));
+  const base = await readFile(new URL('../migrations/20260223230533_2b017539-a6b8-4380-832f-ed808dca9370.sql', import.meta.url), 'utf8');
+  const ownerTrigger = base.slice(base.indexOf('CREATE OR REPLACE FUNCTION public.handle_new_team'), base.indexOf('CREATE OR REPLACE FUNCTION public.handle_new_team') + 800);
+  await db.exec(ownerTrigger.slice(0, ownerTrigger.indexOf('EXECUTE FUNCTION public.handle_new_team();') + 'EXECUTE FUNCTION public.handle_new_team();'.length));
+  await db.exec(await readFile(new URL('../migrations/20261007090000_team_member_limits.sql', import.meta.url), 'utf8')); checks++;
+  check(await value('SELECT notes AS result FROM public.account_subscriptions WHERE team_id=$1', [team]), 'Keep internal contract');
+  check(Number(await value('SELECT monthly_amount AS result FROM public.account_subscriptions WHERE team_id=$1', [team])), 49.9);
+  await asUser(owner);
+  check((await capacity(team)).is_unlimited, true);
+  check((await capacity(team)).member_limit, null);
+  check((await capacity(team)).unlimited_reason, 'legacy');
+  check((await value('SELECT public.get_team_billing_context($1) AS result', [team])).subscription.is_unlimited, true);
+  await fail('SELECT public.team_member_capacity($1)', [team]);
+  await fail('SELECT public.get_team_member_capacity($1)', [otherTeam]);
+  await fail('SELECT public.admin_update_subscription($1, $2, $3)', [team, 'free', 'free']);
+  await fail('UPDATE public.account_subscriptions SET is_unlimited=true WHERE team_id=$1', [team]);
+  await db.exec('RESET ROLE; SET ROLE anon');
+  await fail('SELECT public.get_team_member_capacity($1)', [team]);
+  await db.exec('RESET ROLE');
+  await db.query("INSERT INTO public.teams(id, owner_id, name) VALUES ($1, $2, 'New team'), ($3, $2, 'Manual team')", [fresh, owner, freshManual]);
+  await asUser(owner);
+  let state = await capacity(fresh);
+  check([state.member_count, state.member_limit, state.is_unlimited, state.can_add_member, state.effective_plan], [1, 5, false, true, 'essencial']);
+  await db.exec('RESET ROLE');
+  const ids = Array.from({ length: 12 }, (_, i) => `20000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`);
+  for (const id of ids) await db.query('INSERT INTO auth.users(id) VALUES ($1);', [id]);
+  for (const id of ids) await db.query('INSERT INTO public.profiles(id, user_id) VALUES ($1, $1)', [id]);
+  // More invites than available seats are permitted; they never reserve capacity.
+  const invitations = [];
+  for (const id of ids) invitations.push(await invite(fresh, id));
+  await db.exec('SET ROLE service_role');
+  for (let i = 0; i < 4; i++) check(await accept(invitations[i], ids[i]), fresh);
+  await quotaFail(() => accept(invitations[4], ids[4]));
+  check(await value('SELECT accepted AS result FROM public.team_invites WHERE id=$1', [invitations[4]]), false);
+  await quotaFail(() => invite(fresh, ids[5]));
+  await quotaFail(() => db.query("UPDATE public.team_invites SET expires_at=now()+interval '7 days' WHERE id=$1", [invitations[4]]));
+  // A direct service-role insert cannot bypass the quota either.
+  await quotaFail(() => db.query('INSERT INTO public.team_members(team_id, profile_id) VALUES ($1, $2)', [fresh, ids[5]]));
+  await asUser(ids[0]);
+  state = await capacity(fresh); check([state.member_count, state.can_add_member, state.can_manage], [5, false, false]);
+  await db.exec('RESET ROLE');
+  await db.query('DELETE FROM public.team_members WHERE team_id=$1 AND profile_id=$2', [fresh, ids[0]]);
+  check(await accept(invitations[4], ids[4]), fresh); // Same blocked invitation remains valid after freeing a seat.
+  // Legacy teams remain unlimited above both five and a previous contract limit.
+  for (const id of ids) { const invitation = await invite(team, id); check(await accept(invitation, id), team); }
+  await asUser(owner); check((await capacity(team)).member_count, 14);
+  await db.exec(`RESET ROLE; INSERT INTO public.platform_admins(user_id) VALUES ('${owner}')`);
+  await asUser(owner);
+  await fail('SELECT public.admin_update_subscription($1, $2, $3)', [team, 'free', 'free'], '22023');
+  const adminUpdate = (id, plan, status, limit, unlimited = false, end = null) => value("SELECT public.admin_update_subscription($1,$2,$3,NULL,$4,'admin test',$5,$6) AS result", [id, plan, status, end, limit, unlimited]);
+  await adminUpdate(freshManual, 'essencial', 'active', 10);
+  check((await capacity(freshManual)).member_limit, 10);
+  await adminUpdate(freshManual, 'essencial', 'expired', 10);
+  check((await capacity(freshManual)).member_limit, 5);
+  await adminUpdate(freshManual, 'essencial', 'active', 10, false, '2020-01-01T00:00:00Z');
+  check((await capacity(freshManual)).member_limit, 5);
+  await adminUpdate(freshManual, 'free', 'free', 100, true);
+  check((await capacity(freshManual)).member_limit, null);
+  check((await capacity(freshManual)).unlimited_reason, 'admin');
+  await adminUpdate(freshManual, 'free', 'free', 100);
+  check((await capacity(freshManual)).member_limit, 5); // No free 100-seat contract.
+  const listing = await value('SELECT public.admin_list_subscriptions() AS result');
+  check(listing.total, 4);
+  const legacyAccounts = await value("SELECT public.admin_list_accounts('', 'unlimited') AS result");
+  check(legacyAccounts.total, 2);
+  check(legacyAccounts.items.every(account => account.is_unlimited), true);
+  check((await value("SELECT public.admin_list_accounts('', 'free') AS result")).total, 2);
+  check(listing.items.find(s => s.team_id === team).unlimited_reason, 'legacy');
+  check(listing.items.find(s => s.team_id === fresh).member_limit, 5);
+  const customer = (await value('SELECT public.get_team_billing_context($1) AS result', [fresh])).app_user_id;
+  await db.exec("RESET ROLE; INSERT INTO public.revenuecat_products VALUES ('essencial10', 'essencial', 'essencial', 10, 'monthly', true)");
+  const snapshot = { request_date_ms: Date.now(), environment: 'PRODUCTION', product_id: 'essencial10', store: 'app_store', is_active: true, status: 'active', current_period_end: '2099-01-01T00:00:00Z', access_expires_at: '2099-01-01T00:00:00Z', will_renew: true, entitlement_ids: ['essencial'] };
+  await db.exec('SET ROLE service_role');
+  await db.query('SELECT public.apply_revenuecat_snapshot($1,$2)', [customer, JSON.stringify(snapshot)]);
+  check(await accept(invitations[5], ids[5]), fresh);
+  await asUser(owner); state = await capacity(fresh);
+  check([state.member_count, state.member_limit, state.can_add_member], [6, 10, true]);
+  await fail("SELECT public.admin_update_subscription($1,$2,$3,NULL,NULL,'',10,false)", [fresh, 'essencial', 'active'], '22023');
+  await db.exec('RESET ROLE');
+  await db.query("UPDATE public.account_subscriptions SET will_renew=false WHERE team_id=$1", [fresh]);
+  await asUser(owner); check((await capacity(fresh)).member_limit, 10);
+  await db.exec('RESET ROLE');
+  await db.query("UPDATE public.account_subscriptions SET access_expires_at=now()-interval '1 second' WHERE team_id=$1", [fresh]);
+  await asUser(owner); state = await capacity(fresh);
+  check([state.member_count, state.member_limit, state.can_add_member, state.effective_plan], [6, 5, false, 'essencial']);
+  await db.exec('RESET ROLE; SET ROLE service_role');
+  await quotaFail(() => accept(invitations[6], ids[6]));
+  // Even an empty provider synchronization cannot revoke the legacy grant.
+  await asUser(owner);
+  const legacyCustomer = (await value('SELECT public.get_team_billing_context($1) AS result', [team])).app_user_id;
+  await db.exec('RESET ROLE; SET ROLE service_role');
+  await db.query('SELECT public.apply_revenuecat_snapshot($1,$2)', [legacyCustomer, JSON.stringify({ ...snapshot, is_active: false })]);
+  await asUser(owner); check((await capacity(team)).is_unlimited, true);
+  console.log(`Member capacity database: ${checks} checks passed.`);
+} catch (error) { console.error(error.message, error.code, error.hint, error.query); process.exitCode = 1; } finally { await db.close(); }

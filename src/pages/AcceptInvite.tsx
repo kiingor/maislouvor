@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, Loader2, TicketX } from "lucide-react";
+import { functionError } from "@/lib/function-error";
 import { AuthAppIcon, AuthScreen, ProminentButton } from "./Login";
 
 export default function AcceptInvite() {
@@ -10,6 +11,9 @@ export default function AcceptInvite() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [status, setStatus] = useState<"loading" | "accepting" | "success" | "error" | "login">("loading");
+
+  const [inviteError, setInviteError] = useState("");
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     const checkAndAccept = async () => {
@@ -27,8 +31,10 @@ export default function AcceptInvite() {
       });
 
       if (error || data?.error) {
+        const detail = await functionError(error, data);
+        setInviteError(detail.error || "Não foi possível aceitar o convite. Tente novamente.");
         setStatus("error");
-        toast({ title: "Erro ao aceitar convite", description: data?.error ?? error?.message, variant: "destructive" });
+        toast({ title: "Não foi possível entrar na equipe", description: detail.error, variant: "destructive" });
       } else {
         setStatus("success");
         toast({ title: "Convite aceito!" });
@@ -37,7 +43,7 @@ export default function AcceptInvite() {
     };
 
     checkAndAccept();
-  }, [token]);
+  }, [token, retry, navigate, toast]);
 
   return (
     <AuthScreen className="items-center text-center">
@@ -75,12 +81,12 @@ export default function AcceptInvite() {
           ) : (
             <div className="flex flex-col items-center">
               <TicketX className="h-12 w-12 text-muted-foreground" strokeWidth={1.75} aria-hidden="true" />
-              <h2 className="mt-4 text-title3">Convite inválido</h2>
+              <h2 className="mt-4 text-title3">Não foi possível entrar</h2>
               <p className="mt-1 text-subhead text-muted-foreground">
-                Este convite não existe ou já foi utilizado.
+                {inviteError}
               </p>
-              <ProminentButton type="button" onClick={() => navigate("/login")} className="mt-8">
-                Ir para login
+              <ProminentButton type="button" onClick={() => setRetry(value => value + 1)} className="mt-8">
+                Tentar novamente
               </ProminentButton>
             </div>
           )}

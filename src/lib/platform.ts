@@ -7,12 +7,12 @@ export const ticketStatusLabels = {
 } as const;
 export const ticketPriorityLabels = { low: "Baixa", normal: "Normal", high: "Alta", urgent: "Urgente" } as const;
 export const ticketCategoryLabels = { bug: "Bug", improvement: "Melhoria" } as const;
-export const planLabels = { free: "Gratuito", pro: "Pro", custom: "Personalizado" } as const;
+export const planLabels = { free: "Essencial gratuito", pro: "Pro", custom: "Personalizado", essencial: "Essencial", estudio: "Estúdio", asafe: "Asafe", completo: "Completo" } as const;
 export const subscriptionStatusLabels = {
   free: "Gratuito", trialing: "Em teste", active: "Ativa", past_due: "Em atraso", canceled: "Cancelada", expired: "Expirada",
 } as const;
 export const providerLabels: Record<string, string> = {
-  manual: "Controle manual", app_store: "App Store", google_play: "Google Play", stripe: "Stripe", abacatepay: "AbacatePay",
+  manual: "Controle manual", app_store: "App Store", google_play: "Google Play", stripe: "Stripe", abacatepay: "AbacatePay", revenuecat: "RevenueCat",
 };
 export const roleLabels: Record<string, string> = { admin: "Líder", editor: "Editor", viewer: "Membro" };
 export type TicketStatus = keyof typeof ticketStatusLabels;
@@ -35,7 +35,7 @@ export interface TicketMessage { id: string; message: string; is_staff: boolean;
 export interface TicketDetail extends Ticket { messages: TicketMessage[]; notified?: boolean }
 export interface Account {
   id: string; name: string; owner_id: string; owner_name: string | null; owner_email: string | null;
-  created_at: string; plan: Plan; subscription_status: SubscriptionStatus;
+  created_at: string; plan: Plan; subscription_status: SubscriptionStatus; is_unlimited?: boolean; unlimited_reason?: "legacy" | "admin" | null;
   member_count: number; song_count: number; repertorio_count: number; culto_count: number; last_activity_at: string | null;
 }
 export interface Member {
@@ -51,6 +51,8 @@ export interface Subscription {
   team_id: string; plan: Plan; status: SubscriptionStatus; provider: string;
   monthly_amount: number | null; current_period_end: string | null; notes: string; updated_at?: string;
   team_name?: string; owner_email?: string;
+  member_limit?: number | null; is_unlimited?: boolean; unlimited_reason?: "legacy" | "admin" | null;
+  product_id?: string | null; store?: string | null; access_expires_at?: string | null;
 }
 export interface SubscriptionsPage extends Paged<Subscription> {
   summary: { registered: number; active: number; trialing: number; monthly_amount: number };
