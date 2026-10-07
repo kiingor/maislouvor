@@ -1,5 +1,7 @@
 # Assinaturas Web — 07/10/2026
 
+**Atualização de 07/10/2026: backend, webhook e app Web publicados.** As seis equipes anteriores continuam ilimitadas; novas equipes têm cinco vagas gratuitas. Veja [a implantação e a validação final](web-release-20261007.md). As referências a “local” e “pendente” abaixo descrevem a preparação anterior.
+
 Implementação local com **RevenueCat Web SDK + Stripe Billing**, ainda não publicada. Em 07/10, após Filipe confirmar o e-mail e autorizar explicitamente a conta **Flow3D**, o app oficial RevenueCat foi instalado na Stripe e a conexão foi concluída. O provedor `+Louvor (Stripe)` foi criado no projeto e conferido pela API: `appf29f8b5c76`, tipo `stripe`, conta `acct_1SgaIrQkzdQuLYm9`. Managed Payments permanece desativado.
 
 As chaves públicas Web, a chave de servidor RevenueCat v1 e a v2 limitada à leitura de assinaturas foram guardadas fora do repositório, em arquivos privados. A verificação por e-mail da Stripe foi concluída; a chave restrita `MaisLouvor Web Billing` foi obtida e validada contra a conta correta. Permissões: escrita em Products, Prices e Customer Portal; leitura em Subscriptions e Accounts. O endpoint RevenueCat de assinaturas aceitou a autenticação v2 e retornou `404 resource_missing` para um cliente inexistente, sem criar compra. Segredo de webhook e configuração de backend estão preparados localmente, ainda não instalados.

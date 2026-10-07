@@ -18,11 +18,16 @@ async function open(width, height, colorScheme='light', member=false) {
     localStorage.setItem('louvor_current_team', fixture.team_id);
     localStorage.setItem('louvor-theme', 'system');
   }, {fixture,member});
-  const page = await context.newPage(); page.setDefaultTimeout(25000); const errors = [];
-  page.on('pageerror', e => errors.push(e.message));
+  const page = await context.newPage(); page.setDefaultTimeout(25000); const errors = []; const providerWarnings = [];
+  page.on('pageerror', e => {
+    // WebKit reports Stripe attempts to inspect its cross-origin parent. The
+    // browser correctly blocks them; still verify the rendered form and Back.
+    if (e.message.includes('js.stripe.com') && e.message.includes('accessing a frame with origin')) providerWarnings.push('Stripe cross-origin access blocked');
+    else errors.push(e.message);
+  });
   await page.goto(origin + '/app/settings');
   await page.getByRole('tab', {name:'Assinatura',exact:true}).waitFor();
-  return {context,page,errors};
+  return {context,page,errors,providerWarnings};
 }
 async function fits(page) {
   const metrics = await page.evaluate(() => {
@@ -58,7 +63,7 @@ try {
     check(errors.length===0,'Page errors: '+errors.join(';'));
     results.push({width,height,passed:true});console.log(JSON.stringify({width,height,passed:true}));await context.close();
   }
-  const {context,page,errors}=await open(390,844);
+  const {context,page,errors,providerWarnings}=await open(390,844);
   await page.getByRole('tab',{name:'Membros',exact:true}).click();
   await page.getByRole('button',{name:/Adicionar manualmente/i}).click();
   await page.getByRole('heading',{name:'Sua equipe cresceu'}).waitFor();
@@ -77,7 +82,7 @@ try {
   await page.getByRole('button',{name:'‹ Voltar aos planos',exact:true}).click();
   await page.waitForFunction(()=>!document.querySelector('.rcb-ui-container.fullscreen') && !document.querySelector('.billing-continue')?.disabled);
   check(await page.getByRole('spinbutton',{name:'Integrantes'}).inputValue()==='6','Cancelled checkout retains selection and releases purchase state');
-  results.push({checkoutOpened:true,cancelledViaBack:true,charged:false});await context.close();
+  results.push({checkoutOpened:true,cancelledViaBack:true,charged:false,providerWarnings});await context.close();
   const member=await open(390,844,'light',true);
   await member.page.getByRole('tab',{name:'Assinatura',exact:true}).click();
   await member.page.getByText('Assinatura da equipe',{exact:true}).waitFor();

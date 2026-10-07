@@ -1,5 +1,7 @@
 # Assinaturas da equipe com RevenueCat
 
+**Estado atual em 07/10/2026:** integração Web/Stripe publicada, webhook validado e contas anteriores preservadas. Veja [a implantação de produção](billing/web-release-20261007.md); ela substitui as pendências históricas abaixo. Não houve novo build nativo nesta publicação.
+
 Implementação local de 06/10/2026. O fluxo fica em **Usuário → Assinatura** (`/app/settings`). Integração preparada para Web, iOS e Android; a ativação depende do catálogo, das credenciais e da publicação do backend. Nenhuma cobrança real foi executada nesta implementação.
 
 **Web em 07/10:** implementação ampliada com Stripe Billing, portal autorizado por equipe, confirmação de mais vagas e reconciliação no retorno. Conexão Stripe/RevenueCat, catálogo externo e ativação continuam pendentes. Veja [implementação, cadastro e ativação Web](billing/web-billing.md); essa atualização prevalece sobre as instruções genéricas de Web abaixo.

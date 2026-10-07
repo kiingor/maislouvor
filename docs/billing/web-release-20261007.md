@@ -48,8 +48,10 @@ gerenciador já publicado.
   permissão administrativa na conta de QA.
 - Chromium e WebKit: 75 verificações por engine em 320, 390, 440, 844 e 1440 px.
   Checkout real aberto sem cartão ou pagamento enviado. Retorno visível confirmado
-  no Chromium. WebKit local registrou acesso entre iframe HTTPS e página HTTP;
-  a confirmação final desse fluxo deve usar o endereço HTTPS publicado.
+  nos dois motores também no HTTPS publicado. WebKit registrou duas tentativas
+  do iframe Stripe de acessar outra origem, corretamente bloqueadas pelo navegador;
+  formulário renderizado e retorno aos planos passaram. Não houve erro JavaScript
+  da aplicação nesse fluxo.
 - Build Vite/PWA aprovado. `deno check` aprovado nos cinco endpoints. TypeScript
   global mantém os nove diagnósticos da base publicada, fora dos arquivos de billing
   (tipos antigos de team_join_requests/duration_seconds e builders PromiseLike).
@@ -68,3 +70,30 @@ build ou este commit não comprova que ele está no ar.
 As contas temporárias de QA são removidas por `qa-web-billing.py cleanup`, limitado
 aos UUIDs e marcadores registrados por esta execução. Credenciais e sessões ficam
 fora do Git, em arquivos privados.
+
+## Publicação concluída
+
+- App web publicado no commit `f30e45eb723725aa4f47750f8e9f14c35993e0b2`,
+  na branch `codex/web-billing-release`: 195 arquivos conferidos, 109 assets/shell
+  por HTTPS e rotas `/app/settings`, `/admin/assinaturas` e `/login` corretas.
+- O fluxo real de contratação → checkout → Voltar aos planos passou no domínio
+  definitivo em Chromium e WebKit. Nenhum cartão foi preenchido nem cobrança enviada.
+- As sete contas sintéticas e a equipe de QA foram removidas. Conferência final:
+  6 equipes, 31 vínculos, 6 concessões ilimitadas anteriores e nenhum contrato real
+  de cobrança criado por esta validação. Nenhuma concessão administrativa de QA ficou salva.
+- Depois da publicação do app, foi detectada a fórmula antiga de preços na landing
+  para faixas acima de 50 pessoas. `align-published-landing-prices.py` atualizou só
+  as quatro tabelas/função de preço e os textos de disponibilidade, com novos nomes
+  de bundles. Layout, CSS, mídias, animações, APKs e Caddy foram preservados.
+  A primeira tentativa foi revertida automaticamente ao encontrar o redirecionamento
+  já existente de `/conheca/` para `/`; a segunda verificou e preservou essa rota.
+  Registro: `landing-price-alignment-v2/result.json`.
+- 148 verificações Playwright dos preços públicos: 4 planos × 9 capacidades × 2
+  períodos, pelas duas URLs, além da disponibilidade e ausência de transbordamento.
+- O código-fonte publicado está arquivado sem credenciais no servidor. O checkout
+  compartilhado não foi trocado de branch nem recebeu merge; não houve push.
+
+As notas de preparação `web-billing.md`, `member-limits.md` e `revenuecat.md`
+continuam úteis para configuração, mas seus trechos históricos de ativação pendente
+são substituídos pelo estado confirmado acima. Builds nativos e cenários completos
+do provedor ainda não exercitados permanecem com as limitações descritas.

@@ -1,5 +1,7 @@
 # Limites de integrantes e contas anteriores
 
+**Atualização de 07/10/2026: backend, webhook e app Web publicados.** As seis equipes anteriores continuam ilimitadas; novas equipes têm cinco vagas gratuitas. Veja [a implantação e a validação final](web-release-20261007.md). As referências a “local” e “pendente” abaixo descrevem a preparação anterior.
+
 Política solicitada em 07/10/2026. Implementação local em `supabase/migrations/20261007090000_team_member_limits.sql`.
 
 ## Regra
