@@ -31,12 +31,16 @@ export async function legacyInvite(context: SecurityContext, body: Record<string
     if (existingUser || data.users.length < 1000) break;
     if (page === 100) throw new HttpError(503, "Não foi possível concluir a consulta");
   }
+  if (!existingUser) throw new HttpError(409, "Peça à pessoa para criar sua própria conta e autorizar a participação antes de adicioná-la. O líder não pode autorizar em nome dela.");
   let profileId: string | undefined;
   let targets = teamIds as string[];
   if (existingUser) {
     const { data: profile, error } = await admin.from("profiles").select("id").eq("user_id", existingUser.id).maybeSingle();
     if (error || !profile) throw new HttpError(503, "Perfil indisponível");
     profileId = profile.id;
+    const { data: allowed, error: consentError } = await admin.rpc("team_data_allowed_profiles", { p_profile_ids: [profileId] });
+    if (consentError) throw new HttpError(503, "Não foi possível conferir a privacidade");
+    if (!Array.isArray(allowed) || !allowed.includes(profileId)) throw new HttpError(409, "Peça à pessoa para entrar na própria conta e autorizar a participação antes de adicioná-la.");
     const { data: joined, error: joinedError } = await admin.from("team_members").select("team_id").eq("profile_id", profileId).in("team_id", teamIds);
     if (joinedError) throw new HttpError(503, "Não foi possível consultar os vínculos");
     targets = targets.filter(id => !joined?.some((m: { team_id: string }) => m.team_id === id));

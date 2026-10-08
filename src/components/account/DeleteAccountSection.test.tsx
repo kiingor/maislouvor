@@ -235,7 +235,7 @@ describe("DeleteAccountSection", () => {
     expect(within(dialog).getByLabelText(/Para confirmar, digite/)).toBeDisabled();
   });
 
-  it("lets the only leader promote someone through the members update", async () => {
+  it("lets the only leader promote someone through the account rights RPC", async () => {
     let previews = 0;
     mocks.rpc.mockImplementation(async () => {
       previews++;
@@ -249,9 +249,7 @@ describe("DeleteAccountSection", () => {
 
     fireEvent.change(await within(dialog).findByLabelText("Novo líder"), { target: { value: "p-mel" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Promover" }));
-    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith({ role: "admin", permissions: {} }));
-    expect(mocks.eq).toHaveBeenCalledWith("team_id", "team-a");
-    expect(mocks.eq).toHaveBeenCalledWith("profile_id", "p-mel");
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith("account_deletion_promote_leader", { p_team_id: "team-a", p_profile_id: "p-mel" }));
     expect(await within(dialog).findByText("Você sai da equipe")).toBeInTheDocument();
   });
 

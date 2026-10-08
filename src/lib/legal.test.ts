@@ -27,7 +27,7 @@ beforeEach(() => {
 describe("legal constants", () => {
   it("publishes the agreed versions and public paths", () => {
     expect(TERMS_VERSION).toBe("2026-10-07");
-    expect(PRIVACY_VERSION).toBe("2026-10-07");
+    expect(PRIVACY_VERSION).toBe("2026-10-08");
     expect(LEGAL_PATHS).toEqual({ privacy: "/privacidade", terms: "/termos", support: "/suporte", deleteAccount: "/excluir-conta" });
     expect(formatLegalDate("2026-10-07")).toBe("7 de outubro de 2026");
     expect(isLegalPlaceholder("PREENCHER: CNPJ")).toBe(true);

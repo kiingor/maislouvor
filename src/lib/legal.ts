@@ -21,9 +21,9 @@
  * src/lib/legal.test.ts falha se as duas pontas divergirem.
  */
 export const TERMS_VERSION = "2026-10-07";
-export const PRIVACY_VERSION = "2026-10-07";
+export const PRIVACY_VERSION = "2026-10-08";
 /** Data de vigência exibida nos documentos (AAAA-MM-DD). */
-export const LEGAL_EFFECTIVE_DATE = "2026-10-07";
+export const LEGAL_EFFECTIVE_DATE = "2026-10-08";
 
 export const APP_NAME = "+Louvor";
 export const LEGAL_SITE_URL = "https://maislouvor.com";
@@ -35,13 +35,13 @@ export const LEGAL_ADDRESS = "Av. Sinesio Guimaraes, 617 — João Pessoa/PB, CE
 
 // Contatos. Use caixas de e-mail que alguém lê todos os dias úteis.
 export const PRIVACY_EMAIL = "filipesantoslourenco@outlook.com";
-export const SUPPORT_EMAIL = PRIVACY_EMAIL;
+export const SUPPORT_EMAIL = "suporte@maislouvor.com";
 /** Canal indicado pelo titular; não equivale à nomeação formal de um encarregado. */
 export const PRIVACY_CONTACT_NAME = LEGAL_ENTITY_NAME;
 
 // Operadores que ainda não estão identificados no código.
 export const INFRA_PROVIDER = "Hostinger, com servidor no Brasil";
-export const EMAIL_PROVIDER = "PREENCHER: provedor de envio de e-mails (SMTP)";
+export const EMAIL_PROVIDER = "GoDaddy — E-mail Profissional";
 /** Quanto tempo uma cópia de segurança pode guardar dados já excluídos. */
 export const BACKUP_RETENTION = "PREENCHER: confirmar retenção efetiva das cópias (política proposta: até 30 dias)";
 /**
@@ -51,7 +51,7 @@ export const BACKUP_RETENTION = "PREENCHER: confirmar retenção efetiva das có
  * art. 11, I, o que pede uma caixa própria na tela de cadastro).
  */
 export const SENSITIVE_DATA_LEGAL_BASIS =
-  "PREENCHER: base legal do art. 11 da LGPD para os dados sensíveis (ex.: consentimento específico e em destaque, art. 11, I)";
+  "Consentimento específico e destacado de cada pessoa (art. 11, I, da LGPD), solicitado antes do acesso às funções de equipe. A autorização abrange vínculos, funções, disponibilidade e participação em cultos e ensaios para organizar a equipe e suas escalas. O líder não pode autorizar em nome dos integrantes. A escolha tem versão e data registradas e pode ser retirada em Usuário → Minhas escolhas de privacidade. Sem autorização, a conta, o suporte e a exclusão permanecem acessíveis; as funções de equipe ficam indisponíveis. O Asafe exige autorização separada.";
 
 /**
  * Prazo para atender pedidos de titulares feitos por e-mail, inclusive a

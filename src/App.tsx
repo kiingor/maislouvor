@@ -33,6 +33,7 @@ const DeleteAccountInfo = lazy(() => import("./pages/DeleteAccountInfo"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const SignUp = lazy(() => import("./pages/SignUp"));
 // Documentos públicos (lojas/LGPD): abrem sem login, também dentro do app nativo.
+const PrivacyChoices = lazy(() => import("./pages/PrivacyChoices"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsOfUse = lazy(() => import("./pages/TermsOfUse"));
 const Support = lazy(() => import("./pages/Support"));
@@ -122,6 +123,7 @@ const App = () => {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<SignUp />} />
           <Route path="/baixar" element={<Download />} />
+          <Route path="/minha-privacidade" element={<AuthGuard requireTeamConsent={false}><PrivacyChoices /></AuthGuard>} />
           <Route path="/privacidade" element={<PrivacyPolicy />} />
           <Route path="/termos" element={<TermsOfUse />} />
           <Route path="/suporte" element={<Support />} />

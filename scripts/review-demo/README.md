@@ -44,8 +44,11 @@ revisor pedir uma nova separação, ela substitui estas em vez de duplicar.
 
 Nenhum e-mail é enviado: as contas são criadas com
 `auth.admin.createUser({ email_confirm: true })`. Todas levam
-`app_metadata.review_demo = true` (só a `service_role` altera esse campo). Não há
-migração nova: a equipe é identificada pelo dono (uma conta marcada) e pelo nome.
+`app_metadata.review_demo = true` (só a `service_role` altera esse campo). Antes
+de criar vínculos, o seed registra o estado de privacidade apenas dessas contas
+recém-criadas, com origem `review_fixture`. Isso é uma fixture para personagens
+fictícios, não consentimento de uma pessoa real. O Asafe não recebe autorização
+automática. A equipe é identificada pelo dono (uma conta marcada) e pelo nome.
 
 ## Pré-requisitos
 
@@ -56,11 +59,13 @@ Rode o script **depois** de publicar no banco de produção:
    - `20260928120000_whatsapp_assistant.sql` e
      `20260929120000_assistant_notifications.sql` (Asafe disponível, sem grupo e com avisos desligados);
    - `20260930200000_song_registration_catalog.sql` (cadastro de músicas:
-     `is_draft`, `recording_source_url`, `audio_revision`, `draft_repertorio_ids`).
+     `is_draft`, `recording_source_url`, `audio_revision`, `draft_repertorio_ids`);
+   - `20261008233000_team_data_consent.sql` (consentimento individual e marcação
+     explícita de fixtures, após suas migrações prévias de conformidade).
 2. As entregas de conformidade das lojas (exclusão de conta, páginas legais e
    aceite dos termos, moderação do chat, consentimento do Asafe) — no banco, nas
-   edge functions, no site e nos apps enviados. O seed não depende delas, mas as
-   notas de revisão descrevem essas telas.
+   edge functions, no site e nos apps enviados. O seed depende do schema de
+   consentimento e as notas de revisão descrevem essas telas.
 
 O script confere o item 1 sozinho: antes de criar qualquer conta ele lê (sem
 trazer linhas) cada coluna que vai gravar. Se faltar alguma, para com uma lista

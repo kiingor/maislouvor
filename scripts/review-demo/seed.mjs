@@ -17,7 +17,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   ACCOUNTS, BABY_BIRD, CREDENTIALS_RELATIVE_PATH, LEADER_KEY, ORIGINAL_SONGS, REVIEW_MARKER, ROSTER, SCHEMA_SOURCES,
-  STORES, STORE_KEYS, TIME_ZONE, buildContent, buildTeam, buildUsers, generatePassword, renderGuideWav, writtenColumns,
+  STORES, STORE_KEYS, TIME_ZONE, buildContent, buildReviewConsents, buildTeam, buildUsers, generatePassword, renderGuideWav, writtenColumns,
 } from './data.mjs';
 
 const ASSETS_DIR = fileURLToPath(new URL('./assets/', import.meta.url));
@@ -358,6 +358,9 @@ export async function applyDemo({ store, account, now, uuid, password, log, save
     log.info(`    ${attributes.email}`);
   }
   const profiles = await resolveProfiles(store, userIds, account);
+  // Somente perfis fictícios recém-criados acima e marcados review_demo.
+  // Não conceder nada a contas existentes nem conceder o aceite opcional do Asafe.
+  await store.insert('team_data_consents', buildReviewConsents(profiles));
 
   log.info(`2/5 Equipe "${account.teamName}" (Asafe disponível, sem grupo conectado)`);
   const teamId = uuid();

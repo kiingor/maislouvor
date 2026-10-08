@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const [{ data: cSongs }, { data: blocks }, { data: lineup }] = await Promise.all([
+    const [{ data: cSongs }, { data: blocks }] = await Promise.all([
       supabase
         .from("culto_songs")
         .select("sort_order, notes, key_override, songs(id, title, artist, key_current, key_original, cifra_text, lyrics_text, moderation_blocked)")
@@ -51,10 +51,6 @@ Deno.serve(async (req) => {
         .select("id, title, kind, duration_min, notes, sort_order")
         .eq("culto_id", culto.id)
         .order("sort_order", { ascending: true }),
-      supabase
-        .from("culto_lineup")
-        .select("instrument, status, team_members(profiles(full_name))")
-        .eq("culto_id", culto.id),
     ]);
 
     const songItems = (cSongs || []).filter((cs: any) => cs.songs?.moderation_blocked === false).map((cs: any) => ({
@@ -79,21 +75,13 @@ Deno.serve(async (req) => {
 
     const items = [...songItems, ...blockItems].sort((a, b) => a.sort_order - b.sort_order);
 
-    const lineupByInstrument: Record<string, string[]> = {};
-    for (const l of lineup || []) {
-      const inst = (l as any).instrument;
-      const name = (l as any).team_members?.profiles?.full_name;
-      if (!inst || !name) continue;
-      (lineupByInstrument[inst] ||= []).push(name);
-    }
-
     return new Response(
       JSON.stringify({
         name: culto.name,
         date: culto.date,
         description: culto.description,
         items,
-        lineup: lineupByInstrument,
+        lineup: {}, // Escalas pessoais ficam restritas às pessoas autenticadas da equipe.
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

@@ -30,6 +30,7 @@ function goToInAppDeletion(event: MouseEvent<HTMLAnchorElement>) {
 
 const LINKS: { to: string; label: string; icon: LucideIcon; onClick?: (event: MouseEvent<HTMLAnchorElement>) => void }[] = [
   { to: LEGAL_PATHS.terms, label: "Termos de Uso", icon: FileText },
+  { to: "/minha-privacidade", label: "Minhas escolhas de privacidade", icon: ShieldCheck },
   { to: LEGAL_PATHS.privacy, label: "Política de Privacidade", icon: ShieldCheck },
   { to: LEGAL_PATHS.support, label: "Suporte", icon: LifeBuoy },
   { to: LEGAL_PATHS.deleteAccount, label: "Excluir conta", icon: UserX, onClick: goToInAppDeletion },

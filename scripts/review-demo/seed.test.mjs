@@ -260,6 +260,7 @@ describe('dados fictícios', () => {
     for (const column of Object.keys(team.team)) assert.ok(columns.teams.includes(column));
     for (const column of Object.keys(team.members[0])) assert.ok(columns.team_members.includes(column));
     assert.deepEqual(columns.assistant_team_settings, ['enabled', 'notification_settings', 'team_id']);
+    assert.deepEqual(columns.team_data_consents, ['profile_id', 'source', 'text_version']);
     for (const column of ['is_draft', 'recording_source_url', 'audio_revision', 'draft_repertorio_ids']) {
       assert.ok(columns.songs.includes(column));
       assert.equal(SCHEMA_SOURCES[`songs.${column}`], '20260930200000_song_registration_catalog.sql');

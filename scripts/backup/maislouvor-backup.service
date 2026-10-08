@@ -1,0 +1,13 @@
+[Unit]
+Description=Backup criptografado do MaisLouvor
+After=docker.service
+Requires=docker.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/maislouvor-backup
+UMask=0077
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+[Install]
+WantedBy=multi-user.target

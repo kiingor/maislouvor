@@ -113,9 +113,11 @@ await db.exec(await migration('20260930120000_assistant_missions.sql'));
 // gravar e diz exatamente o que falta.
 const catalog = '20260930200000_song_registration_catalog.sql';
 const gapsBefore = await findSchemaGaps({ store: pgliteStore() });
-eq(gapsBefore.map((gap) => [gap.kind, `${gap.table}.${gap.column}`, gap.migration]),
+eq(gapsBefore.filter((gap) => gap.table === 'songs').map((gap) => [gap.kind, `${gap.table}.${gap.column}`, gap.migration]),
   ['audio_revision', 'draft_repertorio_ids', 'is_draft', 'recording_source_url'].map((column) => ['column', `songs.${column}`, catalog]),
   'preflight aponta as colunas do cadastro de músicas');
+eq(gapsBefore.filter((gap) => gap.table === 'team_data_consents').map((gap) => [gap.kind, gap.migration]),
+  [['table', '20261008233000_team_data_consent.sql']], 'preflight exige a migração de consentimento');
 await assert.rejects(preflightSchema({ store: pgliteStore() }), new RegExp(`songs: colunas .*is_draft.* → ${catalog}`)); checks++;
 eq((await sql(`SELECT count(*)::int AS n FROM auth.users`))[0].n, 0, 'nada gravado pelo preflight');
 await db.exec(await migration(catalog));
@@ -207,6 +209,7 @@ try {
   const [outsider] = await sql(`INSERT INTO auth.users (id, email, raw_user_meta_data) VALUES
     (gen_random_uuid(), 'pessoa@example.test', '{"full_name":"Pessoa Real"}') RETURNING id::text`);
   const [outsiderProfile] = await sql('SELECT id::text FROM public.profiles WHERE user_id = $1', [outsider.id]);
+  await withRole(db, 'authenticated', outsider.id, (tx) => tx.query("SELECT public.set_my_team_data_consent(true, public.team_data_consent_version())"));
   const [realTeam] = await sql(`INSERT INTO public.teams (name, owner_id) VALUES ($1, $2) RETURNING id::text`, [DEMO_TEAM_NAME, outsiderProfile.id]);
   await sql(`INSERT INTO public.songs (team_id, title, created_by) VALUES ($1, 'Música real', $2)`, [realTeam.id, outsiderProfile.id]);
 
@@ -222,6 +225,11 @@ try {
   eq(users.length, PEOPLE.length);
   ok(users.every((u) => u.marker === 'true' && u.confirmed), 'marca e e-mail confirmado');
   eq(users.filter((u) => u.has_password).map((u) => u.email), [LEADER.email], 'só o líder faz login');
+  const consentRows = await sql(`SELECT c.source, c.text_version = public.team_data_consent_version() AS current_version
+    FROM public.team_data_consents c JOIN public.profiles p ON p.id=c.profile_id
+    JOIN auth.users u ON u.id=p.user_id WHERE u.raw_app_meta_data->>'review_demo'='true'`);
+  eq(consentRows.length, PEOPLE.length, 'cada identidade sintética tem um registro');
+  ok(consentRows.every((c) => c.source === 'review_fixture' && c.current_version), 'fixtures identificadas, versão vigente');
   eq((await sql('SELECT count(*)::int AS n FROM public.profiles WHERE phone IS NOT NULL AND user_id IN (SELECT id FROM auth.users WHERE email LIKE $1)', ['%revisao@maislouvor.com']))[0].n, 0);
   const members = await sql(`SELECT p.full_name, tm.role::text, tm.instruments FROM public.team_members tm
     JOIN public.profiles p ON p.id = tm.profile_id WHERE tm.team_id = $1 ORDER BY tm.role, p.full_name`, [team]);

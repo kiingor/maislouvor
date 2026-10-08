@@ -30,14 +30,14 @@ function renderAt(entries: string[]) {
 
 describe("public legal pages", () => {
   it.each([
-    ["/privacidade", "Política de Privacidade", "versão 2026-10-07"],
+    ["/privacidade", "Política de Privacidade", "versão 2026-10-08"],
     ["/termos", "Termos de Uso", "versão 2026-10-07"],
     ["/suporte", "Suporte", null],
   ])("%s shows the title, the last update and a table of contents", (path, title, version) => {
     renderAt([path]);
     expect(screen.getByRole("heading", { level: 1, name: title })).toBeInTheDocument();
     const updated = screen.getByText(/Última atualização:/);
-    expect(updated).toHaveTextContent("Última atualização: 7 de outubro de 2026");
+    expect(updated).toHaveTextContent("Última atualização: 8 de outubro de 2026");
     if (version) expect(updated).toHaveTextContent(version);
     const toc = screen.getByRole("navigation", { name: "Nesta página" });
     const entries = within(toc).getAllByRole("link");

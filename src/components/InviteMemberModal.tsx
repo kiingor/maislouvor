@@ -4,7 +4,7 @@ import { useTeam } from "@/contexts/TeamContext";
 import { Dialog, DialogContent, DialogToolbar } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, EyeOff } from "lucide-react";
+import { LEGAL_SITE_URL } from "@/lib/legal";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { getMemberCapacity } from "@/lib/billing/api";
@@ -42,9 +42,7 @@ function FieldRow({ id, label, trailing, children }: { id: string; label: ReactN
 
 export function InviteMemberModal({ open, onOpenChange, onChoosePlan }: Props) {
   const [email, setEmail] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [links, setLinks] = useState<{ teamId: string; name: string; url: string }[]>([]);
   const [role, setRole] = useState<string>("viewer");
   const [loading, setLoading] = useState(false);
   const { currentTeam, teams, profileId } = useTeam();
@@ -68,53 +66,31 @@ export function InviteMemberModal({ open, onOpenChange, onChoosePlan }: Props) {
   const checking = capacity.isPending || capacity.isFetching;
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!teamId || !email.trim() || !password.trim() || !fullName.trim() || checking || capacity.isError || blocked || loading) return;
-
-    if (password.length < 6) {
-      toast({ title: "Senha muito curta", description: "A senha deve ter pelo menos 6 caracteres.", variant: "destructive" });
-      return;
-    }
-
+    if (!teamId || !email.trim() || checking || capacity.isError || blocked || loading) return;
     setLoading(true);
-
-    const team_ids = teamId === ALL_TEAMS ? adminTeams.map((t) => t.id) : [teamId];
-    const { data, error } = await supabase.functions.invoke("create-invite", {
-      body: {
-        email: email.trim().toLowerCase(),
-        team_ids,
-        role,
-        password: password,
-        full_name: fullName.trim(),
-      },
-    });
-
-    if (error || data?.error) {
-      const issue = await functionError(error, data);
-      toast({ title: "Não foi possível adicionar", description: issue.error, variant: "destructive" });
-      if (issue.code === 'TEAM_MEMBER_LIMIT_REACHED') void capacity.refetch();
-    } else if (data?.already_member) {
-      toast({ title: "Já é membro", description: "Este usuário já faz parte da equipe." });
-      handleClose(false);
-    } else {
-      const where = teamId === ALL_TEAMS ? "todas as suas equipes" : "a equipe";
-      toast({
-        title: "Membro adicionado!",
-        description: data?.is_new_user
-          ? `Conta criada. O membro foi adicionado a ${where} e já pode entrar.`
-          : `O usuário já tinha conta e foi adicionado a ${where}.`,
-      });
-      handleClose(false);
-    }
-    setLoading(false);
+    try {
+      for (const id of targetTeams.filter(id => !links.some(link => link.teamId === id))) {
+        const { data, error } = await supabase.functions.invoke("create-invite", {
+          body: { email: email.trim().toLowerCase(), team_id: id, role },
+        });
+        if (error || data?.error || typeof data?.token !== "string") {
+          const issue = await functionError(error, data);
+          toast({ title: "Não foi possível criar o convite", description: issue.error || "Tente novamente. Os links já criados continuam abaixo.", variant: "destructive" });
+          if (issue.code === "TEAM_MEMBER_LIMIT_REACHED") void capacity.refetch();
+          break;
+        }
+        setLinks(current => [...current, { teamId: id, name: teams.find(t => t.id === id)?.name || "Equipe", url: `${LEGAL_SITE_URL}/invite/${encodeURIComponent(data.token)}` }]);
+      }
+    } catch {
+      toast({ title: "Não foi possível criar o convite", description: "Confira a conexão e tente novamente. Os links já criados continuam abaixo.", variant: "destructive" });
+    } finally { setLoading(false); }
   };
 
   const handleClose = (o: boolean) => {
     if (!o) {
       setEmail("");
-      setFullName("");
-      setPassword("");
+      setLinks([]);
       setRole("viewer");
-      setShowPassword(false);
     }
     onOpenChange(o);
   };
@@ -125,7 +101,7 @@ export function InviteMemberModal({ open, onOpenChange, onChoosePlan }: Props) {
         {/* Confirmar fica fora do <form>: o atributo form mantém a validação nativa e o Enter. */}
         <DialogToolbar
           title="Convidar membro"
-          confirm={{ label: "Convidar", type: "submit", form: FORM_ID, disabled: loading || checking || capacity.isError || Boolean(blocked), loading }}
+          confirm={{ label: "Convidar", type: "submit", form: FORM_ID, disabled: loading || checking || capacity.isError || Boolean(blocked) || targetTeams.every(id => links.some(link => link.teamId === id)), loading }}
         />
 
         {checking ? <p role="status" className="p-4 text-sm text-muted-foreground">Conferindo as vagas da equipe…</p> : capacity.isError ? <div className="space-y-4 p-4">
@@ -150,7 +126,7 @@ export function InviteMemberModal({ open, onOpenChange, onChoosePlan }: Props) {
             <section>
               <p id="invite-team-label" className={GROUP_LABEL}>Equipe</p>
               <div className={GROUP}>
-                <Select value={teamId} onValueChange={setTeamId}>
+                <Select value={teamId} onValueChange={setTeamId} disabled={loading || links.length > 0}>
                   <SelectTrigger aria-labelledby="invite-team-label" className={SELECT_ROW}>
                     <SelectValue placeholder="Selecione a equipe" />
                   </SelectTrigger>
@@ -172,18 +148,6 @@ export function InviteMemberModal({ open, onOpenChange, onChoosePlan }: Props) {
 
           <section>
             <div className={cn(GROUP, "divide-y divide-separator")}>
-              <FieldRow id="invite-name" label="Nome completo">
-                <input
-                  id="invite-name"
-                  className={INPUT}
-                  type="text"
-                  autoComplete="off"
-                  placeholder="Nome do membro"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  required
-                />
-              </FieldRow>
               <FieldRow id="invite-email" label="Email">
                 <input
                   id="invite-email"
@@ -195,45 +159,19 @@ export function InviteMemberModal({ open, onOpenChange, onChoosePlan }: Props) {
                   spellCheck={false}
                   placeholder="membro@email.com"
                   value={email}
+                  disabled={loading || links.length > 0}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                 />
               </FieldRow>
-              <FieldRow
-                id="invite-password"
-                label="Senha inicial"
-                trailing={
-                  <button
-                    type="button"
-                    aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                    aria-pressed={showPassword}
-                    className="-mr-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? <EyeOff className="h-[18px] w-[18px]" aria-hidden="true" /> : <Eye className="h-[18px] w-[18px]" aria-hidden="true" />}
-                  </button>
-                }
-              >
-                <input
-                  id="invite-password"
-                  className={INPUT}
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="new-password"
-                  placeholder="Senha para o membro"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                />
-              </FieldRow>
             </div>
-            <p className={GROUP_FOOTER}>O membro poderá alterar a senha depois.</p>
+            <p className={GROUP_FOOTER}>A pessoa entra com este e-mail ou cria sua própria conta e autoriza a participação antes de entrar na equipe. Nenhum e-mail é enviado automaticamente.</p>
           </section>
 
           <section>
             <p id="invite-role-label" className={GROUP_LABEL}>Função</p>
             <div className={GROUP}>
-              <Select value={role} onValueChange={setRole}>
+              <Select value={role} onValueChange={setRole} disabled={loading || links.length > 0}>
                 <SelectTrigger aria-labelledby="invite-role-label" className={SELECT_ROW}>
                   <SelectValue />
                 </SelectTrigger>
@@ -246,6 +184,18 @@ export function InviteMemberModal({ open, onOpenChange, onChoosePlan }: Props) {
             </div>
           </section>
         </form>
+        {links.length > 0 && <section aria-label="Convites criados" className="space-y-3">
+          <p className="text-sm text-muted-foreground">Envie estes links para a pessoa convidada. Eles valem por 7 dias e são vinculados ao e-mail informado.</p>
+          {links.map(link => <div key={link.teamId} className="space-y-2 rounded-xl bg-card p-3">
+            <label className="block text-sm font-medium" htmlFor={`invite-link-${link.teamId}`}>{link.name}</label>
+            <input id={`invite-link-${link.teamId}`} className="w-full rounded-md border p-2 text-xs" value={link.url} readOnly onFocus={e => e.target.select()} />
+            <Button variant="outline" className="w-full" onClick={async () => {
+              try { await navigator.clipboard.writeText(link.url); toast({ title: "Link copiado" }); }
+              catch { toast({ title: "Selecione o link acima e copie para compartilhar." }); }
+            }}>Copiar link</Button>
+          </div>)}
+        </section>}
+
       </DialogContent>
     </Dialog>
   );

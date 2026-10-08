@@ -5,9 +5,21 @@ import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, Loader2, TicketX } from "lucide-react";
 import { functionError } from "@/lib/function-error";
 import { AuthAppIcon, AuthScreen, ProminentButton } from "./Login";
+import { TeamDataConsentGate } from "@/components/legal/TeamDataConsentGate";
 import { LegalConsentNotice } from "@/components/legal/LegalConsent";
 
 export default function AcceptInvite() {
+  const [sessionState, setSessionState] = useState<{ ready: boolean; userId: string | null }>({ ready: false, userId: null });
+  useEffect(() => {
+    let active = true;
+    supabase.auth.getSession().then(({ data }) => { if (active) setSessionState({ ready: true, userId: data.session?.user.id ?? null }); });
+    return () => { active = false; };
+  }, []);
+  if (!sessionState.ready) return <p role="status">Conferindo sua conta…</p>;
+  return sessionState.userId ? <TeamDataConsentGate key={sessionState.userId} userId={sessionState.userId}><AcceptInviteAction /></TeamDataConsentGate> : <AcceptInviteAction />;
+}
+
+function AcceptInviteAction() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();

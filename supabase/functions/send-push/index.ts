@@ -141,7 +141,12 @@ Deno.serve(async (req) => {
       if (!callerProfile || !memberIds.has(callerProfile.id)) return json({ error: "Forbidden" }, 403);
     }
 
-    const targets = recipients.filter((r) => r.profile_id && memberIds.has(r.profile_id));
+    // Falha fechada: um aviso de equipe só segue para quem autorizou participar.
+    const candidateIds = [...new Set(recipients.filter(r => r.profile_id && memberIds.has(r.profile_id)).map(r => r.profile_id))];
+    const { data: allowedIds, error: consentError } = await admin.rpc("team_data_allowed_profiles", { p_profile_ids: candidateIds });
+    if (consentError) return json({ error: "Não foi possível conferir as escolhas de privacidade" }, 503);
+    const allowed = new Set(Array.isArray(allowedIds) ? allowedIds : []);
+    const targets = recipients.filter((r) => r.profile_id && memberIds.has(r.profile_id) && allowed.has(r.profile_id));
 
     // Denúncia nova no chat: os administradores da plataforma também recebem o push
     // (prazo de 24 horas), inclusive nas denúncias sobre a liderança, que nenhum

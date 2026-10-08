@@ -1,20 +1,22 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader } from "lucide-react";
+import { TeamDataConsentGate } from "@/components/legal/TeamDataConsentGate";
 import { supabase } from "@/integrations/supabase/client";
 
-export function AuthGuard({ children }: { children: React.ReactNode }) {
+export function AuthGuard({ children, requireTeamConsent = true }: { children: React.ReactNode; requireTeamConsent?: boolean }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [authenticated, setAuthenticated] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (!session) {
+          setUserId(null);
           navigate("/login", { replace: true });
         } else {
-          setAuthenticated(true);
+          setUserId(session.user.id);
         }
         setLoading(false);
       }
@@ -22,9 +24,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) {
+          setUserId(null);
         navigate("/login", { replace: true });
       } else {
-        setAuthenticated(true);
+        setUserId(session.user.id);
       }
       setLoading(false);
     });
@@ -42,7 +45,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!authenticated) return null;
+  if (!userId) return null;
 
-  return <>{children}</>;
+  return requireTeamConsent ? <TeamDataConsentGate key={userId} userId={userId}>{children}</TeamDataConsentGate> : <>{children}</>;
 }

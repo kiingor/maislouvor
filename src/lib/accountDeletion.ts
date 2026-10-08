@@ -120,16 +120,12 @@ export async function transferTeamOwnership(teamId: string, newOwnerProfileId: s
   throw new TeamOwnershipTransferRefused(result.error === "forbidden" || result.error === "not_member" ? result.error : "unknown");
 }
 
-/** Único líder (sem ser dono) promove outro membro: mesmo update de papel da aba Membros. */
+/** RPC limitada à preparação da exclusão, acessível mesmo após retirar o consentimento. */
 export async function promoteTeamLeader(teamId: string, profileId: string) {
-  const { data, error } = await accountDeletionSupabase
-    .from("team_members")
-    .update({ role: "admin", permissions: {} })
-    .eq("team_id", teamId)
-    .eq("profile_id", profileId)
-    .select("id");
+  const { error } = await accountDeletionSupabase.rpc("account_deletion_promote_leader", {
+    p_team_id: teamId, p_profile_id: profileId,
+  });
   if (error) throw new Error(error.message);
-  if (!data?.length) throw new Error("Não foi possível promover esta pessoa. Confira se você ainda é líder da equipe.");
 }
 
 export type BlockingTeam = { team_id: string; team_name: string; action: DeletionTeamAction };

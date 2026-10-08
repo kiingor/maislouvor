@@ -65,6 +65,9 @@ Deno.serve(async (req) => {
       });
 
     if (acceptError || acceptedTeamId !== invite.team_id) {
+      if (acceptError?.hint === "TEAM_DATA_CONSENT_REQUIRED") {
+        return json({ code: "TEAM_DATA_CONSENT_REQUIRED", error: "Entre no app e autorize sua participação antes de aceitar este convite." }, 409);
+      }
       if (acceptError?.hint === "TEAM_MEMBER_LIMIT_REACHED") {
         return json({ code: "TEAM_MEMBER_LIMIT_REACHED", error: "A equipe está sem vagas. Peça ao líder responsável para ampliar o plano e tente aceitar este mesmo convite novamente." }, 409);
       }

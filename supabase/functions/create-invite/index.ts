@@ -26,6 +26,9 @@ Deno.serve(async (req) => {
     requirePost(req);
     const context = await requireAuthenticated(req);
     const body = await readJsonBody(req, 8_192);
+    const { data: allowed, error: consentError } = await context.admin.rpc("team_data_allowed_profiles", { p_profile_ids: [context.profileId] });
+    if (consentError) throw new HttpError(503, "Não foi possível conferir a privacidade");
+    if (!Array.isArray(allowed) || !allowed.includes(context.profileId)) throw new HttpError(403, "Entre no app e confirme sua escolha de privacidade antes de convidar.");
 
     const email = requireString(body.email, "email", { max: 254 })
       .toLowerCase();

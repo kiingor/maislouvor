@@ -22,6 +22,7 @@ export type TransferTeamOwnershipResult = { ok: true } | { ok: false; error: Tra
 // (a 130000 não a redefine). As funções internas (account_deletion_preview_for,
 // delete_account_data...) só a edge function chama.
 export type AccountDeletionFunctions = {
+  account_deletion_promote_leader: { Args: { p_team_id: string; p_profile_id: string }; Returns: undefined };
   get_account_deletion_preview: { Args: never; Returns: Json };
   transfer_team_ownership: {
     Args: { p_team_id: string; p_new_owner_profile_id: string };

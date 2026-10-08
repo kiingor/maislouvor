@@ -29,6 +29,8 @@ const STORE_MIGRATIONS = [
   '20261007122000_account_deletion_recovery.sql',
   '20261007123000_content_reports_and_provenance.sql',
   '20261007124000_legal_versions.sql',
+  '20261008233000_team_data_consent.sql',
+  '20261008234000_privacy_version.sql',
 ];
 
 let checks = 0;
@@ -261,6 +263,11 @@ try {
     'aviso do Asafe: banco = src/lib/assistantAiConsent.ts');
   const VERSION = constant(consentTs, 'ASSISTANT_AI_CONSENT_VERSION');
 
+  // Pessoas fictícias autorizam individualmente; contas existentes não herdam consentimento.
+  for (const uid of Object.values(U)) {
+    check((await asUser(uid, 'SELECT public.my_team_data_consent() AS r')).allowed, false);
+    await asUser(uid, "SELECT public.set_my_team_data_consent(true,'2026-10-08') AS r");
+  }
   // ------------------------------------------------ uso com tudo junto
   // Bia aceita os termos e permite o Asafe; Olga confirma a IA da equipe T.
   await asUser(U.bia, 'SELECT public.accept_terms($1, $2) AS r', [versions.terms, versions.privacy]);

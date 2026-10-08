@@ -4,7 +4,7 @@ import { withRole, serviceRpc } from './helpers/assistant_db.mjs';
 
 // Executado no final de lojas_all_migrations: mesmo esquema integrado, sem produção.
 export async function runStoreHardeningChecks(db) {
-  for (const name of ['20261007120000_strict_assistant_consent.sql','20261007121000_apple_auth_tokens.sql','20261007122000_account_deletion_recovery.sql','20261007123000_content_reports_and_provenance.sql']) {
+  for (const name of ['20261007120000_strict_assistant_consent.sql','20261007121000_apple_auth_tokens.sql','20261007122000_account_deletion_recovery.sql','20261007123000_content_reports_and_provenance.sql','20261008233000_team_data_consent.sql']) {
     const sql = await readFile(new URL(`../migrations/${name}`, import.meta.url),'utf8');
     await db.exec(sql); await db.exec(sql);
   }
@@ -15,6 +15,7 @@ export async function runStoreHardeningChecks(db) {
   for (const [uid,pid,name] of [[owner,op,'Dono legado'],[member,mp,'Membro'],[outsider,xp,'Outra pessoa'],[admin,ap,'Moderação']]) {
     await q('insert into auth.users(id) values($1)',[uid]);
     await q('insert into public.profiles(id,user_id,full_name) values($1,$2,$3)',[pid,uid,name]);
+    await user(uid,"select public.set_my_team_data_consent(true,'2026-10-08')");
   }
   await q('insert into public.platform_admins(user_id) values($1)',[admin]);
   await q("insert into public.teams(id,name,owner_id) values($1,'Equipe teste',$2)",[team,op]);

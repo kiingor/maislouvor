@@ -138,7 +138,8 @@ export const privacyPolicy: LegalDocumentContent = {
       id: "links-publicos",
       title: "Links públicos de culto e repertório",
       blocks: [
-        "Líderes podem gerar um link público de um culto ou de um repertório para compartilhar com quem não tem conta. **Qualquer pessoa com o link** vê o conteúdo compartilhado: nome, data e descrição do culto, a ordem do culto, as músicas com letra, cifra, tom e áudio e, no caso do culto, o nome e a função das pessoas escaladas.",
+        "Líderes podem gerar um link público de um culto ou de um repertório para compartilhar com quem não tem conta. **Qualquer pessoa com o link** vê o conteúdo compartilhado: nome, data e descrição do culto, a ordem do culto, as músicas com letra, cifra, tom e áudio sem expor a escala nominal de integrantes.",
+        "A retirada da autorização interrompe o acesso às funções de equipe, novas escalas e avisos, e o uso pelo Asafe. Não apaga automaticamente registros anteriores. A pessoa pode excluir sua conta no app ou solicitar a análise de registros anteriores pelo canal de privacidade. Quando uma conservação for necessária por obrigação legal ou defesa de direitos, o uso fica restrito a essa finalidade.",
         `Compartilhe esses links só com quem precisa. Para desativar um link já enviado, fale com o ${link("suporte", LEGAL_PATHS.support)} ou exclua o culto ou o repertório.`,
       ],
     },

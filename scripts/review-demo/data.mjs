@@ -700,6 +700,7 @@ export function buildUsers(password, account) {
  * preflight dizer o que falta publicar. As demais já estavam no schema de 27/09.
  */
 export const SCHEMA_SOURCES = Object.freeze({
+  team_data_consents: '20261008233000_team_data_consent.sql',
   'songs.is_draft': '20260930200000_song_registration_catalog.sql',
   'songs.recording_source_url': '20260930200000_song_registration_catalog.sql',
   'songs.audio_revision': '20260930200000_song_registration_catalog.sql',
@@ -709,6 +710,13 @@ export const SCHEMA_SOURCES = Object.freeze({
   'assistant_team_settings.notification_settings': '20260929120000_assistant_notifications.sql',
   culto_song_voices: '20260727000000_culto_song_voices.sql',
 });
+
+/** Estado sintético para as contas recém-criadas pelo seed, nunca usuários reais. */
+export function buildReviewConsents(profiles) {
+  return Object.values(profiles).map((profile_id) => ({
+    profile_id, text_version: '2026-10-08', source: 'review_fixture',
+  }));
+}
 
 /**
  * Colunas que o seed lê ou grava em cada tabela, tiradas do próprio plano (assim o
@@ -728,6 +736,7 @@ export function writtenColumns() {
     columns.set(table, set);
   };
   add('profiles', [{ id: null, user_id: null, full_name: null }]);
+  add('team_data_consents', buildReviewConsents(refs.profiles));
   add('teams', [team]);
   add('team_members', [{ id: null }, ...members]);
   add('assistant_team_settings', [assistant]);
