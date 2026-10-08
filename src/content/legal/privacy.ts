@@ -11,7 +11,7 @@ import {
   ASAFE_PROVIDER_RETENTION,
   BACKUP_RETENTION,
   DELETE_ACCOUNT_IN_APP,
-  DPO_NAME,
+  PRIVACY_CONTACT_NAME,
   EMAIL_PROVIDER,
   INFRA_PROVIDER,
   LEGAL_ADDRESS,
@@ -52,7 +52,7 @@ export const privacyPolicy: LegalDocumentContent = {
       title: "Quem é o responsável pelos seus dados",
       blocks: [
         `O ${APP_NAME} é oferecido por ${value(LEGAL_ENTITY_NAME)}, inscrito(a) sob o nº ${value(LEGAL_DOCUMENT)}, com endereço em ${value(LEGAL_ADDRESS)}, que atua como **controlador** dos dados pessoais tratados para prestar o serviço.`,
-        `Encarregado pelo tratamento de dados pessoais (DPO): ${value(DPO_NAME)}, pelo e-mail ${mail(PRIVACY_EMAIL)}.`,
+        `Atendimento a solicitações sobre dados pessoais: ${value(PRIVACY_CONTACT_NAME)}, pelo e-mail ${mail(PRIVACY_EMAIL)}.`,
         `Esta política vale para o app ${APP_NAME} no Android, no iOS e no navegador (inclusive instalado como app web) e para o site ${link("maislouvor.com", LEGAL_SITE_URL)}.`,
       ],
     },
@@ -230,7 +230,7 @@ export const privacyPolicy: LegalDocumentContent = {
       id: "contato",
       title: "Contato",
       blocks: [
-        `Dúvidas e pedidos sobre privacidade: ${mail(PRIVACY_EMAIL)} (encarregado: ${value(DPO_NAME)}). Outros assuntos: ${link("página de suporte", LEGAL_PATHS.support)}.`,
+        `Dúvidas e pedidos sobre privacidade: ${mail(PRIVACY_EMAIL)} (atendimento: ${value(PRIVACY_CONTACT_NAME)}). Outros assuntos: ${link("página de suporte", LEGAL_PATHS.support)}.`,
         `${value(LEGAL_ENTITY_NAME)} · ${value(LEGAL_DOCUMENT)} · ${value(LEGAL_ADDRESS)}`,
       ],
     },

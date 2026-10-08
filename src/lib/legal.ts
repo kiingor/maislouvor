@@ -29,21 +29,21 @@ export const APP_NAME = "+Louvor";
 export const LEGAL_SITE_URL = "https://maislouvor.com";
 
 // Identificação do controlador (LGPD, art. 9º, III).
-export const LEGAL_ENTITY_NAME = "PREENCHER: razão social ou nome completo do responsável";
-export const LEGAL_DOCUMENT = "PREENCHER: CNPJ ou CPF";
-export const LEGAL_ADDRESS = "PREENCHER: endereço completo para correspondência";
+export const LEGAL_ENTITY_NAME = "Filipe Santos Lourenço";
+export const LEGAL_DOCUMENT = "CPF 103.699.414-70";
+export const LEGAL_ADDRESS = "Av. Sinesio Guimaraes, 617 — João Pessoa/PB, CEP 58040-400, Brasil";
 
 // Contatos. Use caixas de e-mail que alguém lê todos os dias úteis.
-export const PRIVACY_EMAIL = "PREENCHER: e-mail de privacidade (ex.: privacidade@maislouvor.com)";
-export const SUPPORT_EMAIL = "PREENCHER: e-mail de suporte (ex.: suporte@maislouvor.com)";
-/** Encarregado pelo tratamento de dados pessoais (DPO), art. 41 da LGPD. */
-export const DPO_NAME = "PREENCHER: nome do encarregado (DPO)";
+export const PRIVACY_EMAIL = "filipesantoslourenco@outlook.com";
+export const SUPPORT_EMAIL = PRIVACY_EMAIL;
+/** Canal indicado pelo titular; não equivale à nomeação formal de um encarregado. */
+export const PRIVACY_CONTACT_NAME = LEGAL_ENTITY_NAME;
 
 // Operadores que ainda não estão identificados no código.
-export const INFRA_PROVIDER = "PREENCHER: empresa da VPS (hospedagem) e país do datacenter";
+export const INFRA_PROVIDER = "Hostinger, com servidor no Brasil";
 export const EMAIL_PROVIDER = "PREENCHER: provedor de envio de e-mails (SMTP)";
 /** Quanto tempo uma cópia de segurança pode guardar dados já excluídos. */
-export const BACKUP_RETENTION = "PREENCHER: prazo de rotação dos backups (ex.: 30 dias)";
+export const BACKUP_RETENTION = "PREENCHER: confirmar retenção efetiva das cópias (política proposta: até 30 dias)";
 /**
  * Dados pessoais sensíveis (LGPD, art. 5º, II): participar de uma equipe de louvor
  * pode revelar convicção religiosa. Base legal do art. 11 para esse tratamento —

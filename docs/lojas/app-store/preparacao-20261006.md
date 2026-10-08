@@ -1,5 +1,9 @@
 # Preparação do iOS — 6 de outubro de 2026
 
+> **08/10 — dados confirmados:** nome e endereço completos aplicados ao rascunho. O titular confirmou o envio de arquivos pelos usuários e importação do YouTube nas versões em que está disponível. Os Termos refletem esse fluxo, sem presumir licenças. Restam três campos do modelo: SMTP adiado, retenção efetiva dos backups e base/fluxo para dados sensíveis. [Definições atualizadas](../definicoes-privacidade-20261007.md). Sem nova publicação.
+
+> **07/10 — formulário recebido:** identificação, contato público e hospedagem preenchidos no rascunho. Endereço incompleto, retenção efetiva de backups, base/fluxo de dados sensíveis e SMTP ainda pendentes; sem nova publicação. [Pesquisa e definições](../definicoes-privacidade-20261007.md).
+
 > **07/10 — integração autorizada:** preparação nativa/conformidade e RevenueCat/Stripe reunidos em `codex/integracao-lojas-revenuecat`. Asafe e separação local preservados; 439 testes do app e compilação iOS aprovados. Integração local, sem nova publicação ou TestFlight; os dados jurídicos reais continuam pendentes. [Registro da integração](integracao-revenuecat-20261007.md).
 
 > **07/10 — recursos removidos:** sugestões de músicas por IA e importação do Moises retiradas do código; somente as duas rotas correspondentes desativadas no servidor (HTTP 410). Asafe, edição manual e separação local de faixas preservados; três rotas extras retiradas inicialmente foram restauradas. Não houve novo upload: os botões do build 6 só desaparecerão com um cliente atualizado. [Escopo corrigido e validação](../preservacao-asafe-faixas-20261007.md).
