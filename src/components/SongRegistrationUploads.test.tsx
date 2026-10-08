@@ -118,3 +118,14 @@ describe("registration file lifecycle", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("app music file controls", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it("never renders a file picker or upload action in a store bundle", () => {
+    vi.stubEnv("VITE_STORE_BUILD", "1");
+    const { container } = render(<AudioUpload songId="song" teamId="team" audioPath={null} onUpload={vi.fn()} />);
+    expect(container.querySelector("input[type=file]")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Upload|Enviar|Adicionar/ })).not.toBeInTheDocument();
+    expect(mocks.upload).not.toHaveBeenCalled();
+  });
+});

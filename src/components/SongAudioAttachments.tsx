@@ -1,3 +1,4 @@
+import { useMusicManagement } from "@/hooks/useMusicManagement";
 import { useEffect, useId, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Headphones, Link2, Loader2, Pencil, Play, Plus, RefreshCw, Trash2, Upload, X, Youtube } from "lucide-react";
@@ -71,8 +72,9 @@ export function SongAudioAttachments({ songId, teamId, readOnly = true, onPlayba
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
-  const canEdit = !readOnly && !!teamId;
-  // Build das lojas: só arquivo (sem aba, status nem "Tentar novamente" do YouTube).
+  const { canAuthorSongs } = useMusicManagement();
+  const canEdit = canAuthorSongs && !readOnly && !!teamId;
+  // Apps nativos permitem ouvir os áudios existentes, sem importar novos.
   const youtube = youtubeImportEnabled();
   const fromYoutube = youtube && source === "youtube";
 
@@ -241,7 +243,7 @@ export function SongAudioAttachments({ songId, teamId, readOnly = true, onPlayba
       )}
       <p className="mx-1 mt-2 text-footnote text-muted-foreground">Kit de voz, versões e referências para estudar a música.</p>
 
-      <Dialog open={formOpen} onOpenChange={(open) => { if (!busy) setFormOpen(open); }}>
+      <Dialog open={formOpen && canEdit} onOpenChange={(open) => { if (!busy) setFormOpen(open); }}>
         <DialogContent>
           {/* Barra da folha: Fechar à esquerda, título, Confirmar (✓, envia o formulário) à direita. */}
           <DialogToolbar

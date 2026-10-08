@@ -1,3 +1,4 @@
+import { useMusicManagement } from "@/hooks/useMusicManagement";
 import { useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
@@ -27,7 +28,9 @@ interface Props {
 const DEFAULT_DURATION = 240; // fallback seconds per song
 
 export function SetlistGeneratorModal({ open, onOpenChange, repertorioId, onGenerated }: Props) {
-  const { currentTeam, profileId } = useTeam();
+  const { currentTeam, profileId, can } = useTeam();
+  const { canCreateRepertoire } = useMusicManagement();
+  const canEdit = can("repertorios", "editar");
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -37,6 +40,8 @@ export function SetlistGeneratorModal({ open, onOpenChange, repertorioId, onGene
   const [shuffle, setShuffle] = useState(true);
   // Destination: existing repertório (when opened from one) or a brand-new one.
   const [destination, setDestination] = useState<"current" | "new">(repertorioId ? "current" : "new");
+  const effectiveDestination = canCreateRepertoire ? destination : "current";
+  const allowed = canEdit && (!!repertorioId || canCreateRepertoire);
   const [newName, setNewName] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -52,7 +57,7 @@ export function SetlistGeneratorModal({ open, onOpenChange, repertorioId, onGene
         .eq("is_draft" as never, false);
       return data ?? [];
     },
-    enabled: !!currentTeam && open,
+    enabled: allowed && !!currentTeam && open,
   });
 
   const themes = useMemo(
@@ -106,7 +111,7 @@ export function SetlistGeneratorModal({ open, onOpenChange, repertorioId, onGene
   };
 
   const handleGenerate = async () => {
-    if (!currentTeam) return;
+    if (!allowed || !currentTeam) return;
     const picked = selection.picked;
     if (picked.length === 0) {
       toast({ title: "Nenhuma música encontrada", description: "Ajuste os filtros e tente de novo.", variant: "destructive" });
@@ -116,7 +121,8 @@ export function SetlistGeneratorModal({ open, onOpenChange, repertorioId, onGene
     try {
       let targetRepId = repertorioId;
 
-      if (destination === "new" || !repertorioId) {
+      if (effectiveDestination === "new" || !repertorioId) {
+        if (!canCreateRepertoire) return;
         const name = newName.trim() || `Setlist${theme ? ` · ${theme}` : ""}`;
         const { data: rep, error } = await supabase
           .from("repertorios")
@@ -181,7 +187,7 @@ export function SetlistGeneratorModal({ open, onOpenChange, repertorioId, onGene
     "-mr-2 inline-flex h-11 min-w-0 max-w-[60%] items-center gap-1 rounded-full px-2 text-body text-muted-foreground transition-colors active:bg-fill-tertiary";
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open && allowed} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-lg">
         <DialogToolbar
           title="Gerar setlist"
@@ -287,7 +293,7 @@ export function SetlistGeneratorModal({ open, onOpenChange, repertorioId, onGene
 
           {/* Destination */}
           <div>
-            {repertorioId && (
+            {repertorioId && canCreateRepertoire && (
               <>
                 <span className={groupLabel} id="setlist-destination-label">Destino</span>
                 <div
@@ -317,7 +323,7 @@ export function SetlistGeneratorModal({ open, onOpenChange, repertorioId, onGene
                 </div>
               </>
             )}
-            {(destination === "new" || !repertorioId) && (
+            {canCreateRepertoire && (effectiveDestination === "new" || !repertorioId) && (
               <div className={cn(repertorioId && "mt-4")}>
                 <label htmlFor="setlist-new-name" className={groupLabel}>
                   Nome do novo repertório

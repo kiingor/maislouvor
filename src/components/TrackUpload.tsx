@@ -1,3 +1,4 @@
+import { musicManagementEnabled } from "@/lib/storeBuild";
 import { useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -41,13 +42,14 @@ interface TrackUploadProps {
 }
 
 export function TrackUpload({ songId, teamId, tracks, onTracksChange, onTracksAdded, readOnly }: TrackUploadProps) {
+  readOnly = readOnly || !musicManagementEnabled();
   const { toast } = useToast();
   const [uploading, setUploading] = useState(false);
   const [uploadCount, setUploadCount] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleUploadBatch = async (files: FileList) => {
-    if (!files.length || !teamId || !songId) return;
+    if (readOnly || !files.length || !teamId || !songId) return;
     setUploading(true);
     setUploadCount(files.length);
 
@@ -86,6 +88,7 @@ export function TrackUpload({ songId, teamId, tracks, onTracksChange, onTracksAd
   };
 
   const handleDelete = async (track: Track) => {
+    if (readOnly) return;
     try {
       await supabase.storage.from("audio").remove([track.audio_path]);
       await supabase.from("song_tracks" as any).delete().eq("id", track.id);
@@ -97,6 +100,7 @@ export function TrackUpload({ songId, teamId, tracks, onTracksChange, onTracksAd
   };
 
   const handleDeleteAll = async () => {
+    if (readOnly) return;
     try {
       const paths = tracks.map((t) => t.audio_path);
       if (paths.length) await supabase.storage.from("audio").remove(paths);

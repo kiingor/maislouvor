@@ -1,3 +1,4 @@
+import { useMusicManagement } from "@/hooks/useMusicManagement";
 import { ReportContentButton } from "@/components/moderation/ReportContentButton";
 import { SongProvenance } from "@/components/moderation/SongProvenance";
 import { useParams, useNavigate } from "react-router-dom";
@@ -183,6 +184,7 @@ export default function SongEditor({
   const navigate = useNavigate();
   const { currentTeam, can } = useTeam();
   const canEdit = can("musicas", "editar");
+  const { canAuthorSongs } = useMusicManagement();
   const { toast } = useToast();
   const qc = useQueryClient();
   const uid = useId();
@@ -303,7 +305,7 @@ export default function SongEditor({
   }, [stemsState?.stems_status, stemsState?.stems_error, refetchTracks]);
 
   const handleSeparateStems = async () => {
-    if (!id || !audioPath) return;
+    if (!id || !audioPath || !canPrepare || separatingBusy || importBusy) return;
     setSeparating(true);
     try {
       const { data, error } = await supabase.functions.invoke(
@@ -349,7 +351,7 @@ export default function SongEditor({
   );
   const { data: repertorios = [] } = useQuery({
     queryKey: ["song-registration-repertorios", currentTeam?.id],
-    enabled: !!currentTeam && isDraft,
+    enabled: canAuthorSongs && !!currentTeam && isDraft,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("repertorios")
@@ -391,7 +393,7 @@ export default function SongEditor({
   const [detectingBpm, setDetectingBpm] = useState(false);
   const [importingYt, setImportingYt] = useState(false);
   // Build das lojas (VITE_STORE_BUILD=1): sem importar do YouTube; o áudio vem do arquivo.
-  const youtubeImport = youtubeImportEnabled();
+  const youtubeImport = canAuthorSongs && youtubeImportEnabled();
   // Aviso persistente quando o import falha por cookie do YouTube expirado (só o admin renova).
   const [ytCookieExpired, setYtCookieExpired] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -553,10 +555,12 @@ export default function SongEditor({
     }
   };
 
-  const readOnly = !canEdit || (!!song && song.team_id !== currentTeam?.id);
+  const ownTeamSong = !!song && song.team_id === currentTeam?.id;
+  const readOnly = !canAuthorSongs || !ownTeamSong;
+  const canPrepare = canEdit && ownTeamSong;
 
   const handleDeleteSong = async () => {
-    if (!id) return;
+    if (!id || !canPrepare) return;
     const { error } = await supabase.from("songs").delete().eq("id", id);
     if (error) {
       toast({
@@ -660,7 +664,7 @@ export default function SongEditor({
   }, [importJob, id]);
   const handleImportYoutube = async () => {
     const url = mediaUrl.trim();
-    if (!youtubeImport || !id || !url || importingYt || stemsProcessing) return;
+    if (readOnly || !youtubeImport || !id || !url || importingYt || stemsProcessing) return;
     setImportingYt(true);
     setYtCookieExpired(false);
     try {
@@ -930,7 +934,7 @@ export default function SongEditor({
         Carregando cadastro…
       </div>
     );
-  if (!song)
+  if (!song || (isDraft && readOnly))
     return (
       <div className="p-6 text-center">
         <p>Música não encontrada.</p>
@@ -966,9 +970,9 @@ export default function SongEditor({
       >
         <ol
           className="mb-4 grid grid-cols-[1fr_1.3fr_.8fr] gap-2 text-xs sm:grid-cols-3"
-          aria-label="Etapas do cadastro"
+          aria-label={readOnly ? "Detalhes da música" : "Etapas do cadastro"}
         >
-          {["Informações", "Preparar música", "Revisar"].map((label, index) => (
+          {(readOnly ? ["Informações", "Ensaio", "Histórico"] : ["Informações", "Preparar música", "Revisar"]).map((label, index) => (
             <li key={label}>
               <button
                 type="button"
@@ -1003,15 +1007,15 @@ export default function SongEditor({
             </li>
           ))}
         </ol>
-        <div className="grid min-w-0 items-start gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_205px]">
+        <div className={"grid min-w-0 items-start gap-4" + (!readOnly ? " min-[900px]:grid-cols-[minmax(0,1fr)_205px]" : "")}>
           <div className="min-w-0 space-y-3">
             {step === 1 && (
               <section className={cardClass} aria-labelledby={ids.identity}>
                 <h2 id={ids.identity} className="text-base font-semibold">
-                  Qual música vamos cadastrar?
+                  {readOnly ? "Informações da música" : "Qual música vamos cadastrar?"}
                 </h2>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Identifique a versão e organize como a equipe vai encontrá-la.
+                  {readOnly ? "Versão utilizada pela equipe." : "Identifique a versão e organize como a equipe vai encontrá-la."}
                 </p>
                 <div className="my-4 flex flex-wrap items-center gap-3 border-b border-separator pb-4">
                   <CoverUpload
@@ -1263,11 +1267,10 @@ export default function SongEditor({
                   <TabsContent value="recording" className="space-y-3">
                     <section className={cardClass} aria-labelledby={ids.media}>
                       <h2 id={ids.media} className="text-base font-semibold">
-                        Qual gravação vamos usar?
+                        {readOnly ? "Gravação da música" : "Qual gravação vamos usar?"}
                       </h2>
                       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                        Cole o link da versão que a equipe vai tocar. Depois,
-                        prepare o áudio para separar os instrumentos.
+                        {readOnly ? "Confira a versão utilizada pela equipe." : "Cole o link da versão que a equipe vai tocar. Depois, prepare o áudio para separar os instrumentos."}
                       </p>
                       <label
                         htmlFor={ids.mediaUrl}
@@ -1283,7 +1286,7 @@ export default function SongEditor({
                         onChange={(e) => setMediaUrl(e.target.value)}
                         readOnly={readOnly || importBusy || separatingBusy}
                         placeholder={
-                          youtubeImport
+                          readOnly ? "Sem link de referência" : youtubeImport
                             ? "Cole o link do YouTube…"
                             : "Cole o link da gravação…"
                         }
@@ -1295,7 +1298,7 @@ export default function SongEditor({
                           errors.audio ? ids.audio + "-error" : undefined
                         }
                       />
-                      {sourceChanged && (
+                      {sourceChanged && !readOnly && (
                         <p
                           className="mt-2 text-xs text-destructive"
                           role="alert"
@@ -1337,7 +1340,7 @@ export default function SongEditor({
                         )}
                       </div>
                       <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-                        {youtubeImport
+                        {readOnly ? "Referência da gravação utilizada pela equipe." : youtubeImport
                           ? "Use o YouTube para importar. Links de outros serviços ficam salvos para consulta; você pode enviar o arquivo abaixo."
                           : "O link fica salvo para a equipe conferir a versão. Envie o áudio da gravação abaixo."}
                       </p>
@@ -1362,7 +1365,7 @@ export default function SongEditor({
                       )}
                       <div className="mt-4 border-t border-separator pt-3">
                         <p className="mb-2 text-xs text-muted-foreground">
-                          {youtubeImport
+                          {readOnly ? "Áudio da gravação" : youtubeImport
                             ? "Ou escolha um arquivo de áudio"
                             : "Arquivo de áudio da gravação"}
                         </p>
@@ -1403,7 +1406,7 @@ export default function SongEditor({
                           id={ids.data}
                           title="Dados musicais"
                           qualifier={
-                            audioPath
+                            readOnly ? "Informações da gravação" : audioPath
                               ? "Detectados do áudio — ajuste se precisar"
                               : "Disponível após adicionar o áudio"
                           }
@@ -1508,15 +1511,14 @@ export default function SongEditor({
                     {audioPath && !sourceChanged && (
                       <section className={cardClass}>
                         <h2 className="text-base font-semibold">
-                          Preparar para a separação
+                          {readOnly ? "Separação de faixas" : "Preparar para a separação"}
                         </h2>
                         <p className="mb-3 mt-1 text-xs text-muted-foreground">
-                          Corte o início e o fim, se precisar, e separe os
-                          instrumentos.
+                          {readOnly ? "Separe os instrumentos da gravação para ensaiar." : "Corte o início e o fim, se precisar, e separe os instrumentos."}
                         </p>
-                        {!readOnly && (
+                        {canPrepare && (
                           <>
-                            <AudioTrimmer
+                            {!readOnly && <AudioTrimmer
                               key={audioPath + ":" + audioVersion}
                               disabled={
                                 separatingBusy || importBusy || mediaBusy
@@ -1539,7 +1541,7 @@ export default function SongEditor({
                                   queryKey: ["song-stems", id],
                                 });
                               }}
-                            />
+                            />}
                             <Button
                               className="mt-3 w-full whitespace-normal"
                               onClick={() => void handleSeparateStems()}
@@ -1580,7 +1582,7 @@ export default function SongEditor({
                         key={song.id}
                         songId={song.id}
                         teamId={song.team_id}
-                        readOnly={!canEditAdditionalAudio}
+                        readOnly={readOnly || !canEditAdditionalAudio}
                       />
                     </div>
                   </TabsContent>
@@ -1742,6 +1744,8 @@ export default function SongEditor({
                       <p className="py-5 text-sm text-muted-foreground">
                         {separatingBusy
                           ? "As faixas aparecem aqui quando a separação concluir."
+                          : readOnly
+                          ? "Use a separação na aba Gravação para preparar as faixas."
                           : youtubeImport
                           ? "Importe a gravação e separe em faixas, ou envie as faixas prontas abaixo."
                           : "Envie a gravação e separe em faixas, ou envie as faixas prontas abaixo."}
@@ -1916,7 +1920,7 @@ export default function SongEditor({
                     <SongRepertoriosCard
                       songId={id!}
                       teamId={song.team_id}
-                      readOnly={readOnly}
+                      readOnly={!canPrepare || !can("repertorios", "editar")}
                     />
                   </div>
                 )}
@@ -1995,7 +1999,7 @@ export default function SongEditor({
                     )}
                   </section>
                 </div>
-                {!readOnly && (
+                {canPrepare && (
                   <Button
                     variant="ghost"
                     className="text-destructive"
@@ -2008,7 +2012,7 @@ export default function SongEditor({
               </>
             )}
           </div>
-          <aside className="hidden rounded-[19px] border border-separator p-4 min-[900px]:block">
+          {!readOnly && <aside className="hidden rounded-[19px] border border-separator p-4 min-[900px]:block">
             <h3 className="text-xs font-semibold">Para uma música completa</h3>
             <div
               className="my-3 h-1 overflow-hidden rounded-full bg-separator"
@@ -2045,7 +2049,7 @@ export default function SongEditor({
               Falta algum detalhe? Salve um rascunho e continue depois. Ele fica
               fora da busca de músicas.
             </p>
-          </aside>
+          </aside>}
         </div>
       </div>
       <footer
@@ -2122,7 +2126,7 @@ export default function SongEditor({
             />
           )}
           <Button variant="secondary" onClick={() => setPreviewOpen(false)}>
-            Voltar ao cadastro
+            {readOnly ? "Voltar" : "Voltar ao cadastro"}
           </Button>
         </DialogContent>
       </Dialog>

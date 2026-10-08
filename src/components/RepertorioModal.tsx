@@ -1,3 +1,4 @@
+import { useMusicManagement } from "@/hooks/useMusicManagement";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
@@ -15,7 +16,9 @@ interface Props {
 export function RepertorioModal({ open, onOpenChange, editId, editName }: Props) {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
-  const { currentTeam, profileId } = useTeam();
+  const { currentTeam, profileId, can } = useTeam();
+  const { canCreateRepertoire } = useMusicManagement();
+  const allowed = editId ? can("repertorios", "editar") : canCreateRepertoire;
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -25,7 +28,7 @@ export function RepertorioModal({ open, onOpenChange, editId, editName }: Props)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentTeam || !name.trim()) return;
+    if (!allowed || !currentTeam || !name.trim()) return;
     setLoading(true);
 
     if (editId) {
@@ -45,7 +48,7 @@ export function RepertorioModal({ open, onOpenChange, editId, editName }: Props)
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open && allowed} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogToolbar
           title={editId ? "Renomear repertório" : "Novo repertório"}

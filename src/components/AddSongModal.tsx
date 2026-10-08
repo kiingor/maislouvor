@@ -1,3 +1,4 @@
+import { useMusicManagement } from "@/hooks/useMusicManagement";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -47,6 +48,8 @@ const spinner = (
 
 export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
   const { currentTeam, profileId, can } = useTeam();
+  const { canAuthorSongs } = useMusicManagement();
+  const canAddExisting = !!repertorioId && can("repertorios", "editar");
   const { toast } = useToast();
   const qc = useQueryClient();
   const [mode, setMode] = useState<"choose" | "search" | "editor" | "drafts">(
@@ -86,6 +89,9 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
   useEffect(() => {
     if (!open) reset();
   }, [open]);
+  useEffect(() => {
+    if (!canAuthorSongs && (mode === "editor" || mode === "drafts")) reset();
+  }, [canAuthorSongs, mode]);
   const previousTeam = useRef(currentTeam?.id);
   useEffect(() => {
     if (previousTeam.current !== currentTeam?.id) {
@@ -109,7 +115,7 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
       return;
     }
     if (busy) return;
-    if (mode === "editor" && saveOnClose.current) {
+    if (canAuthorSongs && mode === "editor" && saveOnClose.current) {
       setBusy(true);
       const saved = await saveOnClose.current();
       setBusy(false);
@@ -118,7 +124,7 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
     onOpenChange(false);
   };
   const begin = async () => {
-    if (!currentTeam || !profileId || !can("musicas", "editar")) return;
+    if (!currentTeam || !profileId || !canAuthorSongs) return;
     setBusy(true);
     try {
       const { data, error } = await supabase
@@ -162,7 +168,7 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
       size,
       selectedOnly ? [...selected.keys()].join(",") : null,
     ],
-    enabled: open && mode === "search" && !!currentTeam && !!repertorioId,
+    enabled: canAddExisting && open && mode === "search" && !!currentTeam && !!repertorioId,
     queryFn: () =>
       songRpc<CatalogPage>("search_song_catalog", {
         p_team_id: currentTeam!.id,
@@ -179,7 +185,7 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
   });
   const drafts = useQuery({
     queryKey: ["song-drafts", currentTeam?.id, profileId],
-    enabled: open && !!currentTeam && !!profileId && can("musicas", "editar"),
+    enabled: open && !!currentTeam && !!profileId && canAuthorSongs,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("songs")
@@ -227,7 +233,7 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
       return next;
     });
   const add = async () => {
-    if (!repertorioId || !selected.size) return;
+    if (!canAddExisting || !repertorioId || !selected.size) return;
     setBusy(true);
     try {
       const count = await songRpc<number>("add_complete_songs_to_repertorio", {
@@ -259,7 +265,7 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
   ) => (
     <button
       type="button"
-      disabled={busy || (kind === "editor" && !can("musicas", "editar"))}
+      disabled={busy || (kind === "editor" && !canAuthorSongs)}
       onClick={() => (kind === "editor" ? void begin() : setMode("search"))}
       className={cn(
         "flex min-h-[105px] w-full items-center gap-4 rounded-[20px] border border-separator bg-card p-5 text-left disabled:opacity-50",
@@ -304,7 +310,7 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
       : "Adicionar música";
   return (
     <>
-      <Dialog open={open} onOpenChange={(next) => void close(next)}>
+      <Dialog open={open && (canAuthorSongs || canAddExisting)} onOpenChange={(next) => void close(next)}>
         <DialogContent
           hideClose
           className={cn(
@@ -334,7 +340,7 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
                   ? "Identifique a versão, prepare a gravação e organize o ensaio."
                   : mode === "search"
                   ? "Encontre a versão certa e adicione ao repertório."
-                  : "Encontre uma música pronta ou cadastre a sua."}
+                  : canAuthorSongs ? "Encontre uma música pronta ou cadastre a sua." : "Escolha músicas da biblioteca para este repertório."}
               </DialogDescription>
             </div>
             <button
@@ -349,30 +355,30 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
           </header>
           {mode === "choose" && (
             <div className="space-y-3 overflow-y-auto p-5 sm:p-6">
-              {repertorioId &&
+              {canAddExisting &&
                 choice(
                   "Buscar músicas",
                   "Encontre por nome, artista, tema ou tom. Adicione várias de uma vez.",
                   "search",
                   true
                 )}
-              {choice(
+              {canAuthorSongs && choice(
                 "Cadastrar nova",
                 "Organize as informações, a cifra e a gravação em três etapas.",
                 "editor"
               )}
-              <p className="flex gap-2 px-1 pt-1 text-xs text-muted-foreground">
+              {canAuthorSongs && <p className="flex gap-2 px-1 pt-1 text-xs text-muted-foreground">
                 <FileText className="h-4 w-4 shrink-0" />
                 Cadastros em andamento ficam nos seus rascunhos.
-              </p>
-              {!!drafts.data?.length && (
+              </p>}
+              {canAuthorSongs && !!drafts.data?.length && (
                 <Button variant="ghost" onClick={() => setMode("drafts")}>
                   Retomar rascunhos ({drafts.data.length})
                 </Button>
               )}
             </div>
           )}
-          {mode === "drafts" && (
+          {canAuthorSongs && mode === "drafts" && (
             <div className="min-h-0 overflow-y-auto p-5">
               {drafts.isPending ? (
                 spinner
@@ -410,7 +416,7 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
               </Button>
             </div>
           )}
-          {mode === "editor" && draftId && (
+          {canAuthorSongs && mode === "editor" && draftId && (
             <Suspense fallback={spinner}>
               <Registration
                 songId={draftId}

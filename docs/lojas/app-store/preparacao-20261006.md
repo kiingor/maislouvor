@@ -1,5 +1,7 @@
 # Preparação do iOS — 6 de outubro de 2026
 
+> **08/10 — cadastro exclusivo da web:** criação de repertório e cadastro/edição de músicas disponíveis para líderes na web; apps sem importação por arquivo ou YouTube. Separação local, Asafe e demais funções preservados. 456 testes aprovados e QA em Chromium/WebKit. Alteração local, sem novo TestFlight. [Escopo e validação](../gestao-musicas-web-20261008.md).
+
 > **08/10 — dados confirmados:** nome e endereço completos aplicados ao rascunho. O titular confirmou o envio de arquivos pelos usuários e importação do YouTube nas versões em que está disponível. Os Termos refletem esse fluxo, sem presumir licenças. Restam três campos do modelo: SMTP adiado, retenção efetiva dos backups e base/fluxo para dados sensíveis. [Definições atualizadas](../definicoes-privacidade-20261007.md). Sem nova publicação.
 
 > **07/10 — formulário recebido:** identificação, contato público e hospedagem preenchidos no rascunho. Endereço incompleto, retenção efetiva de backups, base/fluxo de dados sensíveis e SMTP ainda pendentes; sem nova publicação. [Pesquisa e definições](../definicoes-privacidade-20261007.md).

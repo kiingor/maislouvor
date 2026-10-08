@@ -1,20 +1,16 @@
-/* ------------------------------------------------------------------
-   Build das lojas (App Store e Google Play).
-
-   O bundle enviado às lojas é compilado com VITE_STORE_BUILD=1. Nele, o
-   app não importa áudio do YouTube (o servidor baixaria o vídeo: Apple
-   5.2.3 e a política de propriedade intelectual do Play recusam). O
-   link da gravação e o player oficial do YouTube continuam; o áudio
-   entra pelo arquivo da própria pessoa.
-
-   O site (maislouvor.com) e o APK de /baixar são compilados sem a
-   variável e continuam com a importação. Decidido na compilação, nunca
-   por chave remota: esconder uma função só do revisor viola a Apple 2.3.1.
-   ------------------------------------------------------------------ */
+import { Capacitor } from "@capacitor/core";
 
 /** Este bundle é o das lojas (VITE_STORE_BUILD=1 na compilação)? */
 export function isStoreBuild(): boolean {
   return import.meta.env.VITE_STORE_BUILD === "1";
+}
+
+/** Cadastro e importação de músicas ficam na web, inclusive no navegador móvel.
+ * A regra vale para todos os apps nativos, também APKs fora das lojas.
+ * A flag mantém a mesma experiência nas prévias do bundle das lojas.
+ */
+export function musicManagementEnabled(): boolean {
+  return !isStoreBuild() && !Capacitor.isNativePlatform();
 }
 
 /**
@@ -22,5 +18,5 @@ export function isStoreBuild(): boolean {
  * Função, e não constante, para os testes trocarem a variável sem recarregar o módulo.
  */
 export function youtubeImportEnabled(): boolean {
-  return !isStoreBuild();
+  return musicManagementEnabled();
 }

@@ -13,11 +13,13 @@ const mocks = vi.hoisted(() => ({
   insert: vi.fn(),
   toast: vi.fn(),
   permission: vi.fn(() => true),
+  leader: true,
 }));
 vi.mock("@/contexts/TeamContext", () => ({
   useTeam: () => ({
     currentTeam: { id: "team" },
     profileId: "profile",
+    isAdmin: mocks.leader,
     can: mocks.permission,
   }),
 }));
@@ -65,6 +67,7 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
 );
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.leader = true;
   mocks.permission.mockReturnValue(true);
   HTMLElement.prototype.scrollIntoView = vi.fn();
   mocks.rpc.mockImplementation(async (name, args) => {
@@ -90,7 +93,7 @@ beforeEach(() => {
     };
   });
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllEnvs(); });
 const start = async (onClose = vi.fn()) => {
   render(<AddSongModal open onOpenChange={onClose} repertorioId="rep" />, {
     wrapper,
@@ -207,5 +210,27 @@ describe("registered song catalog", () => {
       "add_complete_songs_to_repertorio",
       expect.anything()
     );
+  });
+});
+
+describe("web-only authoring", () => {
+  it.each(["native", "web-editor"])("%s can add existing songs without creating drafts", async (mode) => {
+    if (mode === "native") vi.stubEnv("VITE_STORE_BUILD", "1");
+    else mocks.leader = false;
+    render(<AddSongModal open onOpenChange={vi.fn()} repertorioId="rep" />, { wrapper });
+    expect(screen.queryByRole("button", { name: /Cadastrar nova|Retomar rascunhos/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Buscar músicas/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Selecionar Música 1, Artista QA" }));
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar (1)" }));
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith("add_complete_songs_to_repertorio", {
+      p_repertorio_id: "rep", p_song_ids: ["song-1"],
+    }));
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
+  it("closes the global library registration entry point in the app", () => {
+    vi.stubEnv("VITE_STORE_BUILD", "1");
+    render(<AddSongModal open onOpenChange={vi.fn()} />, { wrapper });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(mocks.insert).not.toHaveBeenCalled();
   });
 });

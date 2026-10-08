@@ -1,3 +1,4 @@
+import { musicManagementEnabled } from "@/lib/storeBuild";
 import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -32,6 +33,7 @@ export function AudioUpload({
   compact,
   onBusyChange,
 }: AudioUploadProps) {
+  readOnly = readOnly || !musicManagementEnabled();
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -52,7 +54,7 @@ export function AudioUpload({
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (readOnly || !file) return;
 
     const ext = file.name.split(".").pop();
     const path = `${teamId}/${songId}.${ext}`;
@@ -93,6 +95,7 @@ export function AudioUpload({
   };
 
   const handleRemove = async () => {
+    if (readOnly) return;
     if (!audioPath) return;
     setUploading(true);
     onBusyChange?.(true);
@@ -192,13 +195,13 @@ export function AudioUpload({
         </button>
       ) : null}
 
-      <input
+      {!readOnly && <input
         ref={inputRef}
         type="file"
         accept=".mp3,.m4a,.wav,.ogg,audio/*"
         className="hidden"
         onChange={handleUpload}
-      />
+      />}
     </div>
   );
 }

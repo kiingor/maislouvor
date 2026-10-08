@@ -17,11 +17,12 @@ const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   toast: vi.fn(),
   can: vi.fn(() => true),
+  leader: true,
   jobs: [] as unknown[],
   pending: 0,
 }));
 vi.mock("@/contexts/TeamContext", () => ({
-  useTeam: () => ({ currentTeam: { id: "team" }, can: mocks.can }),
+  useTeam: () => ({ currentTeam: { id: "team" }, can: mocks.can, isAdmin: mocks.leader }),
 }));
 vi.mock("@/hooks/use-toast", () => ({
   useToast: () => ({ toast: mocks.toast }),
@@ -97,6 +98,7 @@ vi.mock("@/integrations/supabase/client", () => ({
 }));
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.leader = true;
   mocks.can.mockReturnValue(true);
   mocks.pending = 0;
   mocks.jobs = [];
@@ -121,7 +123,7 @@ beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn();
   HTMLElement.prototype.scrollTo = vi.fn();
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 const start = async () => {
   const finished = vi.fn();
   render(
@@ -259,49 +261,48 @@ describe("song registration lifecycle", () => {
   });
 });
 
-describe("store build (VITE_STORE_BUILD=1)", () => {
-  beforeEach(() => {
+
+describe("app consumption and rehearsal", () => {
+  it("opens a published song read-only and still starts local stem separation", async () => {
     vi.stubEnv("VITE_STORE_BUILD", "1");
-  });
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-  it("keeps the recording link and the file upload, with no YouTube import anywhere", async () => {
-    Object.assign(mocks.song, { media_url: "https://youtu.be/abcdefghijk" });
-    // Importação feita no site que falhou por cookie: no app das lojas, nada sobre isso.
-    mocks.jobs = [
-      { id: "job", status: "error", url: "https://youtu.be/abcdefghijk", error: "COOKIE_EXPIRED" },
-    ];
+    Object.assign(mocks.song, { is_draft: false, media_url: "https://youtu.be/abcdefghijk" });
+    mocks.invoke.mockResolvedValue({ data: { success: true }, error: null });
     await start();
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
-    const link = await screen.findByLabelText("Link da gravação");
-    expect(link).toHaveAttribute("placeholder", "Cole o link da gravação…");
-    expect(screen.getByText("Arquivo de áudio da gravação")).toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/YouTube|administrador/);
-    const recording = screen.getByRole("region", { name: "Qual gravação vamos usar?" });
-    expect(within(recording).queryByRole("button", { name: /Importar/ })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Nome da música")).toHaveAttribute("readonly");
+    expect(screen.queryByRole("button", { name: /Salvar|Cadastrar/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Ensaio/ }));
+    expect(await screen.findByLabelText("Link da gravação")).toHaveAttribute("readonly");
+    expect(document.body.textContent).not.toMatch(/Envie|Importe|Cole o link|escolha um arquivo/);
+    expect(screen.queryByRole("button", { name: /Importar/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Separar em faixas (IA)" }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith("separate-stems", {
+      body: { song_id: "song", audio_path: "team/song.mp3" },
+    }));
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Faixas" }), { button: 0, ctrlKey: false });
-    expect(await screen.findByText(/Envie a gravação e separe em faixas/)).toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/YouTube|Importe/);
-    // Nenhum botão da gravação dispara importação (inclusive "Conferir versão", que abre o player).
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "Gravação" }), { button: 0, ctrlKey: false });
-    const again = await screen.findByRole("region", { name: "Qual gravação vamos usar?" });
-    for (const button of within(again).getAllByRole("button")) fireEvent.click(button);
+    expect(await screen.findByRole("button", { name: "Trechos para repetir no ensaio" })).toBeEnabled();
+    expect(mocks.updates).not.toHaveBeenCalled();
     expect(mocks.invoke).not.toHaveBeenCalledWith("import-youtube", expect.anything());
-    expect(mocks.invoke).not.toHaveBeenCalledWith("import-song-audio", expect.anything());
   });
-  it("asks for the audio file again when the saved recording URL changes", async () => {
-    Object.assign(mocks.song, {
-      media_url: "https://youtu.be/abcdefghijk",
-      recording_source_url: "https://youtu.be/abcdefghijk",
-    });
+  it("does not allow an app deep link to resume a draft", async () => {
+    vi.stubEnv("VITE_STORE_BUILD", "1");
+    render(<SongEditor songId="song" />, { wrapper: ({ children }) => (
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>{children}</MemoryRouter>
+      </QueryClientProvider>
+    ) });
+    await screen.findByText("Música não encontrada.");
+    expect(screen.queryByLabelText("Nome da música")).not.toBeInTheDocument();
+    expect(mocks.updates).not.toHaveBeenCalled();
+  });
+  it("keeps a web editor without leader role in consultation mode", async () => {
+    mocks.leader = false;
+    mocks.song.is_draft = false;
     await start();
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
-    fireEvent.change(await screen.findByLabelText("Link da gravação"), {
-      target: { value: "https://youtu.be/ZYXWVUTSRQP" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
-    await screen.findByText("O link mudou. Envie o áudio desta versão novamente.");
-    expect(document.body.textContent).not.toMatch(/Importe/);
+    expect(screen.getByLabelText("Nome da música")).toHaveAttribute("readonly");
+    expect(screen.queryByRole("button", { name: /Salvar|Cadastrar/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Ensaio/ }));
+    expect(screen.queryByRole("button", { name: /Importar/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Separar em faixas (IA)" })).toBeEnabled();
+    expect(mocks.updates).not.toHaveBeenCalled();
   });
 });

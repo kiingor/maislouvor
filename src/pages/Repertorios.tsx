@@ -1,3 +1,4 @@
+import { useMusicManagement } from "@/hooks/useMusicManagement";
 import { useState, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -54,6 +55,7 @@ export default function Repertorios() {
   const { currentTeam, can, loading: teamLoading } = useTeam();
   const canEdit = can("repertorios", "editar");
   const canEditSongs = can("musicas", "editar");
+  const { canAuthorSongs, canCreateRepertoire } = useMusicManagement();
   const [activeTab, setActiveTab] = useState("repertorios");
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -157,12 +159,12 @@ export default function Repertorios() {
 
   // Ações da barra superior: dependem do segmento ativo (HIG > Toolbars).
   const actions =
-    activeTab === "repertorios" && canEdit ? (
+    activeTab === "repertorios" && canCreateRepertoire ? (
       <>
         <ToolbarButton icon={<Sparkles />} aria-label="Gerar setlist" title="Gerar setlist" onClick={() => setGenerateOpen(true)} />
         <ToolbarButton icon={<Plus strokeWidth={2.25} />} aria-label="Novo repertório" title="Novo repertório" onClick={openCreate} />
       </>
-    ) : activeTab === "musicas" && canEditSongs ? (
+    ) : activeTab === "musicas" && canAuthorSongs ? (
       <ToolbarButton icon={<Plus strokeWidth={2.25} />} aria-label="Nova música" title="Nova música" onClick={() => setAddLibraryOpen(true)} />
     ) : undefined;
 
@@ -183,9 +185,9 @@ export default function Repertorios() {
           <EmptyState
             icon={Music}
             title="Nenhum repertório ainda"
-            description={canEdit ? "Crie seu primeiro repertório para começar." : "Seus repertórios aparecerão aqui."}
+            description={canCreateRepertoire ? "Crie seu primeiro repertório para começar." : "Seus repertórios aparecerão aqui."}
             action={
-              canEdit && (
+              canCreateRepertoire && (
                 <Button onClick={openCreate}>
                   <Plus aria-hidden="true" /> Criar repertório
                 </Button>
@@ -271,12 +273,12 @@ export default function Repertorios() {
             description={
               songSearch.trim()
                 ? "Tente outro termo de busca."
-                : canEditSongs
+                : canAuthorSongs
                 ? "Cadastre músicas aqui — elas ficam disponíveis para qualquer repertório."
                 : "As músicas da equipe aparecerão aqui."
             }
             action={
-              canEditSongs && !songSearch.trim() && (
+              canAuthorSongs && !songSearch.trim() && (
                 <Button onClick={() => setAddLibraryOpen(true)}>
                   <Plus aria-hidden="true" /> Nova música
                 </Button>

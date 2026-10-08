@@ -77,12 +77,12 @@ describe("store build (VITE_STORE_BUILD=1)", () => {
   beforeEach(() => { vi.stubEnv("VITE_STORE_BUILD", "1"); });
   afterEach(() => { vi.unstubAllEnvs(); });
   it("never asks the server to download from YouTube", async () => {
-    await expect(importSongAudio(songId, "Tenor", "https://youtu.be/abcdefghijk", attachmentId)).rejects.toThrow("arquivo");
+    await expect(importSongAudio(songId, "Tenor", "https://youtu.be/abcdefghijk", attachmentId)).rejects.toThrow("web");
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
   it("explains failed imports without mentioning YouTube or its access", () => {
     expect(audioImportError("COOKIE_EXPIRED")).not.toMatch(/YouTube|administrador/);
-    expect(audioImportError(null)).toMatch(/envie o arquivo/);
+    expect(audioImportError(null)).toMatch(/web/);
   });
 });
 
@@ -97,5 +97,15 @@ describe("YouTube import validation", () => {
     for (const override of [{ song_id: "invalid" }, { title: " " }, { title: "x".repeat(121) }, { attachment_id: "invalid" }]) {
       expect(() => parseAdditionalAudioRequest({ song_id: songId, title: "Voz", url: "https://youtu.be/abcdefghijk", ...override })).toThrow();
     }
+  });
+});
+
+describe("native file import protection", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it("rejects a direct upload call before writing any file or attachment", async () => {
+    vi.stubEnv("VITE_STORE_BUILD", "1");
+    await expect(uploadSongAudio(songId, teamId, "Tenor", file())).rejects.toThrow("web");
+    expect(mocks.upload).not.toHaveBeenCalled();
+    expect(mocks.from).not.toHaveBeenCalled();
   });
 });
