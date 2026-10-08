@@ -1,3 +1,4 @@
+import { WebMusicManagementNotice } from "@/components/WebMusicManagementNotice";
 import { useMusicManagement } from "@/hooks/useMusicManagement";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -48,7 +49,8 @@ const spinner = (
 
 export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
   const { currentTeam, profileId, can } = useTeam();
-  const { canAuthorSongs } = useMusicManagement();
+  const { canAuthorSongs, canShowSongWebNotice } = useMusicManagement();
+  const [webNoticeOpen, setWebNoticeOpen] = useState(false);
   const canAddExisting = !!repertorioId && can("repertorios", "editar");
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -72,6 +74,7 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
   const settled = useSongSearchDelay(query);
   const saveOnClose = useRef<null | (() => Promise<boolean>)>(null);
   const reset = () => {
+    setWebNoticeOpen(false);
     setMode("choose");
     setDraftId(null);
     setQuery("");
@@ -310,6 +313,7 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
       : "Adicionar música";
   return (
     <>
+      <WebMusicManagementNotice open={open && webNoticeOpen && canShowSongWebNotice} onOpenChange={setWebNoticeOpen} resource="song" />
       <Dialog open={open && (canAuthorSongs || canAddExisting)} onOpenChange={(next) => void close(next)}>
         <DialogContent
           hideClose
@@ -362,6 +366,12 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
                   "search",
                   true
                 )}
+              {canShowSongWebNotice && (
+                <div className="space-y-2">
+                  <Button variant="outline" className="min-h-11 w-full" onClick={() => setWebNoticeOpen(true)}>Cadastrar nova pelo computador</Button>
+                  <p className="text-center text-xs text-muted-foreground">Para cadastrar, use o navegador do computador. A tela maior facilita a organização.</p>
+                </div>
+              )}
               {canAuthorSongs && choice(
                 "Cadastrar nova",
                 "Organize as informações, a cifra e a gravação em três etapas.",

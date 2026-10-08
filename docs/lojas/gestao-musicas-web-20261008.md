@@ -4,7 +4,7 @@
 
 - Criar repertório e cadastrar/editar músicas ficam na web para líderes (`isAdmin`, papel `admin`), respeitando também a permissão do recurso.
 - A web inclui o navegador do celular. A regra não depende da largura da tela.
-- Nos apps iOS e Android, inclusive APK distribuído fora da loja, não aparecem os cadastros nem a importação de música por arquivo ou YouTube. A flag `VITE_STORE_BUILD=1` também aplica essa experiência às prévias do bundle.
+- Nos apps iOS e Android, inclusive APK distribuído fora da loja, os líderes veem atalhos que explicam como cadastrar pelo computador; os formulários de cadastro e a importação por arquivo ou YouTube permanecem indisponíveis. A flag `VITE_STORE_BUILD=1` também aplica essa experiência às prévias do bundle.
 - Asafe, separação local de faixas, mixer, ensaio, loops, escalas e consulta de músicas permanecem. A separação mantém a permissão anterior, independente da disponibilidade do cadastro.
 - Adicionar músicas já cadastradas, gerar uma seleção dentro de repertório existente, ordenar, renomear e excluir mantêm suas permissões anteriores. Apenas criar um repertório novo sai do app.
 
@@ -27,6 +27,10 @@
 - Evidências locais ignoradas pelo Git em `tmp/web-music-management/`, incluindo `results.json` e capturas.
 
 ## Publicação
+
+Atualização solicitada em 08/10: os atalhos de novo repertório/nova música abrem “Continue pelo computador”, com `maislouvor.com` e orientação de entrar com a mesma conta de líder. Dentro de um repertório, adicionar mantém a busca no acervo e explica como cadastrar uma nova música. A justificativa é o espaço da tela, sem afirmar que o navegador móvel é tecnicamente incompatível. TypeScript e 14 testes direcionados aprovados.
+
+Filipe confirmou nesta sessão que testou Google, Apple e Face ID com sucesso no iPhone. RevenueCat continua aguardando teste físico após uma nova distribuição.
 
 Alteração local em `codex/integracao-lojas-revenuecat`, sem push, deploy ou novo envio ao TestFlight nesta etapa. O build instalado anteriormente não recebe a alteração até uma nova distribuição.
 

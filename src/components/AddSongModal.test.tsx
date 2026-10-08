@@ -218,7 +218,7 @@ describe("web-only authoring", () => {
     if (mode === "native") vi.stubEnv("VITE_STORE_BUILD", "1");
     else mocks.leader = false;
     render(<AddSongModal open onOpenChange={vi.fn()} repertorioId="rep" />, { wrapper });
-    expect(screen.queryByRole("button", { name: /Cadastrar nova|Retomar rascunhos/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Cadastrar nova$|Retomar rascunhos/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Buscar músicas/ }));
     fireEvent.click(await screen.findByRole("checkbox", { name: "Selecionar Música 1, Artista QA" }));
     fireEvent.click(screen.getByRole("button", { name: "Adicionar (1)" }));
@@ -231,6 +231,21 @@ describe("web-only authoring", () => {
     vi.stubEnv("VITE_STORE_BUILD", "1");
     render(<AddSongModal open onOpenChange={vi.fn()} />, { wrapper });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
+});
+
+describe("leader instructions in the native app", () => {
+  it("explains desktop registration while preserving the existing-song search", async () => {
+    vi.stubEnv("VITE_STORE_BUILD", "1");
+    render(<AddSongModal open onOpenChange={vi.fn()} repertorioId="rep" />, { wrapper });
+    fireEvent.click(screen.getByRole("button", { name: "Cadastrar nova pelo computador" }));
+    await screen.findByRole("heading", { name: "Continue pelo computador" });
+    expect(screen.getByText("maislouvor.com")).toBeInTheDocument();
+    expect(screen.getByText(/mesma conta de líder/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Entendi" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Buscar músicas/ }));
+    await screen.findByRole("checkbox", { name: "Selecionar Música 1, Artista QA" });
     expect(mocks.insert).not.toHaveBeenCalled();
   });
 });

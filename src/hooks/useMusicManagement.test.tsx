@@ -24,7 +24,10 @@ describe("web leader authoring", () => {
     team.leader = leader;
     team.permission = permission;
     const { result } = renderHook(useMusicManagement);
-    expect(result.current).toEqual({ canAuthorSongs: allowed, canCreateRepertoire: allowed });
+    expect(result.current).toEqual({ canAuthorSongs: allowed, canCreateRepertoire: allowed,
+      canShowSongWebNotice: (native || flag === "1") && leader && permission,
+      canShowRepertoireWebNotice: (native || flag === "1") && leader && permission,
+    });
     expect(youtubeImportEnabled()).toBe(!native && flag !== "1");
   });
 });

@@ -1,3 +1,4 @@
+import { WebMusicManagementNotice } from "@/components/WebMusicManagementNotice";
 import { useMusicManagement } from "@/hooks/useMusicManagement";
 import { useState, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
@@ -55,7 +56,9 @@ export default function Repertorios() {
   const { currentTeam, can, loading: teamLoading } = useTeam();
   const canEdit = can("repertorios", "editar");
   const canEditSongs = can("musicas", "editar");
-  const { canAuthorSongs, canCreateRepertoire } = useMusicManagement();
+  const { canAuthorSongs, canCreateRepertoire, canShowSongWebNotice, canShowRepertoireWebNotice } = useMusicManagement();
+  const [webNotice, setWebNotice] = useState<"song" | "repertoire" | null>(null);
+  const showNewSong = () => canShowSongWebNotice ? setWebNotice("song") : setAddLibraryOpen(true);
   const [activeTab, setActiveTab] = useState("repertorios");
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -135,7 +138,8 @@ export default function Repertorios() {
     setDeleteSong(null);
   };
 
-  const openCreate = () => { setEditId(null); setEditName(""); setCreateOpen(true); };
+  const openCreate = () => {
+    if (canShowRepertoireWebNotice) { setWebNotice("repertoire"); return; } setEditId(null); setEditName(""); setCreateOpen(true); };
 
   // No team yet
   if (!teamLoading && !currentTeam) {
@@ -159,13 +163,13 @@ export default function Repertorios() {
 
   // Ações da barra superior: dependem do segmento ativo (HIG > Toolbars).
   const actions =
-    activeTab === "repertorios" && canCreateRepertoire ? (
+    activeTab === "repertorios" && (canCreateRepertoire || canShowRepertoireWebNotice) ? (
       <>
-        <ToolbarButton icon={<Sparkles />} aria-label="Gerar setlist" title="Gerar setlist" onClick={() => setGenerateOpen(true)} />
+        {canCreateRepertoire && <ToolbarButton icon={<Sparkles />} aria-label="Gerar setlist" title="Gerar setlist" onClick={() => setGenerateOpen(true)} />}
         <ToolbarButton icon={<Plus strokeWidth={2.25} />} aria-label="Novo repertório" title="Novo repertório" onClick={openCreate} />
       </>
-    ) : activeTab === "musicas" && canAuthorSongs ? (
-      <ToolbarButton icon={<Plus strokeWidth={2.25} />} aria-label="Nova música" title="Nova música" onClick={() => setAddLibraryOpen(true)} />
+    ) : activeTab === "musicas" && (canAuthorSongs || canShowSongWebNotice) ? (
+      <ToolbarButton icon={<Plus strokeWidth={2.25} />} aria-label="Nova música" title="Nova música" onClick={showNewSong} />
     ) : undefined;
 
   return (
@@ -187,7 +191,7 @@ export default function Repertorios() {
             title="Nenhum repertório ainda"
             description={canCreateRepertoire ? "Crie seu primeiro repertório para começar." : "Seus repertórios aparecerão aqui."}
             action={
-              canCreateRepertoire && (
+              (canCreateRepertoire || canShowRepertoireWebNotice) && (
                 <Button onClick={openCreate}>
                   <Plus aria-hidden="true" /> Criar repertório
                 </Button>
@@ -278,8 +282,8 @@ export default function Repertorios() {
                 : "As músicas da equipe aparecerão aqui."
             }
             action={
-              canAuthorSongs && !songSearch.trim() && (
-                <Button onClick={() => setAddLibraryOpen(true)}>
+              (canAuthorSongs || canShowSongWebNotice) && !songSearch.trim() && (
+                <Button onClick={showNewSong}>
                   <Plus aria-hidden="true" /> Nova música
                 </Button>
               )
@@ -339,6 +343,7 @@ export default function Repertorios() {
         </Suspense>
       </TabsContent>
 
+      <WebMusicManagementNotice open={!!webNotice} onOpenChange={(open) => { if (!open) setWebNotice(null); }} resource={webNotice || "song"} />
       <RepertorioModal open={createOpen} onOpenChange={setCreateOpen} editId={editId} editName={editName} />
       <SetlistGeneratorModal open={generateOpen} onOpenChange={setGenerateOpen} />
       <AddSongModal open={addLibraryOpen} onOpenChange={setAddLibraryOpen} repertorioId={null} />
