@@ -12,6 +12,7 @@ import Login from '../../src/pages/Login';
 import {TeamDataConsentGate} from '../../src/components/legal/TeamDataConsentGate';
 import {TooltipProvider} from '../../src/components/ui/tooltip';
 import {supabase} from '../../src/integrations/supabase/client';
+import {getNativeGoogleOAuth} from '../../src/lib/nativeGoogleOAuth';
 import {ORIGINAL_SONGS} from '../../scripts/review-demo/data.mjs';
 import '../../src/index.css';
 Capacitor.isNativePlatform=()=>true;
@@ -41,6 +42,10 @@ const tracks=['Voz','Baixo','Bateria','Guitarra','Teclado'].map((track_name,i)=>
 const channel:any={on:()=>channel,subscribe:()=>channel};(supabase as any).channel=()=>channel;(supabase as any).removeChannel=()=>{};
 (supabase.auth as any).getSession=async()=>({data:{session:null},error:null});
 (supabase.auth as any).onAuthStateChange=()=>({data:{subscription:{unsubscribe:()=>{}}}});
+const previewOnly=async()=>({data:null,error:new Error('Esta é uma prévia visual; use o app para entrar.')});
+for(const method of ['signInWithPassword','signInWithOAuth','resetPasswordForEmail','setSession','signUp'])
+ (supabase.auth as any)[method]=previewOnly;
+(getNativeGoogleOAuth() as any).signInWithOAuth=previewOnly;
 Object.defineProperty(supabase,'functions',{value:{invoke:async()=>({data:{},error:null})}});
 const route=params.get('screen')==='song'?'/app/songs/song-0':params.get('screen')==='detail'?'/app/repertorios/rep-demo':'/app/repertorios';
 const qc=new QueryClient({defaultOptions:{queries:{retry:false,refetchOnWindowFocus:false}}});
