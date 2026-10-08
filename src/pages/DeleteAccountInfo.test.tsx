@@ -27,7 +27,7 @@ describe("public account deletion page", () => {
     }
     expect(screen.getByRole("heading", { name: "O que continua com a equipe" }).parentElement)
       .toHaveTextContent("Denúncias do chat que envolvem você continuam com a moderação");
-    expect(screen.getByRole("note")).toHaveTextContent("precisam ser canceladas na loja");
+    expect(screen.getByRole("note")).toHaveTextContent("Cancele compras da App Store ou Google Play na respectiva loja");
     // Mesma moldura das páginas legais: "Voltar" (o iOS não tem voltar do sistema) e os documentos no rodapé.
     expect(screen.getByRole("button", { name: "Voltar" })).toBeInTheDocument();
     const docs = screen.getByRole("navigation", { name: "Documentos" });

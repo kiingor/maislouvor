@@ -6,10 +6,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { getMemberCapacity } from "@/lib/billing/api";
+import { functionError } from "@/lib/function-error";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
+  onChoosePlan: (seats: number, teamId: string) => void;
 }
 
 const ALL_TEAMS = "__all__";
@@ -35,14 +40,14 @@ function FieldRow({ id, label, trailing, children }: { id: string; label: ReactN
   );
 }
 
-export function InviteMemberModal({ open, onOpenChange }: Props) {
+export function InviteMemberModal({ open, onOpenChange, onChoosePlan }: Props) {
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<string>("viewer");
   const [loading, setLoading] = useState(false);
-  const { currentTeam, teams } = useTeam();
+  const { currentTeam, teams, profileId } = useTeam();
   const { toast } = useToast();
 
   // Only teams where the current user is a leader can receive new members
@@ -53,9 +58,17 @@ export function InviteMemberModal({ open, onOpenChange }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, currentTeam?.id]);
 
+  const targetTeams = teamId === ALL_TEAMS ? adminTeams.map(t => t.id).sort() : teamId ? [teamId] : [];
+  const capacity = useQuery({
+    queryKey: ['team-capacity', profileId, ...targetTeams],
+    queryFn: async () => Promise.all(targetTeams.map(async id => ({ id, ...await getMemberCapacity(id) }))),
+    enabled: open && targetTeams.length > 0, retry: false, staleTime: 0,
+  });
+  const blocked = capacity.data?.find(c => !c.can_add_member);
+  const checking = capacity.isPending || capacity.isFetching;
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!teamId || !email.trim() || !password.trim() || !fullName.trim()) return;
+    if (!teamId || !email.trim() || !password.trim() || !fullName.trim() || checking || capacity.isError || blocked || loading) return;
 
     if (password.length < 6) {
       toast({ title: "Senha muito curta", description: "A senha deve ter pelo menos 6 caracteres.", variant: "destructive" });
@@ -76,7 +89,9 @@ export function InviteMemberModal({ open, onOpenChange }: Props) {
     });
 
     if (error || data?.error) {
-      toast({ title: "Erro ao convidar", description: data?.error ?? error?.message, variant: "destructive" });
+      const issue = await functionError(error, data);
+      toast({ title: "Não foi possível adicionar", description: issue.error, variant: "destructive" });
+      if (issue.code === 'TEAM_MEMBER_LIMIT_REACHED') void capacity.refetch();
     } else if (data?.already_member) {
       toast({ title: "Já é membro", description: "Este usuário já faz parte da equipe." });
       handleClose(false);
@@ -110,10 +125,23 @@ export function InviteMemberModal({ open, onOpenChange }: Props) {
         {/* Confirmar fica fora do <form>: o atributo form mantém a validação nativa e o Enter. */}
         <DialogToolbar
           title="Convidar membro"
-          confirm={{ label: "Convidar", type: "submit", form: FORM_ID, disabled: loading, loading }}
+          confirm={{ label: "Convidar", type: "submit", form: FORM_ID, disabled: loading || checking || capacity.isError || Boolean(blocked), loading }}
         />
 
+        {checking ? <p role="status" className="p-4 text-sm text-muted-foreground">Conferindo as vagas da equipe…</p> : capacity.isError ? <div className="space-y-4 p-4">
+          <p role="alert">Não foi possível conferir as vagas.</p><Button onClick={() => void capacity.refetch()}>Tentar novamente</Button>
+        </div> : blocked ? <div className="space-y-4 p-4">
+          <h3 className="text-lg font-semibold">Sua equipe cresceu</h3>
+          <p className="text-sm text-muted-foreground">{teams.find(t => t.id === blocked.id)?.name}: {blocked.member_limit === 5 && blocked.effective_plan === 'essencial'
+            ? 'o Essencial gratuito inclui até 5 integrantes, contando o líder. Para adicionar mais uma pessoa, escolha um plano com mais vagas.'
+            : 'as vagas estão ocupadas. Amplie o plano para adicionar mais uma pessoa.'}</p>
+          {blocked.can_manage ? <Button className="h-12 w-full rounded-full" onClick={() => {
+            handleClose(false); onChoosePlan(blocked.member_count + 1, blocked.id);
+          }}>Escolher plano e continuar</Button> : <p className="text-sm">Peça ao responsável pela equipe para contratar mais vagas em Usuário → Assinatura.</p>}
+          <Button variant="ghost" className="w-full" onClick={() => handleClose(false)}>Voltar para a equipe</Button>
+        </div> : null}
         <form
+          hidden={checking || capacity.isError || Boolean(blocked)}
           id={FORM_ID}
           onSubmit={handleInvite}
           className="min-w-0 space-y-6 pb-2 pt-1"

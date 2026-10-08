@@ -21,7 +21,7 @@ const TermsGateDialog = lazy(() => import("./TermsGateDialog"));
  * os próprios documentos) nunca são bloqueadas.
  *
  * Quem não concorda pode sair ou excluir a conta: o link do diálogo leva à
- * seção de exclusão em Usuário › Meu usuário, que não é bloqueada.
+ * seção de exclusão em Usuário › Perfil, que não é bloqueada.
  *
  * Quem já aceitou no cadastro (caixa marcada ou "Ao continuar com o Google"),
  * mas ainda não tinha sessão para gravar, tem o aceite registrado aqui sem
@@ -33,7 +33,7 @@ const TermsGateDialog = lazy(() => import("./TermsGateDialog"));
  */
 export function TermsGate() {
   const { pathname, hash } = useLocation();
-  // A seção de exclusão da conta (Usuário › Meu usuário) fica fora do bloqueio.
+  // A seção de exclusão da conta (Usuário › Perfil) fica fora do bloqueio.
   const gated = requiresTermsAcceptance(pathname, hash);
   const queryClient = useQueryClient();
   const { session, userId, query: acceptance } = useTermsAcceptance(gated);

@@ -243,7 +243,7 @@ checks++;
 // ---- Aviso de IA (OpenAI) e quem desligou o uso dos dados --------------------------------
 ok(welcomeMessage('Asafe', 'Louvor Sede').includes(AI_DISCLOSURE_LINE) && helpMessage('Asafe').includes(AI_DISCLOSURE_LINE),
   'boas-vindas e ajuda contam que as respostas vêm da IA da OpenAI');
-ok(AI_DISCLOSURE_LINE.includes('OpenAI (EUA)') && AI_DISCLOSURE_LINE.includes('Usuário › Meu usuário'), 'diz quem é e como desligar');
+ok(AI_DISCLOSURE_LINE.includes('OpenAI (EUA)') && AI_DISCLOSURE_LINE.includes('Usuário › Perfil'), 'diz quem é e como desligar');
 ok(activationErrorMessage('Asafe', 'consent_required').includes('aceitar no app'), 'ativação sem o aceite do líder');
 ok(linkErrorMessage('consent_required').includes('permita no app'), 'vínculo sem o aceite da pessoa');
 const unknownText = unknownSenderMessage('unknown', 'Louvor Sede');

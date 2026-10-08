@@ -261,7 +261,13 @@ function DeleteAccountDialog({ open, onOpenChange, returnFocusRef }: {
 
             <p role="note" className="flex gap-2 rounded-card bg-card p-3.5 text-footnote text-muted-foreground">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-ios-orange" aria-hidden="true" />
-              Assinaturas feitas pela App Store ou Google Play precisam ser canceladas na loja.
+              <span>
+                Excluir a conta não cancela cobranças. Cancele compras da App Store ou Google Play na respectiva loja.
+                Para compras na web, use {" "}
+                <Link to="/app/settings?billing=return" onClick={() => onOpenChange(false)} className="font-medium underline underline-offset-2">
+                  Gerenciar assinatura
+                </Link> antes de excluir a conta.
+              </span>
             </p>
 
             <div>
@@ -309,7 +315,7 @@ function DeleteAccountDialog({ open, onOpenChange, returnFocusRef }: {
   );
 }
 
-/** Usuário › Meu usuário › Excluir minha conta (App Store 5.1.1(v) / Google Play). */
+/** Usuário › Perfil › Excluir minha conta (App Store 5.1.1(v) / Google Play). */
 export function DeleteAccountSection() {
   const [open, setOpen] = useState(false);
   const location = useLocation();

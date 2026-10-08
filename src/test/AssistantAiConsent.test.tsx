@@ -118,7 +118,7 @@ describe("aviso de IA", () => {
 
   it("tells leaders that each person still chooses for their own data", () => {
     render(<AssistantAiConsentDialog open variant="team-activate" onAccept={vi.fn()} onDecline={vi.fn()} onClose={vi.fn()} />);
-    expect(screen.getByRole("dialog").textContent).toContain("cada pessoa (inclusive você) escolhe em Usuário › Meu usuário");
+    expect(screen.getByRole("dialog").textContent).toContain("cada pessoa (inclusive você) escolhe em Usuário › Perfil");
   });
 
   it("explains the database errors", () => {

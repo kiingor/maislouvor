@@ -11,7 +11,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** Usuário › Meu usuário, com ou sem a seção de exclusão da conta na mesma tela. */
+/** Usuário › Perfil, com ou sem a seção de exclusão da conta na mesma tela. */
 function renderSettings({ withDeletionSection }: { withDeletionSection: boolean }) {
   return render(
     <MemoryRouter initialEntries={["/app/settings"]}>

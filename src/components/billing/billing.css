@@ -1,0 +1,199 @@
+/* Scoped bridge to the approved iOS design system in MaisLouvor-lojas.
+   Content stays opaque; the checkout is a floating, thick Liquid Glass control.
+   Keep these semantic values aligned with styles/ios.css when merging checkouts. */
+.billing-design {
+  --billing-background: 240 24% 96%;
+  --billing-card: 0 0% 100%;
+  --billing-label: 0 0% 0%;
+  --billing-secondary: 240 3% 42%;
+  --billing-fill: 240 5% 93%;
+  --billing-separator: 240 4% 88%;
+  --billing-action: 48 10% 10%;
+  --billing-action-label: 0 0% 100%;
+  --billing-selection: 48 10% 10%;
+  --billing-selection-label: 0 0% 100%;
+  --billing-focus: 208 100% 50%;
+  --billing-glass: rgba(255, 255, 255, .88);
+  --billing-sheen: rgba(255, 255, 255, .24);
+  --billing-stroke: rgba(0, 0, 0, .09);
+  --billing-hi: rgba(255, 255, 255, .95);
+  --billing-lo: rgba(255, 255, 255, .5);
+  --billing-shadow: rgba(0, 0, 0, .1);
+  color: hsl(var(--billing-label));
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Segoe UI', Roboto, sans-serif;
+  font-size: 1rem;
+  line-height: 1.35;
+  letter-spacing: -.02em;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+.dark .billing-design, .billing-design.dark {
+  --billing-background: 0 0% 0%;
+  --billing-card: 240 3% 11%;
+  --billing-label: 0 0% 100%;
+  --billing-secondary: 240 4% 66%;
+  --billing-fill: 240 3% 17%;
+  --billing-separator: 240 2% 22%;
+  --billing-action: 240 2% 39%;
+  --billing-selection: 240 24% 96%;
+  --billing-selection-label: 48 10% 10%;
+  --billing-focus: 206 100% 50%;
+  --billing-glass: rgba(44, 44, 46, .88);
+  --billing-sheen: rgba(255, 255, 255, .07);
+  --billing-stroke: rgba(255, 255, 255, .14);
+  --billing-hi: rgba(255, 255, 255, .38);
+  --billing-lo: rgba(255, 255, 255, .12);
+  --billing-shadow: rgba(0, 0, 0, .55);
+}
+.billing-design *, .billing-design *::before, .billing-design *::after { box-sizing: border-box; }
+.billing-design button, .billing-design input { font: inherit; color: inherit; }
+.billing-design button { cursor: pointer; touch-action: manipulation; }
+.billing-design button:disabled { cursor: default; }
+.billing-design :focus-visible { outline: 3px solid hsl(var(--billing-focus)); outline-offset: 3px; }
+.billing-builder { width: 100%; min-width: 0; padding-bottom: var(--billing-checkout-space, 180px); }
+.billing-heading { margin-bottom: 24px; }
+.billing-eyebrow { margin: 0 0 10px; color: hsl(var(--billing-secondary)); font-size: .6875rem; font-weight: 600; letter-spacing: .12em; }
+.billing-heading h3 { font-size: 2rem; line-height: 1.07; letter-spacing: -.035em; font-weight: 700; margin: 0; }
+.billing-heading > p:last-child { margin: 12px 0 0; font-size: .9375rem; color: hsl(var(--billing-secondary)); line-height: 1.4; }
+.billing-customize { margin-bottom: 24px; }
+.billing-members { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; background: hsl(var(--billing-card)); padding: 14px 16px; border-radius: 24px; }
+.billing-members-label { min-width: 0; }
+.billing-members-label label { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 1rem; }
+.billing-members-label label svg { width: 18px; height: 18px; }
+.billing-members-label p { font-size: .8125rem; color: hsl(var(--billing-secondary)); margin: 4px 0 0; }
+.billing-stepper { display: flex; align-items: center; background: hsl(var(--billing-fill)); border-radius: 999px; flex-shrink: 0; }
+.billing-stepper button { width: 44px; height: 44px; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; }
+.billing-stepper button svg { width: 17px; height: 17px; }
+.billing-stepper button:disabled { opacity: .32; }
+.billing-stepper button:active:not(:disabled) { background: hsl(var(--billing-separator)); }
+.billing-stepper input { width: 42px; height: 44px; padding: 0; border: 0; border-radius: 8px; background: transparent; text-align: center; font-size: 1.125rem; font-weight: 600; font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }
+.billing-stepper input::-webkit-inner-spin-button, .billing-stepper input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.billing-cycle { border: 0; min-width: 0; padding: 0; margin: 12px 0 0; }
+.billing-cycle-track { position: relative; display: grid; grid-template-columns: 1fr 1fr; border-radius: 999px; padding: 3px; background: hsl(var(--billing-fill)); }
+.billing-cycle-lens { position: absolute; pointer-events: none; inset: 3px auto 3px 3px; width: calc(50% - 3px); background: hsl(var(--billing-card)); border-radius: 999px; box-shadow: 0 2px 5px rgba(0,0,0,.08), 0 0 0 .5px rgba(0,0,0,.02); transition: transform .3s cubic-bezier(.3,1.25,.45,1); }
+.billing-cycle-track[data-period='annual'] .billing-cycle-lens { transform: translateX(100%); }
+.billing-cycle label { position: relative; cursor: pointer; min-height: 46px; display: grid; place-items: center; border-radius: 999px; padding: 5px 8px; text-align: center; }
+.billing-cycle label > span { display: flex; flex-direction: column; align-items: center; gap: 0; font-size: .9375rem; font-weight: 600; line-height: 1.25; }
+.billing-cycle small { font-size: .6875rem; font-weight: 500; color: hsl(var(--billing-secondary)); }
+.billing-cycle label:has(input:focus-visible) { outline: 3px solid hsl(var(--billing-focus)); outline-offset: 2px; }
+.billing-plans { min-width: 0; border: 0; margin: 0; padding: 0; }
+.billing-plans legend { font-size: 1.0625rem; font-weight: 600; padding: 0 4px; margin-bottom: 12px; }
+.billing-plan, .billing-included { scroll-margin-block: 24px calc(var(--billing-checkout-height, 160px) + 110px); }
+.billing-plan-list { display: grid; gap: 10px; }
+.billing-plan { display: grid; position: relative; grid-template-columns: 34px minmax(0, 1fr) auto 18px; align-items: center; column-gap: 10px; min-height: 90px; padding: 16px; background: hsl(var(--billing-card)); border-radius: 24px; cursor: pointer; box-shadow: inset 0 0 0 1px transparent; transition: box-shadow .18s ease, background-color .18s ease; }
+.billing-plan[data-selected='true'] { box-shadow: inset 0 0 0 1.5px hsl(var(--billing-selection)); }
+.billing-plan:has(input:focus-visible) { outline: 3px solid hsl(var(--billing-focus)); outline-offset: 3px; }
+.billing-plan:has(input:disabled) { cursor: default; }
+.billing-plan-icon { width: 34px; height: 34px; border-radius: 11px; background: hsl(var(--billing-fill)); display: grid; place-items: center; }
+.billing-plan-icon svg { width: 18px; height: 18px; }
+.billing-plan[data-selected='true'] .billing-plan-icon { background: hsl(var(--billing-selection)); color: hsl(var(--billing-selection-label)); }
+.billing-plan-copy { min-width: 0; }
+.billing-plan-name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 1.0625rem; line-height: 1.3; font-weight: 600; }
+.billing-bundle { font-size: .6875rem; font-weight: 600; line-height: 1.35; padding: 2px 7px; border-radius: 999px; background: hsl(var(--billing-fill)); white-space: nowrap; }
+.billing-plan-description { display: block; color: hsl(var(--billing-secondary)); font-size: .8125rem; line-height: 1.35; margin-top: 4px; }
+.billing-plan-price { text-align: right; min-width: 0; max-width: 9rem; font-variant-numeric: tabular-nums; }
+.billing-plan-price strong { font-size: 1rem; letter-spacing: -.025em; font-weight: 600; white-space: nowrap; }
+.billing-plan-price small { font-size: .75rem; display: block; color: hsl(var(--billing-secondary)); margin-top: 1px; }
+.billing-plan[data-unavailable='true'] .billing-plan-price strong { font-size: .75rem; font-weight: 500; white-space: normal; }
+.billing-plan-check { border: 1px solid hsl(var(--billing-secondary) / .5); border-radius: 50%; width: 18px; height: 18px; display: grid; place-items: center; }
+.billing-plan[data-selected='true'] .billing-plan-check { color: hsl(var(--billing-selection-label)); background: hsl(var(--billing-selection)); border-color: transparent; }
+.billing-plan-check svg { width: 12px; height: 12px; stroke-width: 2.5; }
+.billing-selection-note { padding: 0 4px; font-size: .8125rem; color: hsl(var(--billing-secondary)); line-height: 1.5; }
+.billing-selection-note:empty { display: none; }
+.billing-selection-note p { margin: 14px 0 0; }
+.billing-selection-note strong { font-weight: 600; color: hsl(var(--billing-label)); }
+.billing-included { margin-top: 12px; border-bottom: 1px solid hsl(var(--billing-separator)); }
+.billing-included summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; cursor: pointer; font-size: .9375rem; font-weight: 500; padding: 8px 4px; list-style: none; }
+.billing-included summary::-webkit-details-marker { display: none; }
+.billing-included summary svg { width: 16px; height: 16px; flex-shrink: 0; transition: transform .2s ease; }
+.billing-included[open] summary svg { transform: rotate(180deg); }
+.billing-included ul { list-style: none; padding: 0 4px 16px; margin: 0; display: grid; gap: 10px; }
+.billing-included li { display: flex; gap: 10px; font-size: .9375rem; align-items: start; }
+.billing-included li svg { width: 16px; height: 16px; margin-top: 2px; flex-shrink: 0; }
+.billing-renewal { font-size: .8125rem; color: hsl(var(--billing-secondary)); line-height: 1.45; margin: 16px 4px 0; }
+
+/* Floats above the app tab bar. Standalone previews use the safe area only. */
+.billing-checkout { position: fixed; z-index: 35; left: 16px; right: 16px; bottom: calc(max(var(--billing-safe-area-bottom, env(safe-area-inset-bottom, 0px)), 8px) + 78px); max-width: 960px; margin-inline: auto; pointer-events: none; }
+.billing-checkout[data-placement='standalone'] { bottom: max(var(--billing-safe-area-bottom, env(safe-area-inset-bottom, 0px)), 12px); }
+.billing-checkout[data-keyboard='true'][data-placement] { bottom: calc(var(--billing-keyboard) + 8px); }
+.billing-checkout-panel { position: relative; pointer-events: auto; border-radius: 28px; padding: 14px 16px 10px; background: linear-gradient(180deg, var(--billing-sheen), transparent 48%), var(--billing-glass); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); box-shadow: inset 0 0 0 .5px var(--billing-stroke), inset 0 -10px 18px -14px var(--billing-stroke), 0 1px 2px rgba(0,0,0,.04), 0 14px 34px -10px var(--billing-shadow); }
+.billing-checkout-panel::after { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.25px; pointer-events: none; background: linear-gradient(135deg, var(--billing-hi), transparent 28%, transparent 62%, var(--billing-lo)); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+.billing-checkout-summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; padding: 0 2px 12px; }
+.billing-checkout-choice { flex: 1 1 6rem; }
+.billing-checkout-choice strong { display: block; font-size: .9375rem; font-weight: 600; }
+.billing-checkout-choice span, .billing-checkout-price span { display: block; font-size: .75rem; line-height: 1.3; color: hsl(var(--billing-secondary)); margin-top: 3px; }
+.billing-checkout-price { flex: 1 1 9.5rem; max-width: 100%; text-align: right; font-variant-numeric: tabular-nums; min-width: 0; }
+.billing-checkout-price strong { font-size: 1.5rem; line-height: 1.15; letter-spacing: -.035em; font-weight: 700; overflow-wrap: anywhere; }
+.billing-design .billing-continue { width: 100%; min-height: 50px; padding: 12px 18px; display: flex; justify-content: center; align-items: center; gap: 10px; border: 0; border-radius: 999px; background: linear-gradient(180deg, hsl(var(--billing-action) / .93), hsl(var(--billing-action))); color: hsl(var(--billing-action-label)); box-shadow: inset 0 1px 0 rgba(255,255,255,.13), 0 3px 7px rgba(0,0,0,.08); font-size: 1rem; font-weight: 600; line-height: 1.25; transition: transform .2s ease, opacity .2s ease; }
+.billing-continue svg { width: 18px; height: 18px; flex-shrink: 0; }
+.billing-continue:active:not(:disabled) { transform: scale(.98); }
+.billing-continue:disabled { opacity: .55; }
+.billing-checkout-caption { font-size: .6875rem; line-height: 1.3; text-align: center; color: hsl(var(--billing-secondary)); margin: 7px 0 0; }
+.billing-spinner { animation: billing-spin .8s linear infinite; }
+@keyframes billing-spin { to { transform: rotate(360deg); } }
+.billing-team { display: flex; flex-direction: column; gap: 24px; max-width: 920px; margin: 0 auto; padding-bottom: var(--billing-checkout-space, 24px); }
+.billing-team .billing-builder { padding-bottom: 0; }
+.billing-team .billing-account { border: 0; border-radius: 24px; box-shadow: none; background: hsl(var(--billing-card)); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.billing-account button { border-radius: 999px; min-height: 44px; }
+.billing-account .billing-account-heading { font-size: 1.0625rem; }
+
+
+@media (min-width: 700px) {
+  .billing-heading h3 { font-size: 2.125rem; }
+  .billing-heading h3 br { display: none; }
+  .billing-customize { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 16px; }
+  .billing-cycle { margin: 0; }
+  .billing-plan { grid-template-columns: 40px minmax(0,1fr) auto 20px; min-height: 92px; padding: 18px 22px; gap: 16px; }
+  .billing-plan-icon { width: 40px; height: 40px; border-radius: 13px; }
+  .billing-checkout-panel { display: grid; grid-template-columns: minmax(0,1fr) minmax(250px,.85fr); column-gap: 24px; padding: 16px 20px 12px; align-items: center; }
+  .billing-checkout-summary { padding: 0; }
+  .billing-checkout-caption { grid-column: 1 / -1; margin-top: 10px; }
+}
+@media (min-width: 1024px) { .billing-checkout[data-placement='app'] { bottom: max(var(--billing-safe-area-bottom, env(safe-area-inset-bottom, 0px)), 20px); } }
+@media (max-width: 359px) {
+  .billing-heading h3 { font-size: 1.75rem; }
+  .billing-members { padding: 12px; gap: 8px; }
+  .billing-plan { grid-template-columns: minmax(0,1fr) auto 18px; padding: 14px; gap: 8px; }
+  .billing-plan-icon { display: none; }
+  .billing-plan-name { font-size: 1rem; }
+  .billing-plan-price strong { font-size: .9375rem; }
+  .billing-checkout-panel { padding: 12px 12px 10px; }
+  .billing-checkout-price strong { font-size: 1.3125rem; }
+  .billing-checkout-choice span, .billing-checkout-price span { font-size: .6875rem; }
+  .billing-design .billing-continue { font-size: .9375rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .billing-cycle-lens, .billing-plan, .billing-included summary svg, .billing-continue { transition: none; }
+  .billing-continue:active:not(:disabled) { transform: none; }
+  .billing-spinner { animation: none; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .billing-checkout-panel { background: hsl(var(--billing-card)); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .billing-checkout-panel::after { display: none; }
+  .billing-design { --billing-secondary: 240 3% 38%; }
+  .dark .billing-design { --billing-secondary: 240 5% 72%; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .billing-checkout-panel { background: hsl(var(--billing-card)); }
+}
+
+@media (max-height: 500px) and (min-width: 600px) {
+  .billing-checkout-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(230px, 1fr); gap: 16px; padding: 12px 16px; }
+  .billing-checkout-summary { padding: 0; }
+  .billing-checkout-caption { display: none; }
+}
+.billing-checkout[data-keyboard='true'] .billing-checkout-caption { display: none; }
+
+.billing-back-row { margin-bottom: 18px; }
+.billing-back { display: inline-flex; gap: 3px; align-items: center; min-height: 44px; padding: 0 15px 0 9px; border-radius: 999px; border: 1px solid var(--billing-stroke); color: hsl(var(--billing-label)); background: var(--billing-glass); box-shadow: inset 0 1px 0 var(--billing-hi), 0 3px 12px rgb(0 0 0 / .04); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%); font: 600 14px/1.2 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+.billing-back:focus-visible { outline: 2px solid hsl(var(--billing-label)); outline-offset: 3px; }
+.billing-design.billing-invite { background: hsl(var(--billing-card)); max-height: calc(100dvh - 32px); overflow-y: auto; }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .billing-back { background: hsl(var(--billing-card)); backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+.billing-design.billing-invite { width: calc(100% - 32px); }
+.billing-invite .bg-primary { color: hsl(var(--billing-action-label)); background: hsl(var(--billing-action)); font-weight: 600; }
+.billing-invite > button { width: 44px; height: 44px; display: grid; place-items: center; top: 8px; right: 8px; }
+
+.billing-invite button.w-full { white-space: normal; height: auto; min-height: 44px; }
+.billing-invite button.bg-primary { min-height: 48px; padding: 12px 18px; }

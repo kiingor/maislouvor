@@ -129,7 +129,7 @@ export function useChatModeration({ teamId, profileId, isTeamAdmin, onDeleted }:
             <AlertDialogTitle>Bloquear {blockName}?</AlertDialogTitle>
             <AlertDialogDescription>
               As mensagens de {blockName} ficam ocultas para você no chat. Essa pessoa não é avisada. Para desfazer,
-              vá em Usuário › Meu usuário › Usuários bloqueados.
+              vá em Usuário › Perfil › Usuários bloqueados.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

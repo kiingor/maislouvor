@@ -51,7 +51,7 @@ export type PlatformFunctions = {
   admin_list_subscriptions: JsonFunction<{ p_search?: string; p_status?: string; p_page?: number; p_page_size?: number }>;
   admin_update_subscription: JsonFunction<{
     p_team_id: string; p_plan: string; p_status: string; p_monthly_amount?: number | null;
-    p_current_period_end?: string | null; p_notes?: string;
+    p_current_period_end?: string | null; p_notes?: string; p_member_limit?: number; p_is_unlimited?: boolean;
   }>;
   admin_update_settings: JsonFunction<{ p_support_enabled: boolean; p_support_email: string; p_announcement: string }>;
 };

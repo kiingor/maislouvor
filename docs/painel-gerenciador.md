@@ -1,6 +1,10 @@
 # Gerenciador da plataforma +Louvor
 
-Implementação local na `main`, com portal em `/admin` e atendimento do usuário em `/app/sugestoes`. O frontend, a migration e o cadastro inicial do administrador estão preparados. Esta entrega não aplica mudanças no banco online, publica o site ou integra um provedor de cobrança.
+**Atualização de 07/10/2026:** RevenueCat e Stripe já estão publicados na web, com assinaturas por capacidade e proteção dos contratos anteriores. Veja [a implantação de cobrança](billing/web-release-20261007.md). O registro de setembro abaixo é histórico. A preparação conjunta com os recursos nativos e de conformidade está em [integração das branches](lojas/app-store/integracao-revenuecat-20261007.md).
+
+Publicado em **29/09/2026 às 21:42 de Fortaleza** (30/09 às 00:42 UTC), com portal em [maislouvor.com/admin](https://maislouvor.com/admin) e atendimento em `/app/sugestoes`. A migration foi aplicada na produção `api.maislouvor.com`, e a conta confirmada indicada pelo proprietário recebeu o acesso exclusivo. O login usa a senha já cadastrada nessa conta; não foi criada nem alterada uma senha administrativa.
+
+A release `20260930-platform-admin` foi integrada à fonte exata do aplicativo publicado, na branch `release/platform-admin-20260930`, em `/private/tmp/maislouvor-platform-release-20260930/source`. A `main` deste checkout continua sendo uma variante anterior, configurada para a base Cloud: não publique seu build inteiro sobre o site atual. Não há provedor de cobrança integrado.
 
 ## O que está disponível
 
@@ -44,7 +48,20 @@ O registro manual organiza plano e período. Salvar uma assinatura não efetua c
 
 O valor mensal exibido é a soma dos valores informados em registros ativos, em reais. Não representa recebimento financeiro confirmado. A data de fim do período é um registro administrativo; seu vencimento não muda automaticamente o status.
 
-## Ativação
+## Publicação realizada
+
+- Base publicada: `3af8d34d128503d4120f8cb06e8ca7c42c54f307`, com os 417 arquivos selados da entrega do guia do Asafe e as regras atuais da landing incorporados. As telas existentes, permissões granulares, Asafe e cinco APKs foram preservados.
+- Somente a nova migration foi aplicada, em transação, após verificação de compatibilidade e ensaios com rollback. A concessão inicial deixou exatamente um administrador global. A senha da conta não foi alterada.
+- Backup do schema anterior em `/var/backups/maislouvor/20260930-platform-admin-backend`; backup do site em `/var/backups/maislouvor/20260930-platform-admin`. A release fica em `/var/www/maislouvor-releases/20260930-platform-admin`.
+- Publicação com lock compartilhado, hashes conferidos, cópia dos assets preservando os anteriores e troca dos arquivos de entrada com o service worker por último. Foram conferidos **190 arquivos e 10 rotas por HTTPS**.
+- A landing recebeu alterações simultâneas no cache e no manifesto do PWA. Os hashes divergentes interromperam duas tentativas antes da troca do site. As diferenças foram revisadas e incorporadas: helper de recuperação, exclusão da raiz e de `/conheca` do fallback, `directoryIndex: null`, manifesto com `id: /` e início em `/app`. Caddy, marketing, sitemap, robots e verificação do Search Console foram preservados; nenhum serviço foi reiniciado nesta publicação.
+- A release usa `platform-client.ts` como uma tipagem separada da conexão autenticada existente. Isso mantém a tipagem gerada da versão publicada intacta: ficaram os mesmos **9 diagnósticos anteriores**, sem erros novos.
+- Validação da versão integrada: **149 testes existentes**, **41 verificações do navegador com dados sintéticos**, **17 verificações com API real antes da troca e 17 no site público**, além de **6 verificações com service worker ativo** para coexistência do app e landing. O fluxo real cobriu criação de ticket, resposta, notificação, abertura pelo sino e bloqueio de usuários comuns/visitantes. A conta temporária, seus tickets, mensagens, notificações e registros de auditoria foram removidos.
+- Evidências locais em `/private/tmp/maislouvor-platform-release-20260930`; publicação remota registrada em `/var/lib/maislouvor-deploy/20260930-platform-admin/publish.log`. Não houve push, alteração do APK nem migração de conteúdo da base Cloud.
+
+Uma reversão do frontend pode restaurar os arquivos de entrada do backup, mantendo os assets. A estrutura de suporte é aditiva e pode permanecer no banco; não remova tabelas contendo tickets de usuários. Confira mudanças posteriores antes de qualquer restauração.
+
+## Ativação em outra base
 
 Há uma divergência documentada entre a base Cloud configurada neste checkout e o ambiente de produção da VPS. Confirme o destino do frontend e do banco antes de ativar. Não execute toda a cadeia antiga de migrations contra a produção: ela possui diferenças de permissões e outras alterações independentes.
 
@@ -91,4 +108,4 @@ VITE_SUPABASE_URL=http://127.0.0.1:54329 VITE_SUPABASE_PUBLISHABLE_KEY=qa-placeh
 PLAYWRIGHT_MODULE=/caminho/node_modules/playwright/index.mjs CHROMIUM_PATH=/caminho/chromium node scripts/qa-platform-portal.mjs
 ```
 
-Os dados sintéticos existem apenas nos testes. O aplicativo usa os endpoints autenticados da base configurada. Não houve validação com usuários reais, execução de cobrança, alteração do banco online ou publicação nesta entrega.
+Os dados sintéticos existem apenas nos testes locais. A publicação descrita acima também validou a API real com uma conta temporária e a autorização do proprietário, sem solicitar ou alterar sua senha. Não houve cobrança, migração de dados entre bases nem atualização do APK.

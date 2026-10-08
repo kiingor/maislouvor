@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, type ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
@@ -29,7 +29,10 @@ import type { LucideIcon } from "lucide-react";
 import { instrumentIcon } from "@/data/instruments";
 import { InstrumentPicker } from "@/components/InstrumentPicker";
 import { cn } from "@/lib/utils";
+import { DELETE_ACCOUNT_ANCHOR } from "@/lib/legal";
 import { personalAvailabilityLabel } from "@/lib/availability";
+import TeamBilling from "@/components/billing/TeamBilling";
+import { BillingBackButton } from "@/components/billing/BillingBackButton";
 
 /* ------------------------------------------------------------------
    Peças de lista agrupada no estilo do app Ajustes (iOS 27).
@@ -88,7 +91,7 @@ const INLINE_INPUT =
 const INLINE_FIELD = "flex min-w-[7.5rem] flex-1 items-center justify-end gap-2";
 
 export default function TeamSettings() {
-  const { currentTeam, isAdmin, profileId, teams, can, refetch } = useTeam();
+  const { currentTeam, isAdmin, profileId, teams, can, refetch, switchTeam } = useTeam();
   const canManageMembers = can("membros", "editar");
   // Memorizado: um array novo a cada render reiniciava o formulário aberto no MemberEditModal.
   const adminTeams = useMemo(
@@ -96,16 +99,27 @@ export default function TeamSettings() {
     [teams],
   );
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const linkedTab = searchParams.get("billing") === "return" ? "billing"
+    : searchParams.get("aba") === "membros" ? "members" : "profile";
+  const [activeTab, setActiveTab] = useState(linkedTab);
+  useEffect(() => {
+    setActiveTab(location.hash === `#${DELETE_ACCOUNT_ANCHOR}` ? "profile" : linkedTab);
+  }, [linkedTab, location.hash, location.key]);
+  const billingReturnTab = useRef('profile');
+  const [requestedSeats, setRequestedSeats] = useState<number>();
+  const changeTab = (tab: string) => {
+    if (tab === 'billing' && activeTab !== 'billing') { billingReturnTab.current = activeTab; setRequestedSeats(undefined); }
+    setActiveTab(tab);
+  };
   const [editMember, setEditMember] = useState<any | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
   const qc = useQueryClient();
   // Aviso de denúncia no chat abre direto na aba Membros (?aba=membros), na
   // equipe da denúncia (&equipe=<id>) para quem lidera mais de uma.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const initialTab = searchParams.get("aba") === "membros" ? "members" : "profile";
   const linkedTeamId = searchParams.get("equipe");
-  const { switchTeam } = useTeam();
   useEffect(() => {
     if (!linkedTeamId || !teams.some((t) => t.id === linkedTeamId)) return;
     if (currentTeam?.id !== linkedTeamId) switchTeam(linkedTeamId);
@@ -346,16 +360,21 @@ export default function TeamSettings() {
   };
 
   return (
-    <Tabs key={initialTab} defaultValue={initialTab} className="w-full">
+    <Tabs value={activeTab} onValueChange={changeTab} className="w-full">
       <PageHeader title="Usuário">
-        <TabsList className="flex w-full lg:w-[440px]">
-          <TabsTrigger value="profile" className="flex-1">Meu usuário</TabsTrigger>
-          <TabsTrigger value="members" className="flex-1">Membros</TabsTrigger>
-          {isAdmin && <TabsTrigger value="team" className="flex-1">Equipe</TabsTrigger>}
+        <TabsList className="flex w-full lg:w-[540px]">
+          <TabsTrigger value="profile" className="flex-1 px-1.5 text-[13px] sm:px-3 sm:text-subhead">Perfil</TabsTrigger>
+          <TabsTrigger value="members" className="flex-1 px-1.5 text-[13px] sm:px-3 sm:text-subhead">Membros</TabsTrigger>
+          {isAdmin && <TabsTrigger value="team" className="flex-1 px-1.5 text-[13px] sm:px-3 sm:text-subhead">Equipe</TabsTrigger>}
+          <TabsTrigger value="billing" className="flex-1 px-1.5 text-[13px] sm:px-3 sm:text-subhead">Assinatura</TabsTrigger>
         </TabsList>
       </PageHeader>
 
       {/* ===== ABA: MEU USUÁRIO ===== */}
+      <TabsContent value="billing" className="mt-2">
+        <BillingBackButton onBack={() => setActiveTab(billingReturnTab.current)} />
+        <TeamBilling key={`${currentTeam?.id}:${profileId}`} initialSeats={requestedSeats} />
+      </TabsContent>
       <TabsContent value="profile" className="mt-2">
         <div className="grid grid-cols-1 gap-7 lg:grid-cols-2 lg:items-start lg:gap-x-8">
           <div className="space-y-7">
@@ -749,7 +768,10 @@ export default function TeamSettings() {
         </TabsContent>
       )}
 
-      <InviteMemberModal open={inviteOpen} onOpenChange={setInviteOpen} />
+      <InviteMemberModal open={inviteOpen} onOpenChange={setInviteOpen} onChoosePlan={(seats, teamId) => {
+        if (teamId !== currentTeam?.id) switchTeam(teamId);
+        billingReturnTab.current = 'members'; setRequestedSeats(seats); setActiveTab('billing');
+      }} />
       <MemberEditModal
         open={!!editMember}
         onOpenChange={(o) => { if (!o) setEditMember(null); }}

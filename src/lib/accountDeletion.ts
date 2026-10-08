@@ -15,7 +15,7 @@ import {
 export { DELETE_CONFIRMATION, isBlockingAction, type DeletionCandidate, type DeletionPreview, type DeletionTeam, type DeletionTeamAction };
 
 /* O e-mail para pedidos, os prazos (backups, resposta por e-mail) e os caminhos
-   (/excluir-conta e a seção em Usuário › Meu usuário) ficam em src/lib/legal.ts,
+   (/excluir-conta e a seção em Usuário › Perfil) ficam em src/lib/legal.ts,
    a mesma fonte dos Termos e da Política de Privacidade. */
 export { DELETE_ACCOUNT_ANCHOR, DELETE_ACCOUNT_SETTINGS_PATH };
 

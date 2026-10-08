@@ -17,7 +17,7 @@ const ROW_BODY =
 const CAPSULE_SM =
   "relative inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-3.5 text-subhead font-semibold transition-[background-color,transform,opacity] active:scale-[0.97] disabled:opacity-40 before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-['']";
 
-/** Usuário › Meu usuário › Usuários bloqueados: quem eu bloqueei no chat, com opção de desbloquear. */
+/** Usuário › Perfil › Usuários bloqueados: quem eu bloqueei no chat, com opção de desbloquear. */
 export function BlockedUsersSettings() {
   const { profileId } = useTeam();
   const { toast } = useToast();

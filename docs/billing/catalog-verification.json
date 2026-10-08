@@ -1,0 +1,648 @@
+{
+  "verified_at_utc": "2026-10-07T02:21:31.512Z",
+  "approved_date_local": "2026-10-06",
+  "scope": "Cadastro e leitura de retorno das APIs oficiais. Não é uma compra sandbox ou aprovação de revisão.",
+  "apple_app_id": "6819834048",
+  "apple_group_id": "22449162",
+  "apple_group_level": 1,
+  "revenuecat_project_id": "proj230d06a6",
+  "revenuecat_app_id": "app13ffc63adc",
+  "offering_id": "ofrngc858af3de8",
+  "offering_lookup_key": "default",
+  "offering_is_current": true,
+  "product_count": 70,
+  "offered_product_count": 66,
+  "draft_annual_count": 4,
+  "products": [
+    {
+      "product_id": "com.maislouvor.app.essencial.10.monthly",
+      "apple_id": "6819913991",
+      "price_cents": 1690,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod70ec42a9f6",
+      "revenuecat_package_id": "pkge54b4306301"
+    },
+    {
+      "product_id": "com.maislouvor.app.essencial.10.annual",
+      "apple_id": "6819914265",
+      "price_cents": 16900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod928a8b6f66",
+      "revenuecat_package_id": "pkge428a096fce"
+    },
+    {
+      "product_id": "com.maislouvor.app.essencial.20.monthly",
+      "apple_id": "6819914427",
+      "price_cents": 2690,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prode41d6c9b3d",
+      "revenuecat_package_id": "pkge121d142c2d"
+    },
+    {
+      "product_id": "com.maislouvor.app.essencial.20.annual",
+      "apple_id": "6819914431",
+      "price_cents": 26900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod308a6e705f",
+      "revenuecat_package_id": "pkge043e4c8ed4"
+    },
+    {
+      "product_id": "com.maislouvor.app.essencial.40.monthly",
+      "apple_id": "6819914377",
+      "price_cents": 3990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod7df6d505d0",
+      "revenuecat_package_id": "pkge52586f73be"
+    },
+    {
+      "product_id": "com.maislouvor.app.essencial.40.annual",
+      "apple_id": "6819914435",
+      "price_cents": 39900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodca860ef31d",
+      "revenuecat_package_id": "pkgee620eb9459"
+    },
+    {
+      "product_id": "com.maislouvor.app.essencial.50.monthly",
+      "apple_id": "6819914400",
+      "price_cents": 5990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodd896e8f394",
+      "revenuecat_package_id": "pkge290aef0a00"
+    },
+    {
+      "product_id": "com.maislouvor.app.essencial.50.annual",
+      "apple_id": "6819914342",
+      "price_cents": 59900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "proda7e8f32724",
+      "revenuecat_package_id": "pkge184cc337b4"
+    },
+    {
+      "product_id": "com.maislouvor.app.essencial.75.monthly",
+      "apple_id": "6819914443",
+      "price_cents": 7690,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod12fcded281",
+      "revenuecat_package_id": "pkge8fed4945f6"
+    },
+    {
+      "product_id": "com.maislouvor.app.essencial.75.annual",
+      "apple_id": "6819914462",
+      "price_cents": 76900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod7c190b80b0",
+      "revenuecat_package_id": "pkgeb7f3d6b945"
+    },
+    {
+      "product_id": "com.maislouvor.app.essencial.100.monthly",
+      "apple_id": "6819914503",
+      "price_cents": 9490,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodb3675028f5",
+      "revenuecat_package_id": "pkge85654fb52b"
+    },
+    {
+      "product_id": "com.maislouvor.app.essencial.100.annual",
+      "apple_id": "6819914561",
+      "price_cents": 94900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodd79943f2da",
+      "revenuecat_package_id": "pkge701381c945"
+    },
+    {
+      "product_id": "com.maislouvor.app.essencial.150.monthly",
+      "apple_id": "6819914576",
+      "price_cents": 12990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod76a4b4f447",
+      "revenuecat_package_id": "pkgedc69780e15"
+    },
+    {
+      "product_id": "com.maislouvor.app.essencial.150.annual",
+      "apple_id": "6819914605",
+      "price_cents": 129900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodc177964eff",
+      "revenuecat_package_id": "pkge8f3f6b5927"
+    },
+    {
+      "product_id": "com.maislouvor.app.essencial.200.monthly",
+      "apple_id": "6819915413",
+      "price_cents": 16490,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod306ade628c",
+      "revenuecat_package_id": "pkge63d4c84be3"
+    },
+    {
+      "product_id": "com.maislouvor.app.essencial.200.annual",
+      "apple_id": "6819915441",
+      "price_cents": 164900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodf68c637625",
+      "revenuecat_package_id": "pkge6e9685ef16"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.5.monthly",
+      "apple_id": "6819915161",
+      "price_cents": 2190,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodfd43285370",
+      "revenuecat_package_id": "pkge6eddc26ff7"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.5.annual",
+      "apple_id": "6819915423",
+      "price_cents": 21900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod968b1b54a9",
+      "revenuecat_package_id": "pkge8aa17e63f2"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.10.monthly",
+      "apple_id": "6819915167",
+      "price_cents": 3690,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod386e4e4e25",
+      "revenuecat_package_id": "pkge9301129672"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.10.annual",
+      "apple_id": "6819915373",
+      "price_cents": 36900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "proda1a3dca10c",
+      "revenuecat_package_id": "pkgea2be2022b9"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.20.monthly",
+      "apple_id": "6819915391",
+      "price_cents": 5690,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod30ae7bdb8c",
+      "revenuecat_package_id": "pkgee3043f201e"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.20.annual",
+      "apple_id": "6819915504",
+      "price_cents": 56900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod20e439e6f3",
+      "revenuecat_package_id": "pkgef38867b72f"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.40.monthly",
+      "apple_id": "6819915547",
+      "price_cents": 7990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodfdd4fc66d3",
+      "revenuecat_package_id": "pkge8ba4b31417"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.40.annual",
+      "apple_id": "6819915590",
+      "price_cents": 79900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod503a3b75db",
+      "revenuecat_package_id": "pkge7f012a0779"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.50.monthly",
+      "apple_id": "6819915253",
+      "price_cents": 10990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodba27e46600",
+      "revenuecat_package_id": "pkgea9bd31451f"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.50.annual",
+      "apple_id": "6819915400",
+      "price_cents": 109900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod936d867142",
+      "revenuecat_package_id": "pkgefe5fead97d"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.75.monthly",
+      "apple_id": "6819915521",
+      "price_cents": 21990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod5c5f6593fb",
+      "revenuecat_package_id": "pkgef3f329004a"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.75.annual",
+      "apple_id": "6819915638",
+      "price_cents": 219900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodec5e0b207e",
+      "revenuecat_package_id": "pkge5ff2cdec1b"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.100.monthly",
+      "apple_id": "6819915571",
+      "price_cents": 32990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodbc85557c3a",
+      "revenuecat_package_id": "pkgee0e4a8e582"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.100.annual",
+      "apple_id": "6819915639",
+      "price_cents": 329900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodfa2603d9d4",
+      "revenuecat_package_id": "pkgef14a566580"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.150.monthly",
+      "apple_id": "6819915665",
+      "price_cents": 55990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodf3c6d3aa8f",
+      "revenuecat_package_id": "pkge51e8f4fb19"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.150.annual",
+      "apple_id": "6819915310",
+      "price_cents": 559900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "proddd6feee94b",
+      "revenuecat_package_id": "pkge635f2fd0d0"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.200.monthly",
+      "apple_id": "6819915831",
+      "price_cents": 77990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodafc9f24109",
+      "revenuecat_package_id": "pkgeea0c037e0b"
+    },
+    {
+      "product_id": "com.maislouvor.app.estudio.200.annual",
+      "apple_id": "6819915775",
+      "price_cents": 779900,
+      "ios_enabled": false,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod99aabd91c2",
+      "revenuecat_package_id": null
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.5.monthly",
+      "apple_id": "6819915608",
+      "price_cents": 1190,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod68a6a1926d",
+      "revenuecat_package_id": "pkgebf229c415a"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.5.annual",
+      "apple_id": "6819915834",
+      "price_cents": 11900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod76dec5f096",
+      "revenuecat_package_id": "pkgef38939b7c0"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.10.monthly",
+      "apple_id": "6819915731",
+      "price_cents": 2690,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod02fe4b2894",
+      "revenuecat_package_id": "pkge9cd4943132"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.10.annual",
+      "apple_id": "6819915843",
+      "price_cents": 26900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodfc46752548",
+      "revenuecat_package_id": "pkge267e939ff4"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.20.monthly",
+      "apple_id": "6819915737",
+      "price_cents": 4190,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod537586f52f",
+      "revenuecat_package_id": "pkge309313fb00"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.20.annual",
+      "apple_id": "6819915798",
+      "price_cents": 41900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodc58f045e67",
+      "revenuecat_package_id": "pkge628fb6a75c"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.40.monthly",
+      "apple_id": "6819915756",
+      "price_cents": 5990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "proded3efc3439",
+      "revenuecat_package_id": "pkged3495ff87c"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.40.annual",
+      "apple_id": "6819915955",
+      "price_cents": 59900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod61a875cd1a",
+      "revenuecat_package_id": "pkgeb44da8aeca"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.50.monthly",
+      "apple_id": "6819915856",
+      "price_cents": 8990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "proda89d625a04",
+      "revenuecat_package_id": "pkgeb473d32801"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.50.annual",
+      "apple_id": "6819916100",
+      "price_cents": 89900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod64a6a8c14f",
+      "revenuecat_package_id": "pkgef3c004293e"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.75.monthly",
+      "apple_id": "6819915763",
+      "price_cents": 17490,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod05cde4f72d",
+      "revenuecat_package_id": "pkged8cce5e34f"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.75.annual",
+      "apple_id": "6819916106",
+      "price_cents": 174900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod37b41efc6c",
+      "revenuecat_package_id": "pkge8f68b580ec"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.100.monthly",
+      "apple_id": "6819915903",
+      "price_cents": 25990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod6e674975de",
+      "revenuecat_package_id": "pkge84a2258b30"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.100.annual",
+      "apple_id": "6819916032",
+      "price_cents": 259900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod2025157ba4",
+      "revenuecat_package_id": "pkge2338ef3293"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.150.monthly",
+      "apple_id": "6819916005",
+      "price_cents": 43990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod0f963787e7",
+      "revenuecat_package_id": "pkge9ad1706afc"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.150.annual",
+      "apple_id": "6819916135",
+      "price_cents": 439900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod4e4a16280b",
+      "revenuecat_package_id": "pkge481a64d136"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.200.monthly",
+      "apple_id": "6819915916",
+      "price_cents": 60990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod08adaaad09",
+      "revenuecat_package_id": "pkgea22a720b5d"
+    },
+    {
+      "product_id": "com.maislouvor.app.asafe.200.annual",
+      "apple_id": "6819916119",
+      "price_cents": 609900,
+      "ios_enabled": false,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod2660d4fc86",
+      "revenuecat_package_id": null
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.5.monthly",
+      "apple_id": "6819916168",
+      "price_cents": 2690,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod5c2a6fed08",
+      "revenuecat_package_id": "pkge39a19f7a04"
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.5.annual",
+      "apple_id": "6819916098",
+      "price_cents": 26900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prode3e39ac493",
+      "revenuecat_package_id": "pkge100b4d163c"
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.10.monthly",
+      "apple_id": "6819916314",
+      "price_cents": 4190,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodbb17f4995c",
+      "revenuecat_package_id": "pkge5f0273e69a"
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.10.annual",
+      "apple_id": "6819916179",
+      "price_cents": 41900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodbaa11b529f",
+      "revenuecat_package_id": "pkgea5fe0c673e"
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.20.monthly",
+      "apple_id": "6819916208",
+      "price_cents": 6190,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod4dea81b7f8",
+      "revenuecat_package_id": "pkge045fb3cbdd"
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.20.annual",
+      "apple_id": "6819916230",
+      "price_cents": 61900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod9673729b69",
+      "revenuecat_package_id": "pkge3574f9b307"
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.40.monthly",
+      "apple_id": "6819916348",
+      "price_cents": 8990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prode0603d011a",
+      "revenuecat_package_id": "pkge7d8d4dd5ae"
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.40.annual",
+      "apple_id": "6819916323",
+      "price_cents": 89900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodf2b2ce3634",
+      "revenuecat_package_id": "pkge60a1882538"
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.50.monthly",
+      "apple_id": "6819916326",
+      "price_cents": 12490,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod6ea2a8098b",
+      "revenuecat_package_id": "pkge4e9ed43854"
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.50.annual",
+      "apple_id": "6819916430",
+      "price_cents": 124900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod3b69bcac0f",
+      "revenuecat_package_id": "pkge36047da3c5"
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.75.monthly",
+      "apple_id": "6819916377",
+      "price_cents": 26990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod4752d3bfa3",
+      "revenuecat_package_id": "pkgef034fbe9b5"
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.75.annual",
+      "apple_id": "6819916359",
+      "price_cents": 269900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod6c80f6bfdc",
+      "revenuecat_package_id": "pkgefa735a3821"
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.100.monthly",
+      "apple_id": "6819916380",
+      "price_cents": 40990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod5aac1259bc",
+      "revenuecat_package_id": "pkge8ab788f6fd"
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.100.annual",
+      "apple_id": "6819916408",
+      "price_cents": 409900,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodcb674e2d3d",
+      "revenuecat_package_id": "pkgeb932d332c0"
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.150.monthly",
+      "apple_id": "6819916522",
+      "price_cents": 69990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prodf5f28e1a9f",
+      "revenuecat_package_id": "pkge9060b525ea"
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.150.annual",
+      "apple_id": "6819916472",
+      "price_cents": 699900,
+      "ios_enabled": false,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod364241e3f2",
+      "revenuecat_package_id": null
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.200.monthly",
+      "apple_id": "6819916510",
+      "price_cents": 97990,
+      "ios_enabled": true,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "prod1627429370",
+      "revenuecat_package_id": "pkge75742369db"
+    },
+    {
+      "product_id": "com.maislouvor.app.completo.200.annual",
+      "apple_id": "6819916413",
+      "price_cents": 979900,
+      "ios_enabled": false,
+      "state": "MISSING_METADATA",
+      "revenuecat_product_id": "proddd43cfa209",
+      "revenuecat_package_id": null
+    }
+  ]
+}

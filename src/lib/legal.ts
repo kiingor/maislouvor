@@ -68,12 +68,12 @@ export const MIN_AGE = 13;
 
 // Rótulos de telas citados nos documentos (mudou a tela? ajuste aqui).
 /** Aba do app com os ajustes pessoais (barra de abas e menu lateral: "Usuário"). */
-export const MY_SETTINGS_IN_APP = "Usuário › Meu usuário";
+export const MY_SETTINGS_IN_APP = "Usuário › Perfil";
 /** Ajustes da equipe, só para líderes (Usuário › Equipe). */
 export const TEAM_SETTINGS_IN_APP = "Usuário › Equipe";
 /** Onde fica a exclusão de conta no app (DeleteAccountSection). */
 export const DELETE_ACCOUNT_IN_APP = `${MY_SETTINGS_IN_APP} › Excluir minha conta`;
-/** Âncora da seção de exclusão em Usuário › Meu usuário (DeleteAccountSection). */
+/** Âncora da seção de exclusão em Usuário › Perfil (DeleteAccountSection). */
 export const DELETE_ACCOUNT_ANCHOR = "excluir-conta";
 /**
  * A seção de exclusão dentro do app. A página pública /excluir-conta leva para
@@ -81,7 +81,7 @@ export const DELETE_ACCOUNT_ANCHOR = "excluir-conta";
  * este endereço: ninguém precisa aceitar os termos para excluir a conta.
  */
 export const DELETE_ACCOUNT_SETTINGS_PATH = `/app/settings#${DELETE_ACCOUNT_ANCHOR}`;
-/** Interruptor do Asafe em Usuário › Meu usuário (AssistantSettings). */
+/** Interruptor do Asafe em Usuário › Perfil (AssistantSettings). */
 export const ASAFE_ALLOW_LABEL = "Permitir que o Asafe use meus dados";
 
 /* Asafe (assistente no WhatsApp): o que os documentos e o aviso de IA do app

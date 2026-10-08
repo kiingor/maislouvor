@@ -33,3 +33,10 @@ __pycache__/
 .env
 .env.*
 tmp/
+
+# Capacitor-generated Android web bundle and local build outputs.
+android/app/src/main/assets/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties

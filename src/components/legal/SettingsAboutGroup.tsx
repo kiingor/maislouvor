@@ -56,7 +56,7 @@ function useAppVersion(): string {
   return version;
 }
 
-/** Grupo "Sobre" no fim de Usuário › Meu usuário: documentos, suporte, exclusão e versão. */
+/** Grupo "Sobre" no fim de Usuário › Perfil: documentos, suporte, exclusão e versão. */
 export function SettingsAboutGroup() {
   const version = useAppVersion();
   return (

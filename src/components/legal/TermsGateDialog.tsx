@@ -28,7 +28,7 @@ const LINK = "font-semibold text-primary underline underline-offset-[3px]";
 
 /**
  * Pedido de aceite que não se fecha (sem Esc, sem tocar fora): a pessoa aceita,
- * sai da conta ou vai excluí-la (a seção de exclusão em Usuário › Meu usuário
+ * sai da conta ou vai excluí-la (a seção de exclusão em Usuário › Perfil
  * fica fora do bloqueio). Os links abrem os documentos — páginas públicas, fora
  * do bloqueio — e Voltar traz de volta para cá.
  */

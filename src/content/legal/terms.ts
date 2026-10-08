@@ -174,10 +174,11 @@ export const termsOfUse: LegalDocumentContent = {
       id: "planos",
       title: "Planos e pagamentos",
       blocks: [
-        `Hoje o ${APP_NAME} oferece uso gratuito. No futuro, poderemos oferecer planos pagos ou recursos adicionais; preço, período, recursos e forma de cobrança serão informados com clareza antes de qualquer contratação.`,
+        `O ${APP_NAME} oferece o plano gratuito Essencial para novas equipes com até 5 integrantes, incluindo o responsável, e planos pagos para ampliar esse limite. Equipes com condições anteriores ilimitadas mantêm essas condições. Preço, período, capacidade e forma de cobrança aparecem antes da contratação.`,
         [
-          "Compras feitas pela App Store ou pelo Google Play são processadas pela Apple ou pelo Google e seguem os termos da respectiva loja.",
-          "Assinaturas renovam automaticamente ao fim de cada período, a menos que você cancele com antecedência nas configurações da sua conta na loja (na App Store, até 24 horas antes da renovação). Desinstalar o app não cancela a assinatura.",
+          "Na versão web, o pagamento é processado pela Stripe. A RevenueCat verifica o estado das assinaturas para liberar o plano da equipe. Gerencie compras feitas na web em Usuário › Assinatura.",
+          "Quando disponíveis no app nativo, compras feitas pela App Store ou pelo Google Play são processadas pela Apple ou pelo Google e seguem os termos da respectiva loja.",
+          "Assinaturas renovam automaticamente ao fim de cada período, salvo cancelamento conforme as condições apresentadas na contratação. Cancele no canal em que contratou: pelo gerenciamento da assinatura para compras na web ou nas configurações da Apple ou do Google para compras na loja. Desinstalar o app ou excluir a conta não cancela a assinatura.",
           "Reembolsos de compras feitas nas lojas são pedidos à própria loja, sem prejuízo dos seus direitos pelo Código de Defesa do Consumidor.",
         ],
       ],

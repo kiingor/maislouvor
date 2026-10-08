@@ -40,7 +40,7 @@ function Card({ icon: Icon, title, children }: { icon: LucideIcon; title: string
 
 /**
  * Página pública (sem login) sobre a exclusão de conta — exigida pelo Google Play e
- * útil para a App Store. Também abre dentro do app nativo (Usuário › Meu usuário › Como
+ * útil para a App Store. Também abre dentro do app nativo (Usuário › Perfil › Como
  * funciona, e o rodapé das páginas legais): por isso usa a mesma moldura das páginas
  * legais, com "Voltar" (no iOS não há botão voltar do sistema) e o rodapé com os documentos.
  */
@@ -146,8 +146,8 @@ export default function DeleteAccountInfo() {
 
           <p role="note" className="flex gap-2 rounded-card bg-card p-4 text-footnote text-muted-foreground">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-ios-orange" aria-hidden="true" />
-            Assinaturas feitas pela App Store ou Google Play precisam ser canceladas na loja. Excluir a conta não
-            cancela a cobrança da loja.
+            Excluir a conta não cancela cobranças. Cancele compras da App Store ou Google Play na respectiva loja.
+            Para compras na web, acesse Usuário › Assinatura e gerencie o cancelamento antes de excluir a conta.
           </p>
         </div>
 

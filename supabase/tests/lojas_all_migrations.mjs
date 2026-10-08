@@ -24,6 +24,10 @@ const STORE_MIGRATIONS = [
   '20261003131000_terms_acceptance.sql',
   '20261003132000_chat_moderation.sql',
   '20261003133000_assistant_ai_consent.sql',
+  '20261007120000_strict_assistant_consent.sql',
+  '20261007121000_apple_auth_tokens.sql',
+  '20261007122000_account_deletion_recovery.sql',
+  '20261007123000_content_reports_and_provenance.sql',
   '20261007124000_legal_versions.sql',
 ];
 
@@ -182,7 +186,7 @@ try {
     'transferência do dono: permissões de produção');
   check(await guardSnapshot(), productionGuard, 'depois da conformidade, tudo da 0 igual (definição, dono, permissões, gatilhos)');
   // Deploy repetido: as da conformidade de novo, na mesma ordem (a 0, já em produção, não é reaplicada).
-  for (const name of later.filter((n) => n !== GUARD_MIGRATION)) await db.exec(await migration(name));
+  for (const name of STORE_MIGRATIONS) await db.exec(await migration(name));
   check(await guardSnapshot(), productionGuard, 'reaplicar a conformidade também não mexe na 0');
   check(await rows(`SELECT count(*)::int AS n FROM public.assistant_ai_legacy_members`), [{ n: 3 }],
     'tolerância do Asafe: foto única dos membros da equipe T');
