@@ -1,3 +1,5 @@
+import { NATIVE_AUTH_CALLBACK } from "@/lib/nativeAuth";
+import { getNativeGoogleOAuth } from "@/lib/nativeGoogleOAuth";
 import { useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Loader2 } from "lucide-react";
@@ -42,37 +44,27 @@ export function GoogleButton({ label = "Continuar com Google", onStart }: {
   const [loading, setLoading] = useState(false);
 
   const handle = async () => {
+    if (loading) return;
     setLoading(true);
-    onStart?.();
-
-    // App nativo (Capacitor): abre o Google numa aba do navegador (Custom Tab) e
-    // volta pelo deep link com.maislouvor.app://auth/callback (tratado no NativeAuthHandler).
-    if (Capacitor.isNativePlatform()) {
-      const { data, error } = await supabase.auth.signInWithOAuth({
+    try {
+      onStart?.();
+      const native = Capacitor.isNativePlatform();
+      const auth = native ? getNativeGoogleOAuth() : supabase.auth;
+      const { data, error } = await auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: "com.maislouvor.app://auth/callback", skipBrowserRedirect: true },
+        options: {
+          redirectTo: native ? NATIVE_AUTH_CALLBACK : `${window.location.origin}/auth/callback`,
+          skipBrowserRedirect: native,
+        },
       });
-      if (error || !data?.url) {
-        toast({ title: "Erro ao entrar com Google", description: error?.message, variant: "destructive" });
-        setLoading(false);
-        return;
+      if (error || !data?.url) throw error ?? new Error("Login indisponível");
+      if (native) {
+        const { Browser } = await import("@capacitor/browser");
+        await Browser.open({ url: data.url });
       }
-      const { Browser } = await import("@capacitor/browser");
-      await Browser.open({ url: data.url });
-      setLoading(false);
-      return;
-    }
-
-    // Web/PWA: redireciona pro Google e volta em /auth/callback.
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
-    });
-    if (error) {
-      toast({ title: "Erro ao entrar com Google", description: error.message, variant: "destructive" });
-      setLoading(false);
-    }
-    // Em caso de sucesso a página redireciona pro Google — não precisa resetar o loading.
+    } catch {
+      toast({ title: "Erro ao entrar com Google", description: "Não foi possível abrir o login. Tente novamente.", variant: "destructive" });
+    } finally { setLoading(false); }
   };
 
   return (

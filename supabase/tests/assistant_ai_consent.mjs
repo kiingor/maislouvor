@@ -440,10 +440,11 @@ try {
     return { outcomes, replies: sent.slice(before).map((s) => s.text), ai: aiRequests.length - asked };
   };
 
+  await call(ana.user, 'give_assistant_consent', ['team_activation', teamA, VERSION]);
   // A pendente (Ana ainda não confirmou de novo) continua respondendo. O grupo, ativado
   // antes do aviso, recebe uma vez a linha da OpenAI junto com a primeira resposta.
   let r = await deliver(mention(groupA, wa.bruno, 'qual minha escala?'));
-  check([r.outcomes, r.ai], [['answered:no_tools'], 1], 'pendente responde com a IA');
+  check([r.outcomes, r.ai], [['answered:no_tools'], 1], 'equipe autorizada responde com a IA');
   check(r.replies[0], `ok 🎺\n\n${AI_DISCLOSURE_LINE}`, 'linha de transparência na primeira resposta depois do deploy');
   check((await one(`SELECT body FROM public.assistant_messages WHERE direction = 'out' ORDER BY seq DESC LIMIT 1`)).body, 'ok 🎺',
     'a linha não entra no histórico da conversa');
@@ -485,6 +486,7 @@ try {
 
   // Prazo vencido: a equipe pendente não chama a IA e pede a confirmação do líder; quem não
   // permitiu e só tinha a tolerância passa a ser desconhecido.
+  await sql(`UPDATE public.assistant_ai_consents SET revoked_at=now() WHERE team_id=$1 AND scope='team_activation'`, [teamA]);
   await sql(`UPDATE public.assistant_config SET ai_consent_required_from = now() - interval '1 minute'`);
   r = await deliver(mention(groupA, wa.ana, 'quem toca domingo?'));
   check([r.outcomes, r.ai], [['replied:sender_unknown'], 0], 'tolerância vencida: desconhecido, sem IA');

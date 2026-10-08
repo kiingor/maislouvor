@@ -1,0 +1,19 @@
+{
+  "name": "+Louvor",
+  "locale": "pt-BR",
+  "bundleId": "com.maislouvor.app",
+  "appleId": "6819834048",
+  "teamId": "U9PP989T5D",
+  "sku": "MAISLOUVOR-IOS-001",
+  "marketingVersion": "1.0.0",
+  "buildNumber": "1",
+  "releaseMode": "MANUAL",
+  "internalTestGroup": "Teste iPhone",
+  "description": "O +Louvor ajuda sua equipe de louvor a organizar cultos e se preparar para os ensaios em um só lugar.\n\n• Organize repertórios, músicas, letras e cifras.\n• Planeje cultos, escalas e a disponibilidade dos integrantes.\n• Ensaie com áudios, faixas separadas e trechos em repetição.\n• Converse com sua equipe e acompanhe os avisos pelo aplicativo.\n• Compartilhe repertórios e a programação dos cultos por link.\n\nCrie uma conta ou entre na equipe do seu ministério. Os recursos disponíveis para cada integrante dependem das permissões definidas pela liderança.\n\nEnvie somente músicas e arquivos que você tenha autorização para utilizar.\n\nTermos de Uso: https://maislouvor.com/termos\nPolítica de Privacidade: https://maislouvor.com/privacidade",
+  "promotionalText": "Organize os repertórios, as escalas e os ensaios da sua equipe de louvor. Letras, cifras, áudios e comunicação em um só lugar.",
+  "keywords": "louvor,igreja,repertório,escala,cifras,ensaio,música,ministério,culto",
+  "marketingUrl": "https://maislouvor.com",
+  "plannedPrivacyUrl": "https://maislouvor.com/privacidade",
+  "plannedTermsUrl": "https://maislouvor.com/termos",
+  "plannedSupportUrl": "https://maislouvor.com/suporte"
+}

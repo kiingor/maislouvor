@@ -196,6 +196,7 @@ export type Database = {
       }
       messages: {
         Row: {
+          channel_id: string | null
           content: string
           created_at: string
           culto_id: string | null
@@ -204,6 +205,7 @@ export type Database = {
           team_id: string
         }
         Insert: {
+          channel_id?: string | null
           content: string
           created_at?: string
           culto_id?: string | null
@@ -212,6 +214,7 @@ export type Database = {
           team_id: string
         }
         Update: {
+          channel_id?: string | null
           content?: string
           created_at?: string
           culto_id?: string | null
@@ -546,6 +549,7 @@ export type Database = {
       }
       songs: {
         Row: {
+          duration_seconds: number | null
           artist: string | null
           audio_path: string | null
           cifra_text: string | null
@@ -569,6 +573,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          duration_seconds?: number | null
           artist?: string | null
           audio_path?: string | null
           cifra_text?: string | null
@@ -592,6 +597,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          duration_seconds?: number | null
           artist?: string | null
           audio_path?: string | null
           cifra_text?: string | null
@@ -665,6 +671,58 @@ export type Database = {
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_join_requests: {
+        Row: {
+          id: string
+          team_id: string
+          profile_id: string
+          status: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+        }
+        Insert: {
+          id?: string
+          team_id: string
+          profile_id: string
+          status?: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+        }
+        Update: {
+          id?: string
+          team_id?: string
+          profile_id?: string
+          status?: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_join_requests_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_join_requests_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_join_requests_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]

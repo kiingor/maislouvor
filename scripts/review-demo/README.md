@@ -3,7 +3,7 @@
 Script que cria (e recria) as contas usadas por quem revisa o app na App Store
 (Diretriz 2.1, "Sign-in required") e no Google Play ("App access"). O revisor
 entra como **líder** de uma equipe fictícia já populada, sem nenhum dado real e
-com o Asafe desligado.
+com o Asafe disponível para ativação manual, sem grupo conectado e sem avisos automáticos.
 
 São **duas contas independentes, uma por loja**. Apple e Google costumam revisar
 ao mesmo tempo, e as notas convidam o revisor a testar a exclusão de conta: com uma
@@ -26,7 +26,7 @@ Cada equipe recebe o mesmo conteúdo:
 | --- | --- |
 | Líder | "Líder Demonstração" · admin e dono da equipe · senha aleatória (uma por loja) |
 | Membros | Ana, Bruno, Carla e Davi Exemplo · Ana é editora, os outros são membros (viewer) · **sem senha** (não fazem login), sem telefone, sem push, sem WhatsApp |
-| Asafe | Não ativado (sem grupo), suspenso na equipe (`assistant_team_settings.enabled = false`) e com os avisos automáticos desligados |
+| Asafe | Disponível para ativação manual (`assistant_team_settings.enabled = true`), sem grupo conectado e com os avisos automáticos desligados |
 | Músicas | 5 originais da "Equipe Demonstração" (letra, cifra e guia de áudio sintetizado, escritos para esta demonstração) + **Baby Bird (demo)**, multitrack de Admiral Bob (CC BY 3.0) com 5 faixas no mixer. Todas com os seis campos do cadastro (nome, artista, tom, tema, cifra e áudio), então aparecem no catálogo |
 | Repertório | "Repertório da Demonstração" com as 6 músicas |
 | Cultos | Dois domingos futuros (o primeiro a pelo menos 3 dias da execução), com roteiro, escala (confirmados e pendentes), tom por culto, vozes e uma observação |
@@ -54,7 +54,7 @@ Rode o script **depois** de publicar no banco de produção:
 1. As migrações das quais as linhas dependem (além do schema de 27/09):
    - `20260927120000_song_loop_notes.sql` (anotação dos loops);
    - `20260928120000_whatsapp_assistant.sql` e
-     `20260929120000_assistant_notifications.sql` (Asafe suspenso e avisos desligados);
+     `20260929120000_assistant_notifications.sql` (Asafe disponível, sem grupo e com avisos desligados);
    - `20260930200000_song_registration_catalog.sql` (cadastro de músicas:
      `is_draft`, `recording_source_url`, `audio_revision`, `draft_repertorio_ids`).
 2. As entregas de conformidade das lojas (exclusão de conta, páginas legais e
@@ -187,5 +187,10 @@ a do Google —, com o console capturado para garantir que as senhas e a chave n
 aparecem. O segundo roda o mesmo fluxo contra o schema de produção em memória
 (PGlite), já com as migrações da conformidade (`20261003*`): preflight recusando
 o schema sem o cadastro de músicas, FKs, CHECKs, catálogo (`search_song_catalog`),
-Asafe suspenso, a exclusão como o revisor faz (transferir para a Ana e excluir
+Asafe disponível sem grupo, a exclusão como o revisor faz (transferir para a Ana e excluir
 pela RPC) e reset sem tocar em dados de outras pessoas nem da outra loja.
+
+
+### Atualização da conformidade (07/10/2026)
+
+A demo não suspende mais o Asafe na equipe: o revisor pode abrir o aviso, consentir e gerar o código pelo fluxo real. O seed não registra consentimento por ele, não conecta grupos e não envia mensagens. Para demonstrar o WhatsApp de ponta a ponta, ainda são necessários um grupo de teste controlado e a configuração real do bot; isso deve constar nas notas de revisão. Antes de executar o seed, aplique também as migrações de conformidade de 07/10 e configure os provedores. O roteiro completo está em `docs/lojas/correcoes-conformidade-20261007.md`.

@@ -1,3 +1,4 @@
+import { ContentReportsPanel } from "@/components/moderation/ContentReportsPanel";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
@@ -46,6 +47,7 @@ export default function AdminReports() {
       <AdminMetric label="Em aberto" value={data.pending_total} icon={<Flag size={16} />} detail="Abertas ou em análise" accent />
       <AdminMetric label="Prazo vencido" value={data.overdue_total} icon={<Clock3 size={16} />} detail="Em aberto há mais de 24 horas" />
     </div>}
+    <ContentReportsPanel />
     <AdminPanel>
       <div className="admin-filterbar">
         <SearchField value={search} onChange={(value) => { setSearch(value); setPage(1); }} placeholder="Equipe, pessoa ou texto da mensagem" label="Buscar denúncias" />

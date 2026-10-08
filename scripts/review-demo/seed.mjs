@@ -359,7 +359,7 @@ export async function applyDemo({ store, account, now, uuid, password, log, save
   }
   const profiles = await resolveProfiles(store, userIds, account);
 
-  log.info(`2/5 Equipe "${account.teamName}" (Asafe desligado)`);
+  log.info(`2/5 Equipe "${account.teamName}" (Asafe disponível, sem grupo conectado)`);
   const teamId = uuid();
   const { team, members, assistant } = buildTeam({ teamId, profiles, account });
   await store.insert('teams', [team]);
@@ -460,7 +460,7 @@ export async function describePlan({ now, credentialsPath, stores = STORE_KEYS }
   }
   add();
   add('Conteúdo de cada equipe');
-  add('  Asafe: não ativado (sem grupo); assistente suspenso nesta equipe e avisos automáticos desligados');
+  add('  Asafe: disponível para ativação manual com consentimento; sem grupo conectado e avisos automáticos desligados');
   add(`  Músicas (${table.songs.length}), todas com os seis campos do cadastro (nome, artista, tom, tema, cifra e áudio)`);
   for (const song of table.songs) {
     const tracks = table.song_tracks.filter((track) => track.song_id === song.id);

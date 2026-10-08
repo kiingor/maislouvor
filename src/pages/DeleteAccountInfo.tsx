@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Clock, Mail, Smartphone, Trash2, Users, AlertTriangle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
@@ -45,6 +45,18 @@ function Card({ icon: Icon, title, children }: { icon: LucideIcon; title: string
  * legais, com "Voltar" (no iOS não há botão voltar do sistema) e o rodapé com os documentos.
  */
 export default function DeleteAccountInfo() {
+  const [params] = useSearchParams();
+  if (params.get("concluida") === "apple") return (
+    <LegalPageLayout title="Conta excluída">
+      <div className="mx-auto max-w-md space-y-5 py-8">
+        <h1 className="text-title1">Conta excluída</h1>
+        <p>Seus dados do +Louvor foram apagados. Como seu login Apple era anterior à integração de revogação, falta encerrar essa autorização nos ajustes da Apple.</p>
+        <p>No iPhone, abra Ajustes › seu nome › Iniciar Sessão com a Apple › +Louvor e toque em Apagar.</p>
+        <a href="https://support.apple.com/pt-br/102571" target="_blank" rel="noopener noreferrer" className="block text-primary underline">Ver instruções da Apple</a>
+        <Link className="block text-primary" to="/login">Voltar ao início</Link>
+      </div>
+    </LegalPageLayout>
+  );
   return (
     <LegalPageLayout title="Excluir conta">
       <div className="mx-auto w-full max-w-md pt-4 animate-in-up">

@@ -231,12 +231,12 @@ try {
   const [teamRow] = await sql('SELECT t.name, t.join_code IS NOT NULL AS code, u.email FROM public.teams t JOIN public.profiles p ON p.id = t.owner_id JOIN auth.users u ON u.id = p.user_id WHERE t.id = $1', [team]);
   eq(teamRow, { name: DEMO_TEAM_NAME, code: true, email: LEADER.email });
 
-  // Asafe: sem grupo, equipe suspensa, avisos desligados e nada na fila.
+  // Asafe: disponível para ativação manual, sem grupo, avisos desligados e nada na fila.
   const [leaderUser] = await sql('SELECT id::text FROM auth.users WHERE email = $1', [LEADER.email]);
   const [anaUser] = await sql('SELECT id::text FROM auth.users WHERE email = $1', [MEMBERS[0].email]);
   const overview = await withRole(db, 'authenticated', leaderUser.id, async (tx) =>
     (await tx.query('SELECT public.assistant_team_overview($1) AS r', [team])).rows[0].r);
-  eq([overview.team_enabled, overview.groups], [false, []]);
+  eq([overview.team_enabled, overview.groups], [true, []]);
   eq(Object.values((await sql('SELECT public.assistant_notice_options($1) AS r', [team]))[0].r), [false, false, false, false, false]);
   eq((await sql('SELECT count(*)::int AS n FROM public.assistant_outbox WHERE team_id = $1', [team]))[0].n, 0);
   eq((await sql('SELECT count(*)::int AS n FROM public.assistant_wa_identities'))[0].n, 0);
@@ -287,7 +287,8 @@ try {
 
   // Apagar o dono direto falha: teams.owner_id é RESTRICT desde a exclusão de conta
   // (antes, apagava a equipe inteira). Por isso o reset apaga a equipe antes das contas.
-  await assert.rejects(sql('DELETE FROM auth.users WHERE email = $1', [LEADER.email]), (error) => error.code === '23503'); checks++;
+  await assert.rejects(sql('DELETE FROM auth.users WHERE email = $1', [LEADER.email]), (error) => ['23503','23001'].includes(error.code) && /teams_owner_id_fkey/.test(error.message)); checks++;
+  eq((await sql('SELECT count(*)::int AS n FROM auth.users WHERE email=$1',[LEADER.email]))[0].n,1,'recusa mantém a conta');
 
   // O revisor exclui a conta pelo app, como as notas de revisão pedem: passa a equipe
   // para a Ana (transfer_team_ownership) e exclui (delete_account_data + GoTrue). A

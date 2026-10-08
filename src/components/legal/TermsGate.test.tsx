@@ -32,7 +32,7 @@ const PENDING_KEY = "louvor-legal-pending-acceptance";
 const session = (metadata: Record<string, unknown> = {}, createdAt = new Date().toISOString()) => ({
   user: { id: USER, user_metadata: metadata, created_at: createdAt },
 });
-const current = { terms_version: TERMS_VERSION, privacy_version: PRIVACY_VERSION, terms_accepted_at: "2026-10-03T12:00:00Z" };
+const current = { terms_version: TERMS_VERSION, privacy_version: PRIVACY_VERSION, terms_accepted_at: "2026-10-07T12:00:00Z" };
 const outdated = { terms_version: null, privacy_version: null, terms_accepted_at: null };
 
 function profileReturns(result: { data: unknown; error: unknown }) {

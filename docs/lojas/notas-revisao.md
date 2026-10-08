@@ -109,12 +109,14 @@ Conferir com a política em `/privacidade` antes de enviar.
   conta e token de push do aparelho.
 - **Finalidade:** funcionalidade do app e gestão da conta. Sem publicidade, sem
   rastreamento entre apps/sites (Apple: "Data Not Used to Track You").
-- **Compartilhamento com terceiros:** provedores de IA contratados (recursos de IA
-  do app, como transposição e sugestões); OpenAI (EUA) para o Asafe, só quando o
-  líder ativa (com o aceite dele) e, para os dados de cada pessoa, só com a
-  permissão dela (opt-in; quem já usava fica reconhecido até decidir, no máximo até o
-  prazo; quem não permite aparece sem nome nas escalas que vão à IA); WhatsApp (Meta)
-  para o Asafe; Google, se a pessoa entrar com Google.
+- **Compartilhamento com terceiros:** OpenAI (EUA) para o Asafe, somente com
+  o aceite atual do líder e a permissão atual de cada pessoa para seus dados.
+  A versão candidata exige esse aceite também de quem já usava o assistente.
+  WhatsApp (Meta) para o Asafe; Google e Apple quando a pessoa escolhe esses logins.
+  A separação de faixas usa infraestrutura operada pelo +Louvor; a transposição
+  das cifras ocorre no aparelho. Sugestões de IA e importação do Moises foram
+  removidas. A atualização do consentimento do Asafe ainda precisa ser publicada
+  junto com a interface e os documentos definitivos.
 - **Dados sensíveis (Apple: "Sensitive Info"; Play: "Crenças religiosas ou
   filosóficas"):** participar de uma equipe de louvor e as escalas de culto podem
   revelar convicção religiosa (LGPD, art. 5º, II). **Decisão pendente com o
@@ -134,7 +136,7 @@ Conferir com a política em `/privacidade` antes de enviar.
   `npm run build:store` (`VITE_STORE_BUILD=1`, `src/lib/storeBuild.ts`): o revisor vê
   "Cole o link da gravação…" e o player oficial em "Conferir versão", mas nenhum botão,
   dica, aba ou "Tentar novamente" que peça ao servidor para baixar do YouTube; o áudio
-  entra por arquivo da própria pessoa ou pelo Moises. O site e o APK de `/baixar`
+  entra por arquivo da própria pessoa. O site e o APK de `/baixar`
   (`npm run build`) continuam com a importação. Nunca por plataforma em tempo de
   execução nem por chave remota (`Capacitor.isNativePlatform()` também tiraria do APK
   de `/baixar`; chave remota que esconde só do revisor viola a Apple 2.3.1). Áudio

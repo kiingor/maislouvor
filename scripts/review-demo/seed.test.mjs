@@ -177,12 +177,12 @@ describe('dados fictícios', () => {
     }
   });
 
-  test('Asafe desligado e membros com papéis da equipe', () => {
+  test('Asafe disponível sem grupo e membros com papéis da equipe', () => {
     const { team, refs } = plan();
     assert.equal(team.team.name, APPLE.teamName);
     assert.equal(plan(NOW, GOOGLE).team.team.name, GOOGLE.teamName);
     assert.equal(team.team.owner_id, refs.profiles.leader);
-    assert.equal(team.assistant.enabled, false);
+    assert.equal(team.assistant.enabled, true);
     assert.ok(Object.values(team.assistant.notification_settings).every((value) => value === false));
     assert.deepEqual(team.members.map((m) => m.role), PEOPLE.map((p) => p.role));
   });
@@ -484,7 +484,7 @@ describe('CLI', () => {
     assert.equal(store.rows('team_members').length, PEOPLE.length);
     const leaderProfile = store.rows('profiles').find((p) => p.user_id === store.db.users[0].id).id;
     assert.deepEqual(store.rows('team_members').find((m) => m.profile_id === leaderProfile).instruments, LEADER.instruments);
-    assert.equal(store.rows('assistant_team_settings')[0].enabled, false);
+    assert.equal(store.rows('assistant_team_settings')[0].enabled, true);
     assert.equal(store.rows('songs').length, 6);
     assert.equal(store.rows('song_tracks').length, 5);
     assert.equal(store.rows('messages').length, 11);

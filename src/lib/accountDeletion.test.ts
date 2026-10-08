@@ -93,6 +93,20 @@ describe("delete-account flow", () => {
     expect(d.deleteAuthUser).toHaveBeenCalledWith("user-1");
   });
 
+  it("keeps account data intact when Apple revocation fails", async () => {
+    const { deps: d } = deps({ revokeProvider: vi.fn().mockRejectedValue(new Error("apple offline")) });
+    const outcome = await runAccountDeletion("user-1", d);
+    expect(outcome).toMatchObject({ status: 502, body: { error: "provider_revocation_failed" } });
+    expect(d.deleteData).not.toHaveBeenCalled();
+    expect(d.deleteAuthUser).not.toHaveBeenCalled();
+  });
+  it("revokes Apple before deleting data and finishes the authenticated session last", async () => {
+    const { deps: d, calls } = deps({ revokeProvider: vi.fn(async () => { calls.push("apple"); }) });
+    await runAccountDeletion("user-1", d);
+    expect(calls.slice(0,3)).toEqual(["preview", "apple", "db"]);
+    expect(calls.at(-1)).toBe("auth");
+  });
+
   it("never touches files when the database part fails", async () => {
     const { deps: d, calls } = deps({ deleteData: vi.fn(async () => { calls.push("db"); throw { code: "23503", message: "fk" }; }) });
     const outcome = await runAccountDeletion("user-1", d);
@@ -123,7 +137,7 @@ describe("delete-account flow", () => {
         { team_id: "j", team_name: "Jovens", action: "support_required" },
       ],
     });
-    expect(BLOCKED_MESSAGE).toMatch(/fale com o suporte/);
+    expect(BLOCKED_MESSAGE).toMatch(/escolha quem assume/);
     expect(calls).toEqual([]);
     expect(d.deleteData).not.toHaveBeenCalled();
     expect(d.removeStorage).not.toHaveBeenCalled();
@@ -249,7 +263,7 @@ describe("accountDeletion client helpers", () => {
 
   it("sends only the confirmation to the edge function", async () => {
     mocks.invoke.mockResolvedValue({ data: { ok: true, already_deleted: false, deleted_team_ids: ["c"] }, error: null });
-    await expect(requestAccountDeletion("EXCLUIR")).resolves.toEqual({ alreadyDeleted: false, deletedTeamIds: ["c"] });
+    await expect(requestAccountDeletion("EXCLUIR")).resolves.toEqual({ appleManualRevoke: false, alreadyDeleted: false, deletedTeamIds: ["c"] });
     expect(mocks.invoke).toHaveBeenCalledWith("delete-account", { body: { confirmation: "EXCLUIR" } });
   });
 

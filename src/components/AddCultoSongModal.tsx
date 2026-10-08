@@ -5,8 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Music, Search, Check, Loader2, Sparkles, ChevronLeft } from "lucide-react";
+import { Music, Search, Check, Loader2 } from "lucide-react";
 
 interface Props {
   open: boolean;
@@ -17,26 +16,8 @@ interface Props {
 // Lista agrupada dentro da folha (protótipo `.group`).
 // Na folha, --card já vira branco (claro) / #2C2C2E (escuro) — ver ui/dialog.tsx.
 const group = "overflow-hidden rounded-card bg-card";
-const row = "relative flex min-h-[48px] items-center gap-3 px-4";
-const rowSeparator = "before:absolute before:top-0 before:right-0 before:left-4 before:border-t before:border-border";
 // Separador recuado até o texto (16 + ícone 30 + 12).
 const iconRowSeparator = "before:absolute before:top-0 before:right-0 before:left-[58px] before:border-t before:border-border";
-const fieldInput = "min-w-0 flex-1 bg-transparent py-3 text-body text-foreground placeholder:text-label-tertiary focus-visible:outline-none";
-// Foco de teclado nas linhas com campo de texto: anel interno na linha inteira (o contorno global
-// de :focus-visible seria cortado pelo overflow do grupo). Some no toque, como a regra global (.pointer-mode).
-const keyboardFocusRow =
-  "[html:not(.pointer-mode)_&:focus-within]:ring-[3px] [html:not(.pointer-mode)_&:focus-within]:ring-inset [html:not(.pointer-mode)_&:focus-within]:ring-ios-blue";
-
-
-interface AISuggestion {
-  songId: string;
-  title: string;
-  artist: string | null;
-  key: string | null;
-  theme: string | null;
-  tags: string[] | null;
-  reason: string;
-}
 
 export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
   const { currentTeam } = useTeam();
@@ -44,15 +25,6 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState<string | null>(null);
-
-  // AI mode states
-  const [showAI, setShowAI] = useState(false);
-  const [liturgy, setLiturgy] = useState("");
-  const [songCount, setSongCount] = useState(5);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [suggestions, setSuggestions] = useState<AISuggestion[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [addingBulk, setAddingBulk] = useState(false);
 
   // Fetch only songs that are in a repertório of this team
   const { data: allSongs = [], isLoading } = useQuery({
@@ -80,7 +52,7 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
       // Fetch the actual songs
       const { data: songs } = await supabase
         .from("songs")
-        .select("id, title, artist, key_current, cover_path, tags, theme, lyrics_text")
+        .select("id, title, artist, key_current, cover_path, tags, theme")
         .in("id", uniqueSongIds)
         .order("title");
       return songs ?? [];
@@ -134,359 +106,98 @@ export function AddCultoSongModal({ open, onOpenChange, cultoId }: Props) {
     setAdding(null);
   };
 
-  const generateSuggestions = async () => {
-    if (!liturgy.trim()) {
-      toast({ title: "Informe a liturgia do culto", variant: "destructive" });
-      return;
-    }
-    if (allSongs.length === 0) {
-      toast({ title: "Nenhuma música no repertório", variant: "destructive" });
-      return;
-    }
-
-    setAiLoading(true);
-    setSuggestions([]);
-    setSelected(new Set());
-
-    try {
-      const songsPayload = allSongs.map((s: any) => ({
-        id: s.id,
-        title: s.title,
-        artist: s.artist,
-        key: s.key_current,
-        theme: s.theme,
-        tags: s.tags,
-        lyrics: s.lyrics_text || "",
-      }));
-
-      const { data, error } = await supabase.functions.invoke("suggest-culto-songs", {
-        body: { liturgy, songCount, songs: songsPayload },
-      });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      const results: AISuggestion[] = data.suggestions || [];
-      setSuggestions(results);
-      // Pré-seleciona só as que ainda não estão no culto (evita duplicar sem querer).
-      // As já adicionadas continuam marcáveis manualmente para repetir na sequência.
-      setSelected(new Set(results.filter((s) => !existingSongs.includes(s.songId)).map((s) => s.songId)));
-      if (results.length === 0) {
-        toast({ title: "Nenhuma música encontrada", description: "Não há músicas no repertório que se encaixem nesse tema.", variant: "destructive" });
-      }
-    } catch (err: any) {
-      console.error("AI suggestion error:", err);
-      toast({ title: "Erro ao gerar sugestões", description: err.message, variant: "destructive" });
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  const toggleSelect = (songId: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(songId)) next.delete(songId);
-      else next.add(songId);
-      return next;
-    });
-  };
-
-  const addSelectedSongs = async () => {
-    const toAdd = suggestions.filter((s) => selected.has(s.songId));
-    if (toAdd.length === 0) {
-      toast({ title: "Nenhuma música selecionada" });
-      return;
-    }
-
-    setAddingBulk(true);
-    const { data: maxOrder } = await supabase
-      .from("culto_songs")
-      .select("sort_order")
-      .eq("culto_id", cultoId)
-      .order("sort_order", { ascending: false })
-      .limit(1)
-      .single();
-
-    let nextOrder = (maxOrder?.sort_order ?? -1) + 1;
-
-    const inserts = toAdd.map((s) => ({
-      culto_id: cultoId,
-      song_id: s.songId,
-      sort_order: nextOrder++,
-    }));
-
-    const { error } = await supabase.from("culto_songs").insert(inserts);
-
-    if (error) {
-      toast({ title: "Erro ao adicionar", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: `${toAdd.length} música(s) adicionada(s)!` });
-      qc.invalidateQueries({ queryKey: ["culto-songs", cultoId] });
-      qc.invalidateQueries({ queryKey: ["culto-song-ids", cultoId] });
-      setShowAI(false);
-      setSuggestions([]);
-    }
-    setAddingBulk(false);
-  };
-
-  const resetAI = () => {
-    setShowAI(false);
-    setSuggestions([]);
-    setSelected(new Set());
-    setLiturgy("");
-    setSongCount(5);
-  };
-
   const chip = "inline-flex max-w-full items-center truncate rounded-full bg-fill-tertiary px-2 py-0.5 text-caption1 text-muted-foreground";
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetAI(); }}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{showAI ? "Ajuda com IA" : "Adicionar música ao culto"}</DialogTitle>
+          <DialogTitle>Adicionar música ao culto</DialogTitle>
         </DialogHeader>
 
-        {!showAI ? (
-          <>
-            {/* Search + AI button */}
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search
-                  className="pointer-events-none absolute left-3 top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-muted-foreground"
-                  strokeWidth={2.25}
-                  aria-hidden="true"
-                />
-                <input
-                  type="search"
-                  placeholder="Buscar música..."
-                  aria-label="Buscar música"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="h-10 w-full rounded-full bg-fill-tertiary pl-9 pr-4 text-body text-foreground placeholder:text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ios-blue/40"
-                />
-              </div>
-              <Button
-                variant="outline"
-                // 40px visíveis (alinhado à busca), alvo de toque de 44pt (::before).
-                className="h-10 shrink-0 gap-1.5 px-4 text-subhead before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2"
-                onClick={() => setShowAI(true)}
-              >
-                <Sparkles aria-hidden="true" />
-                IA
-              </Button>
-            </div>
-
-            {/* Song list */}
-            <div className="min-h-0 flex-1 overflow-y-auto max-h-[55vh] rounded-card">
-              {isLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Carregando" />
-                </div>
-              ) : filtered.length === 0 ? (
-                <div className={`${group} flex flex-col items-center gap-2 px-6 py-8 text-center`}>
-                  <Music className="h-7 w-7 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
-                  <p className="text-body text-muted-foreground">
-                    {search ? "Nenhuma música encontrada." : "Nenhuma música no repertório geral."}
-                  </p>
-                </div>
-              ) : (
-                <ul className={group}>
-                  {filtered.map((song: any, i: number) => {
-                    const isAdded = existingSongs.includes(song.id);
-                    return (
-                      <li key={song.id} className={`relative flex min-h-[60px] items-center gap-3 px-4 py-2.5 ${i > 0 ? iconRowSeparator : ""}`}>
-                        <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] bg-fill-tertiary" aria-hidden="true">
-                          <Music className="h-4 w-4 text-muted-foreground" strokeWidth={2.25} />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-body text-foreground">{song.title}</p>
-                          {song.artist && <p className="truncate text-footnote text-muted-foreground">{song.artist}</p>}
-                          {(song.key_current || song.theme || (song.tags && song.tags.length > 0) || isAdded) && (
-                            <div className="mt-1 flex flex-wrap items-center gap-1">
-                              {song.key_current && <span className={`${chip} font-semibold text-foreground`}>{song.key_current}</span>}
-                              {song.theme && <span className={chip}>{song.theme}</span>}
-                              {song.tags?.map((tag: string, i: number) => (
-                                <span key={i} className={chip}>{tag}</span>
-                              ))}
-                              {isAdded && (
-                                <span
-                                  className="inline-flex items-center gap-0.5 text-caption1 text-muted-foreground"
-                                  title="Já está no roteiro — adicione de novo para repetir na sequência"
-                                >
-                                  <Check className="h-3 w-3 text-ios-green" strokeWidth={2.5} aria-hidden="true" /> no culto
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        <Button
-                          size="sm"
-                          variant={isAdded ? "secondary" : "outline"}
-                          className="shrink-0"
-                          disabled={adding === song.id}
-                          onClick={() => addSong(song.id)}
-                        >
-                          {adding === song.id ? (
-                            <Loader2 className="animate-spin" aria-label="Adicionando" />
-                          ) : isAdded ? (
-                            "Repetir"
-                          ) : (
-                            "Adicionar"
-                          )}
-                        </Button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          </>
-        ) : (
-          /* AI Mode */
-          <div className="flex min-h-0 flex-1 flex-col gap-4">
-            <button
-              type="button"
-              onClick={resetAI}
-              className="-my-2 -ml-1.5 inline-flex min-h-[44px] items-center gap-0.5 self-start rounded-[10px] px-1.5 text-subhead font-medium text-primary transition-opacity active:opacity-60"
-            >
-              <ChevronLeft className="h-[18px] w-[18px]" strokeWidth={2.5} aria-hidden="true" /> Voltar
-            </button>
-            {suggestions.length === 0 ? (
-              /* Input form */
-              <div className="space-y-4">
-                <div className={group}>
-                  <div className={`${row} ${keyboardFocusRow}`}>
-                    <label htmlFor="ai-liturgy" className="w-24 shrink-0 text-body text-foreground">Liturgia</label>
-                    <input
-                      id="ai-liturgy"
-                      placeholder="Ex: Adoração e Gratidão, Natal, Santa Ceia..."
-                      value={liturgy}
-                      onChange={(e) => setLiturgy(e.target.value)}
-                      className={fieldInput}
-                    />
-                  </div>
-                  <div className={`${row} ${rowSeparator} justify-between`}>
-                    <label htmlFor="ai-count" className="text-body text-foreground">Quantidade de músicas</label>
-                    <input
-                      id="ai-count"
-                      type="number"
-                      inputMode="numeric"
-                      min={1}
-                      max={20}
-                      value={songCount}
-                      onChange={(e) => setSongCount(parseInt(e.target.value) || 1)}
-                      className="h-9 w-[64px] rounded-[8px] border-0 bg-fill-tertiary px-2.5 text-right text-body tabular-nums text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ios-blue/40"
-                    />
-                  </div>
-                </div>
-                <Button
-                  className="w-full gap-2"
-                  onClick={generateSuggestions}
-                  disabled={aiLoading || !liturgy.trim()}
-                >
-                  {aiLoading ? (
-                    <>
-                      <Loader2 className="animate-spin" aria-hidden="true" />
-                      Analisando músicas...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles aria-hidden="true" />
-                      Gerar sugestões
-                    </>
-                  )}
-                </Button>
-                {aiLoading && (
-                  <p className="text-center text-footnote text-muted-foreground">
-                    A IA está analisando {allSongs.length} músicas do seu repertório...
-                  </p>
-                )}
-              </div>
-            ) : (
-              /* Results */
-              <>
-                <div className="flex items-center justify-between gap-3 px-1">
-                  <p className="text-footnote text-muted-foreground">
-                    {suggestions.length} sugestão(ões) • {selected.size} selecionada(s)
-                  </p>
-                  <button
-                    type="button"
-                    className="-my-2.5 -mr-1.5 inline-flex min-h-[44px] items-center rounded-[10px] px-1.5 text-subhead font-medium text-primary transition-opacity active:opacity-60"
-                    onClick={() => {
-                      if (selected.size === suggestions.length) {
-                        setSelected(new Set());
-                      } else {
-                        setSelected(new Set(suggestions.map((s) => s.songId)));
-                      }
-                    }}
-                  >
-                    {selected.size === suggestions.length ? "Desmarcar todas" : "Selecionar todas"}
-                  </button>
-                </div>
-
-                <ul className={`${group} min-h-0 flex-1 overflow-y-auto max-h-[45vh]`}>
-                  {suggestions.map((s, idx) => {
-                    const isAdded = existingSongs.includes(s.songId);
-                    const checkboxId = `ai-suggestion-${s.songId}`;
-                    return (
-                      <li key={s.songId} className={`relative flex items-start gap-3 px-4 py-3 ${idx > 0 ? rowSeparator : ""}`}>
-                        <div className="flex items-center gap-2 pt-0.5">
-                          <span className="w-4 text-right text-footnote font-semibold tabular-nums text-muted-foreground">
-                            {idx + 1}
-                          </span>
-                          <Checkbox
-                            id={checkboxId}
-                            checked={selected.has(s.songId)}
-                            onCheckedChange={() => toggleSelect(s.songId)}
-                          />
-                        </div>
-                        <label htmlFor={checkboxId} className="min-w-0 flex-1 cursor-pointer">
-                          <span className="block truncate text-body text-foreground">{s.title}</span>
-                          {s.artist && (
-                            <span className="block truncate text-footnote text-muted-foreground">{s.artist}</span>
-                          )}
-                          <span className="mt-1 block text-footnote text-foreground line-clamp-2">{s.reason}</span>
-                          {(s.key || s.theme) && (
-                            <span className="mt-1 flex flex-wrap gap-1">
-                              {s.key && <span className={`${chip} font-semibold text-foreground`}>{s.key}</span>}
-                              {s.theme && <span className={chip}>{s.theme}</span>}
-                            </span>
-                          )}
-                          {isAdded && (
-                            <span className="mt-1 flex items-center gap-1 text-caption1 text-muted-foreground">
-                              <Check className="h-3 w-3 text-ios-green" strokeWidth={2.5} aria-hidden="true" /> Já no culto — marque para repetir
-                            </span>
-                          )}
-                        </label>
-                      </li>
-                    );
-                  })}
-                </ul>
-
-                <div className="flex gap-2">
-                  <Button
-                    variant="secondary"
-                    className="flex-1"
-                    onClick={() => { setSuggestions([]); setSelected(new Set()); }}
-                  >
-                    Refazer
-                  </Button>
-                  <Button
-                    className="flex-1 gap-2"
-                    onClick={addSelectedSongs}
-                    disabled={addingBulk || selected.size === 0}
-                  >
-                    {addingBulk ? (
-                      <Loader2 className="animate-spin" aria-label="Adicionando" />
-                    ) : (
-                      <>Adicionar {selected.size}</>
-                    )}
-                  </Button>
-                </div>
-              </>
-            )}
+        {/* Busca no repertório da equipe */}
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-muted-foreground"
+              strokeWidth={2.25}
+              aria-hidden="true"
+            />
+            <input
+              type="search"
+              placeholder="Buscar música..."
+              aria-label="Buscar música"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-10 w-full rounded-full bg-fill-tertiary pl-9 pr-4 text-body text-foreground placeholder:text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ios-blue/40"
+            />
           </div>
-        )}
+        </div>
+
+        {/* Song list */}
+        <div className="min-h-0 flex-1 overflow-y-auto max-h-[55vh] rounded-card">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Carregando" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className={`${group} flex flex-col items-center gap-2 px-6 py-8 text-center`}>
+              <Music className="h-7 w-7 text-label-tertiary" strokeWidth={2} aria-hidden="true" />
+              <p className="text-body text-muted-foreground">
+                {search ? "Nenhuma música encontrada." : "Nenhuma música no repertório geral."}
+              </p>
+            </div>
+          ) : (
+            <ul className={group}>
+              {filtered.map((song: any, i: number) => {
+                const isAdded = existingSongs.includes(song.id);
+                return (
+                  <li key={song.id} className={`relative flex min-h-[60px] items-center gap-3 px-4 py-2.5 ${i > 0 ? iconRowSeparator : ""}`}>
+                    <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] bg-fill-tertiary" aria-hidden="true">
+                      <Music className="h-4 w-4 text-muted-foreground" strokeWidth={2.25} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-body text-foreground">{song.title}</p>
+                      {song.artist && <p className="truncate text-footnote text-muted-foreground">{song.artist}</p>}
+                      {(song.key_current || song.theme || (song.tags && song.tags.length > 0) || isAdded) && (
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          {song.key_current && <span className={`${chip} font-semibold text-foreground`}>{song.key_current}</span>}
+                          {song.theme && <span className={chip}>{song.theme}</span>}
+                          {song.tags?.map((tag: string, i: number) => (
+                            <span key={i} className={chip}>{tag}</span>
+                          ))}
+                          {isAdded && (
+                            <span
+                              className="inline-flex items-center gap-0.5 text-caption1 text-muted-foreground"
+                              title="Já está no roteiro — adicione de novo para repetir na sequência"
+                            >
+                              <Check className="h-3 w-3 text-ios-green" strokeWidth={2.5} aria-hidden="true" /> no culto
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant={isAdded ? "secondary" : "outline"}
+                      className="shrink-0"
+                      disabled={adding === song.id}
+                      onClick={() => addSong(song.id)}
+                    >
+                      {adding === song.id ? (
+                        <Loader2 className="animate-spin" aria-label="Adicionando" />
+                      ) : isAdded ? (
+                        "Repetir"
+                      ) : (
+                        "Adicionar"
+                      )}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

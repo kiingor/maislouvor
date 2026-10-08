@@ -5,6 +5,7 @@
 // Passos e respostas: ver flow.ts. Repetir a chamada é inofensivo: depois que a
 // conta some, a sessão antiga recebe { ok: true, already_deleted: true } (só
 // quando a Admin API confirma que o usuário não existe; sessão revogada = 401).
+import { decryptAppleToken, revokeAppleToken } from "../_shared/appleTokens.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   DELETE_CONFIRMATION,
@@ -56,6 +57,14 @@ Deno.serve(async (req) => {
 
     let body: unknown = null;
     try { body = await req.json(); } catch { /* corpo vazio ou inválido */ }
+    const resolution = body as { action?: unknown; teamId?: unknown; newOwner?: unknown } | null;
+    if (resolution?.action === "resolve_team") {
+      const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (typeof resolution.teamId !== "string" || typeof resolution.newOwner !== "string" || !uuid.test(resolution.teamId) || !uuid.test(resolution.newOwner)) return json({ ok: false }, 400);
+      const { error } = await admin.rpc("account_deletion_recover_team", { p_user_id: user.id, p_team_id: resolution.teamId, p_new_owner: resolution.newOwner });
+      if (error) return json({ ok: false, message: "A equipe mudou ou você não pode transferi-la. Atualize a tela." }, 409);
+      return json({ ok: true });
+    }
     if (!isDeletionConfirmed(body)) {
       return json({ ok: false, error: "confirmation_required", message: `Digite ${DELETE_CONFIRMATION} para confirmar.` }, 400);
     }
@@ -66,8 +75,23 @@ Deno.serve(async (req) => {
       return data as T;
     };
 
+    let appleManualRevoke = false;
     const outcome = await runAccountDeletion(user.id, {
       preview: () => rpc<DeletionPreview>("account_deletion_preview_for"),
+      revokeProvider: async () => {
+        const { data: saved, error } = await admin.from("apple_auth_tokens").select("encrypted,revoked_at").eq("user_id", user.id).maybeSingle();
+        if (error) throw new Error("apple_token_read_failed");
+        if (saved) {
+          if (!saved.revoked_at) {
+            await revokeAppleToken(await decryptAppleToken(saved.encrypted, user.id));
+            const { error: marked } = await admin.from("apple_auth_tokens").update({ revoked_at: new Date().toISOString() }).eq("user_id", user.id);
+            if (marked) throw new Error("apple_token_cleanup_failed");
+          }
+        } else {
+          // TN3194: a ausência de tokens antigos nunca impede apagar a conta.
+          appleManualRevoke = (user.identities ?? []).some((identity) => identity.provider === "apple");
+        }
+      },
       deleteData: () => rpc<DeleteDataResult>("delete_account_data"),
       removeStorage: async (bucket, paths) => {
         const { error } = await admin.storage.from(bucket).remove(paths);
@@ -83,7 +107,7 @@ Deno.serve(async (req) => {
       // Sem dados pessoais no log: só o passo e a mensagem técnica.
       log: (step, error) => console.error(`delete-account: ${step} failed`, (error as Error)?.message ?? error),
     });
-    return json(outcome.body, outcome.status);
+    return json({ ...outcome.body, ...(outcome.status === 200 ? { apple_manual_revoke: appleManualRevoke } : {}) }, outcome.status);
   } catch (error) {
     console.error("delete-account failed", (error as Error)?.message ?? error);
     return json({ ok: false, error: "unexpected", message: "Não foi possível excluir sua conta agora. Tente novamente." }, 500);

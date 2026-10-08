@@ -105,15 +105,15 @@ describe("aviso de IA", () => {
     expect(text).not.toContain("continua reconhecendo");
   });
 
-  it("tells a grandfathered person exactly what keeps happening until they decide", () => {
+  it("requires consent even for a grandfathered person", () => {
     render(
       <AssistantAiConsentDialog open variant="member-notice" legacy graceUntil="2026-11-02T15:00:00Z"
         onAccept={vi.fn()} onDecline={vi.fn()} onClose={vi.fn()} />,
     );
     const text = screen.getByRole("dialog", { name: "O Asafe usa IA da OpenAI" }).textContent ?? "";
-    expect(text).toContain("ele já reconhece você pelo telefone do cadastro");
-    expect(text).toContain("Até você decidir, o Asafe continua reconhecendo você pelo telefone do cadastro, como já fazia (até 02/11/2026)");
-    expect(text).toContain("Se não permitir, ele deixa de reconhecer você");
+    expect(text).toContain("Ele só reconhece você no grupo se você permitir");
+    expect(text).not.toContain("Até você decidir, o Asafe continua");
+    expect(text).toContain("Sem isso, o Asafe não reconhece você");
   });
 
   it("tells leaders that each person still chooses for their own data", () => {
@@ -221,7 +221,7 @@ describe("MyAssistantSettings com o aviso de IA", () => {
     expect(toggle).not.toBeChecked();
     expect(screen.getByText("Falta autorizar")).toBeInTheDocument();
     expect(screen.getByText(/Não autorizado\. O Asafe só reconhece você no grupo depois que você permitir/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Não permitir" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Não permitir" })).toBeInTheDocument();
 
     fireEvent.click(toggle);
     const dialog = await screen.findByRole("dialog", { name: "Permitir que o Asafe use seus dados?" });
@@ -242,8 +242,8 @@ describe("MyAssistantSettings com o aviso de IA", () => {
 
     const toggle = await screen.findByRole("switch", { name: "Permitir que o Asafe use meus dados" });
     expect(toggle).not.toBeChecked();
-    expect(screen.getByText("Falta decidir")).toBeInTheDocument();
-    expect(screen.getByText(/Você ainda não decidiu.*ainda reconhece você pelo telefone até 02\/11\/2026/)).toBeInTheDocument();
+    expect(screen.getByText("Falta autorizar")).toBeInTheDocument();
+    expect(screen.getByText(/Não autorizado/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Não permitir" }));
     const confirm = await screen.findByRole("alertdialog", { name: "Não permitir o uso dos seus dados?" });
@@ -387,7 +387,7 @@ describe("AssistantConsentGate", () => {
     });
     renderWithQuery(<AssistantConsentGate />);
     const dialog = await screen.findByRole("dialog", { name: "O Asafe usa IA da OpenAI" });
-    expect(dialog.textContent).toContain("ele já reconhece você pelo telefone do cadastro");
+    expect(dialog.textContent).toContain("Ele só reconhece você no grupo se você permitir");
     fireEvent.click(within(dialog).getByRole("button", { name: "Não permitir" }));
     const confirm = await screen.findByRole("alertdialog", { name: "Não permitir o uso dos seus dados?" });
     expect(mocks.rpc).not.toHaveBeenCalledWith("revoke_assistant_consent", expect.anything());

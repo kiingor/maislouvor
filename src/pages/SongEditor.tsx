@@ -1,3 +1,5 @@
+import { ReportContentButton } from "@/components/moderation/ReportContentButton";
+import { SongProvenance } from "@/components/moderation/SongProvenance";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -396,11 +398,6 @@ export default function SongEditor({
   const [tomDelta, setTomDelta] = useState(0);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  // Moises import modal
-  const [showMoisesModal, setShowMoisesModal] = useState(false);
-  const [moisesText, setMoisesText] = useState("");
-  const [importingMoises, setImportingMoises] = useState(false);
-
   // Hydrate the form ONCE per song id. Re-running this on every `song` refetch
   // would clobber the user's unsaved edits and just-uploaded cover/audio.
   const hydratedFor = useRef<string | null>(null);
@@ -744,55 +741,6 @@ export default function SongEditor({
     setTomDelta(0);
   };
 
-  const handleImportMoises = async () => {
-    const trimmed = moisesText.trim();
-    if (!trimmed) return;
-
-    if (/^https?:\/\/\S+$/i.test(trimmed)) {
-      toast({
-        title: "Cole o conteúdo completo",
-        description:
-          "O link sozinho do Moises pode importar música errada. Abra o link, copie tudo (Ctrl+A / Ctrl+C) e cole aqui.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setImportingMoises(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("import-moises", {
-        body: { text: trimmed },
-      });
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || "Erro desconhecido");
-
-      const d = data.data;
-      if (d.title && !title.trim()) setTitle(d.title);
-      if (d.artist && !artist.trim()) setArtist(d.artist);
-      if (d.key_original) {
-        setKeyOriginal(d.key_original);
-        if (!keyCurrent) setKeyCurrent(d.key_original);
-      }
-      if (d.cifra_text) setCifraText(d.cifra_text);
-      if (d.lyrics_text) setLyricsText(d.lyrics_text);
-
-      toast({
-        title: "Dados importados do Moises!",
-        description: "Revise e salve a música.",
-      });
-      setShowMoisesModal(false);
-      setMoisesText("");
-    } catch (e: any) {
-      toast({
-        title: "Erro ao importar",
-        description: e.message,
-        variant: "destructive",
-      });
-    } finally {
-      setImportingMoises(false);
-    }
-  };
-
   // YouTube embed helper
   const youtubeId = mediaUrl.match(/(?:youtu\.be\/|v=)([\w-]{11})/)?.[1];
 
@@ -995,6 +943,7 @@ export default function SongEditor({
       </div>
     );
   return (
+    <>
     <div
       className={cn(
         "flex min-h-0 flex-col",
@@ -1642,16 +1591,6 @@ export default function SongEditor({
                         id={ids.content}
                         title="Cifra e letra"
                         qualifier="Conteúdo completo para a equipe ensaiar"
-                        action={
-                          !readOnly && (
-                            <Button
-                              variant="ghost"
-                              onClick={() => setShowMoisesModal(true)}
-                            >
-                              Importar do Moises
-                            </Button>
-                          )
-                        }
                       />
                       <Tabs defaultValue="cifra" className="w-full">
                         <TabsList className="w-full">
@@ -2207,27 +2146,7 @@ export default function SongEditor({
           )}
         </DialogContent>
       </Dialog>
-      <Dialog open={showMoisesModal} onOpenChange={setShowMoisesModal}>
-        <DialogContent>
-          <DialogTitle>Importar do Moises</DialogTitle>
-          <DialogDescription>
-            Cole o texto completo da cifra ou dos acordes exportados. Um link
-            sozinho não contém a cifra.
-          </DialogDescription>
-          <textarea
-            className="min-h-56 w-full rounded-[11px] border border-separator bg-background p-3 text-sm"
-            aria-label="Texto exportado do Moises"
-            value={moisesText}
-            onChange={(e) => setMoisesText(e.target.value)}
-          />
-          <Button
-            disabled={importingMoises || !moisesText.trim()}
-            onClick={() => void handleImportMoises()}
-          >
-            {importingMoises ? "Importando…" : "Importar e conferir"}
-          </Button>
-        </DialogContent>
-      </Dialog>
+      <div className="space-y-2 px-4 pb-4"><SongProvenance songId={song.id} readOnly={readOnly} /><ReportContentButton songId={song.id} /></div>
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -2253,5 +2172,6 @@ export default function SongEditor({
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </>
   );
 }

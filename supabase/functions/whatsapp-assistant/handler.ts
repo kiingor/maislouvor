@@ -248,12 +248,13 @@ export function createHandler(deps: HandlerDeps) {
    * Texto citado de outra pessoa só vai para a IA se o autor for um membro desta
    * equipe que permite o uso dos dados (20261003133000). @lid sem vínculo: o
    * telefone vem da lista do grupo. Na dúvida (erro na consulta), não vai.
-   * Banco sem a migração (group.ai_consent ausente): sem consentimento algum, vale o de antes.
+   * Banco sem a migração: o fluxo bloqueia a IA antes de chegar aqui.
    */
   async function quoteShareable(group: GroupContext, msg: InboundMessage): Promise<boolean> {
     const author = msg.quotedParticipant;
     if (!author) return false;
-    if (group.ai_consent === undefined || msg.senderIds.includes(author)) return true;
+    if (group.ai_consent !== "granted") return false;
+    if (msg.senderIds.includes(author)) return true;
     try {
       const ids = new Set([author]);
       if (author.endsWith("@lid")) {
@@ -501,7 +502,7 @@ export function createHandler(deps: HandlerDeps) {
       return await notify(msg, `deactivate:${senderKey}`, 10, DEACTIVATE_FORBIDDEN_MESSAGE, "deactivate_forbidden");
     }
 
-    if (group.ai_consent === "blocked") {
+    if (group.ai_consent !== "granted") {
       return await notify(msg, `consent:${msg.chatJid}`, 6 * 60, consentRequiredMessage(name), "ai_consent_required");
     }
 

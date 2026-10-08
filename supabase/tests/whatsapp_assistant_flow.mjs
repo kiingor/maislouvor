@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 // Assistente no WhatsApp de ponta a ponta: o handler real da edge function
 // contra o banco (PGlite com a migração), com WhatsApp e OpenAI simulados.
 //   PGLITE_MODULE=/caminho/@electric-sql/pglite/dist/index.js node supabase/tests/whatsapp_assistant_flow.mjs
@@ -104,6 +105,11 @@ const linkCode = async (uid) => (await asUser(uid, (tx) => tx.query('SELECT publ
 const activationCode = async () => (await asUser(users.ana, (tx) => tx.query(`SELECT public.assistant_create_activation_code($1) AS r`, [team]))).rows[0].r.code;
 
 try {
+  for (const name of ['20260929120000_assistant_notifications.sql','20260930120000_assistant_missions.sql','20261003133000_assistant_ai_consent.sql','20261007120000_strict_assistant_consent.sql']) {
+    await db.exec(await readFile(new URL(`../migrations/${name}`,import.meta.url),'utf8'));
+  }
+  for (const uid of Object.values(users)) await asUser(uid,tx => tx.query("select public.give_assistant_consent('member_link',null,'2026-10-03')"));
+  await asUser(users.ana,tx => tx.query("select public.give_assistant_consent('team_activation',$1,'2026-10-03')",[team]));
   // 1) Conversa normal do grupo: ignorada, sem gravar nada.
   let r = await deliver(groupMessage(wa.bruno, 'Pessoal, alguém leva o cabo P10?'));
   check([r.outcomes, r.replies], [['ignored:not_addressed'], []], 'sem menção');
@@ -141,6 +147,16 @@ try {
   check(r.outcomes, ['answered:minha_escala']);
   check(await botIds(), [BOT_PN, BOT_LID], '@lid do assistente confirmado pela lista do grupo');
   ok(/^\*Culto da Família\* \(.+\) — Violão, pendente 🎸$/.test(r.replies[0].text), `resposta com dados reais: ${r.replies[0].text}`);
+  // Payload antigo/pendente nunca deve usar a IA, mesmo com remetente conhecido.
+  for (const state of [undefined, 'pending', 'blocked', 'none']) {
+    const before = aiRequests.length;
+    const strictHandle=createHandler({ rpc: async (name,args) => {
+      const result=await rpc(name,args);
+      return name==='assistant_group_context' ? {...result,ai_consent:state} : result;
+    }, whatsapp, ask, now, log:()=>{} });
+    await strictHandle(mentionBot(wa.bruno,'Teste de consentimento'));
+    check(aiRequests.length,before,`sem consentimento ${state}: nenhuma chamada de IA`);
+  }
   let request = aiRequests.at(-1);
   check([request.message, request.history, request.model, request.reasoningEffort],
     ['qual minha escala?', [], 'gpt-6-luna', 'none']);

@@ -1,11 +1,12 @@
-import { useEffect, lazy, Suspense } from "react";
+import { AppleRevocationHandler } from "./components/AppleRevocationHandler";
+import { NativeAuthHandler } from "./components/NativeAuthHandler";
+import { BiometricGate } from "./components/BiometricGate";
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
-import { Capacitor } from "@capacitor/core";
-import { supabase } from "@/integrations/supabase/client";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthGuard } from "./components/AuthGuard";
 import { AppLayout } from "./components/AppLayout";
 import { ResourceGuard } from "./components/ResourceGuard";
@@ -85,40 +86,6 @@ function RouteFallback() {
 
 const queryClient = new QueryClient();
 
-/**
- * No app nativo (Capacitor), o login Google volta por um deep link
- * (com.maislouvor.app://auth/callback#access_token=...). Aqui capturamos esse
- * retorno, gravamos a sessão e seguimos pro app, fechando a aba do navegador.
- */
-function NativeAuthHandler() {
-  const navigate = useNavigate();
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-    let remove: (() => void) | undefined;
-    (async () => {
-      const { App: CapApp } = await import("@capacitor/app");
-      const { Browser } = await import("@capacitor/browser");
-      const handle = await CapApp.addListener("appUrlOpen", async ({ url }) => {
-        if (!url || !url.includes("auth/callback")) return;
-        const frag = url.split("#")[1];
-        if (frag) {
-          const p = new URLSearchParams(frag);
-          const access_token = p.get("access_token");
-          const refresh_token = p.get("refresh_token");
-          if (access_token && refresh_token) {
-            await supabase.auth.setSession({ access_token, refresh_token });
-          }
-        }
-        try { await Browser.close(); } catch { /* ignore */ }
-        navigate("/app/home", { replace: true });
-      });
-      remove = () => handle.remove();
-    })();
-    return () => { if (remove) remove(); };
-  }, [navigate]);
-  return null;
-}
-
 const App = () => {
   // If installed from a playlist, redirect to that playlist on PWA launch.
   // Em WebView com armazenamento bloqueado, localStorage lança em vez de devolver
@@ -138,6 +105,8 @@ const App = () => {
 
   return (
   <QueryClientProvider client={queryClient}>
+    <AppleRevocationHandler />
+    <BiometricGate>
     <PlatformAccessProvider>
     <TooltipProvider>
       <Toaster />
@@ -225,6 +194,7 @@ const App = () => {
       </BrowserRouter>
     </TooltipProvider>
     </PlatformAccessProvider>
+    </BiometricGate>
   </QueryClientProvider>
   );
 };

@@ -292,9 +292,16 @@ function fakeAssistant({ consent, sender = { ok: true, member_id: 'M', profile_i
       messageTimestamp: Math.floor(Date.now() / 1000) } })).map((o) => `${o.action}:${o.detail}`);
   return { ask, calls, replies, asked, logged };
 }
-for (const consent of [undefined, 'granted', 'pending']) {
+for (const consent of ['granted']) {
   const bot = fakeAssistant({ consent });
-  check([await bot.ask('qual minha escala?'), bot.asked.length], [['answered:no_tools'], 1], `aceite ${consent ?? 'ausente (banco anterior)'}: responde`);
+  check([await bot.ask('qual minha escala?'), bot.asked.length], [['answered:no_tools'], 1], `aceite ${consent}: responde`);
+}
+// A revisão de consentimento de 07/10 exige aceite atual também em bancos antigos.
+for (const consent of [undefined, 'pending']) {
+  const bot = fakeAssistant({ consent });
+  check([await bot.ask('qual minha escala?'), bot.asked.length], [['replied:ai_consent_required'], 0],
+    `aceite ${consent ?? 'ausente (banco anterior)'}: aguarda confirmação sem enviar dados`);
+  check(bot.calls.includes('assistant_consume_quota'), false, 'sem aceite não gasta o limite');
 }
 let bot = fakeAssistant({ consent: 'blocked' });
 check([await bot.ask('qual minha escala?'), bot.asked.length], [['replied:ai_consent_required'], 0], 'bloqueada: nada vai para a IA');
@@ -324,11 +331,12 @@ ok(bot.asked[0].message.includes(QUOTE), '@lid resolvido pela lista do grupo');
 bot = fakeAssistant({ consent: 'granted', quoteAuthor: () => { throw new Error('function does not exist'); } });
 check(await bot.ask('e isso?', undefined, { author: '5511912345678@s.whatsapp.net', text: QUOTE }), ['answered:no_tools'], 'falha não derruba a resposta');
 ok(!bot.asked[0].message.includes(QUOTE), 'falha: a citação não vai');
-// Banco sem a migração do aviso (ai_consent ausente): sem consentimento algum, a citação vai como antes.
+// Banco sem a migração do aviso: não há envio da pergunta nem da citação.
 bot = fakeAssistant({});
-await bot.ask('e isso?', undefined, { author: '5511912345678@s.whatsapp.net', text: QUOTE });
-check([bot.asked[0].message.includes(QUOTE), bot.calls.includes('assistant_quote_author_allowed')], [true, false], 'banco anterior: como antes');
-check(bot.logged, [`e isso?${QUOTE_LOG_NOTE}`], 'mas o histórico já não guarda a citação');
+check(await bot.ask('e isso?', undefined, { author: '5511912345678@s.whatsapp.net', text: QUOTE }),
+  ['replied:ai_consent_required'], 'banco anterior: solicita o aceite');
+check([bot.asked.length, bot.calls.includes('assistant_quote_author_allowed'), bot.logged],
+  [0, false, []], 'sem aceite: nenhum envio, consulta de autor ou registro de conversa');
 // Citar a si mesmo ou o próprio assistente não precisa de consulta.
 bot = fakeAssistant({ consent: 'granted' });
 await bot.ask('confere?', undefined, { author: '10002@lid', text: 'Eu levo o violão.' });

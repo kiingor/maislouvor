@@ -26,10 +26,10 @@ beforeEach(() => {
 
 describe("legal constants", () => {
   it("publishes the agreed versions and public paths", () => {
-    expect(TERMS_VERSION).toBe("2026-10-03");
-    expect(PRIVACY_VERSION).toBe("2026-10-03");
+    expect(TERMS_VERSION).toBe("2026-10-07");
+    expect(PRIVACY_VERSION).toBe("2026-10-07");
     expect(LEGAL_PATHS).toEqual({ privacy: "/privacidade", terms: "/termos", support: "/suporte", deleteAccount: "/excluir-conta" });
-    expect(formatLegalDate("2026-10-03")).toBe("3 de outubro de 2026");
+    expect(formatLegalDate("2026-10-07")).toBe("7 de outubro de 2026");
     expect(isLegalPlaceholder("PREENCHER: CNPJ")).toBe(true);
     expect(isLegalPlaceholder("contato@maislouvor.com")).toBe(false);
   });
@@ -152,7 +152,7 @@ describe("legal documents content", () => {
     // Asafe (opt-in por pessoa): só reconhece quem permite, com a tolerância de
     // quem já usava; nomes de quem não permite não vão à OpenAI (escala sem nome).
     expect(privacy).toMatch(/só de quem permite o uso dos próprios dados/);
-    expect(privacy).toMatch(/Quem já usava o Asafe antes do aviso/);
+    expect(privacy).toMatch(/Não existe período de uso sem consentimento/);
     expect(privacy).toMatch(/Nomes de outras pessoas só vão quando elas permitem/);
     expect(privacy).not.toMatch(/seu nome pode ser enviado quando um colega consulta uma escala/);
     // LGPD art. 11: participar de uma equipe de louvor revela convicção religiosa.

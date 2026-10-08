@@ -215,18 +215,21 @@ describe("DeleteAccountSection", () => {
     expect(within(dialog).getByLabelText(/Para confirmar, digite/)).toBeDisabled();
   });
 
-  it("sends an owner without leadership and without other leaders to support", async () => {
+  it("lets a legacy owner recover the team in the app", async () => {
     mocks.rpc.mockResolvedValue({
-      data: preview([team({ role: "viewer", is_owner: true, action: "support_required" })], false), error: null,
+      data: preview([team({ role: "viewer", is_owner: true, action: "support_required", candidates })], false), error: null,
     });
     renderSection();
     const dialog = await open();
 
     const row = (await within(dialog).findByText("Louvor Sede")).closest("li")!;
-    expect(row).toHaveTextContent("Fale com o suporte");
+    expect(row).toHaveTextContent("Escolha quem assume");
     expect(row).toHaveTextContent("a equipe não tem outro líder para assumir");
-    expect(within(row).getByRole("link", { name: "Falar com o suporte" })).toHaveAttribute("href", "/app/sugestoes");
-    expect(within(row).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(row).queryByRole("link", { name: "Falar com o suporte" })).not.toBeInTheDocument();
+    mocks.invoke.mockResolvedValue({ data: { ok: true }, error: null });
+    fireEvent.change(within(row).getByLabelText("Novo dono(a)"), { target: { value: candidates[0].profile_id } });
+    fireEvent.click(within(row).getByRole("button", { name: "Transferir" }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith("delete-account", { body: { action: "resolve_team", teamId: "team-a", newOwner: candidates[0].profile_id } }));
     expect(within(dialog).getByText(/Resolva a equipe indicada acima/)).toBeInTheDocument();
     expect(within(dialog).getByLabelText(/Para confirmar, digite/)).toBeDisabled();
   });

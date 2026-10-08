@@ -299,7 +299,7 @@ export default function CultoDetail() {
 
   // Persiste a ordem do roteiro inteiro (songs + blocks) após uma reordenação.
   const persistRoteiroOrder = async (items: RoteiroItem[]) => {
-    const updates: Promise<any>[] = [];
+    const updates: PromiseLike<unknown>[] = [];
     items.forEach((it, i) => {
       if (it.sort_order === i) return;
       if (it.kind === "song") {

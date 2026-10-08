@@ -20,6 +20,7 @@ import {
   isConfirmationTyped,
   promoteTeamLeader,
   requestAccountDeletion,
+  recoverDeletionTeam,
   TeamOwnershipTransferRefused,
   transferTeamOwnership,
   type DeletionTeam,
@@ -32,9 +33,6 @@ const GROUP_FOOTER = "mx-4 mt-1.5 text-footnote text-muted-foreground";
 
 export const DELETION_PREVIEW_KEY = ["account-deletion-preview"];
 
-/** Sugestões e suporte (tickets): a plataforma passa a equipe quando a pessoa não consegue. */
-const SUPPORT_TICKETS_PATH = "/app/sugestoes";
-
 const ROLE_LABELS = { admin: "Líder", editor: "Editor", viewer: "Membro" } as const;
 
 const STATUS: Record<DeletionTeam["action"], { label: string; icon: LucideIcon; tone: string }> = {
@@ -42,7 +40,7 @@ const STATUS: Record<DeletionTeam["action"], { label: string; icon: LucideIcon; 
   leave: { label: "Você sai da equipe", icon: LogOut, tone: "text-muted-foreground" },
   transfer_required: { label: "Transfira a propriedade", icon: Crown, tone: "text-ios-orange" },
   promote_required: { label: "Escolha um novo líder", icon: UserRoundCheck, tone: "text-ios-orange" },
-  support_required: { label: "Fale com o suporte", icon: LifeBuoy, tone: "text-ios-orange" },
+  support_required: { label: "Escolha quem assume", icon: LifeBuoy, tone: "text-ios-orange" },
 };
 
 const HELP: Record<DeletionTeam["action"], string> = {
@@ -51,7 +49,7 @@ const HELP: Record<DeletionTeam["action"], string> = {
   transfer_required: "Você é dono(a) desta equipe. Escolha quem assume; a pessoa também vira líder.",
   promote_required: "Você é o único líder. Promova alguém para a equipe não ficar sem liderança.",
   support_required:
-    "Você é dono(a) desta equipe, mas não é mais líder dela, e a equipe não tem outro líder para assumir. Peça ao suporte para passar a equipe a outra pessoa; depois, volte aqui.",
+    "Você é dono(a) desta equipe, mas não é mais líder dela, e a equipe não tem outro líder para assumir. Escolha abaixo quem assume a propriedade e a liderança para continuar a exclusão.",
 };
 
 /** Dono que já não é líder só passa a equipe para um líder (o banco não o deixa promover ninguém). */
@@ -66,13 +64,14 @@ function ResolveTeam({ team, onResolved }: { team: DeletionTeam; onResolved: () 
   const selectId = useId();
   const [selected, setSelected] = useState("");
   const [saving, setSaving] = useState(false);
-  const transfer = team.action === "transfer_required";
+  const transfer = team.action === "transfer_required" || team.action === "support_required";
 
   const resolve = async () => {
     if (!selected) return;
     setSaving(true);
     try {
-      if (transfer) await transferTeamOwnership(team.team_id, selected);
+      if (team.action === "support_required") await recoverDeletionTeam(team.team_id, selected);
+      else if (transfer) await transferTeamOwnership(team.team_id, selected);
       else await promoteTeamLeader(team.team_id, selected);
       const name = team.candidates.find((c) => c.profile_id === selected)?.full_name || "A pessoa escolhida";
       toast({
@@ -165,13 +164,13 @@ function DeleteAccountDialog({ open, onOpenChange, returnFocusRef }: {
     setDeleting(true);
     try {
       const { data: session } = await supabase.auth.getSession();
-      await requestAccountDeletion(typed);
+      const result = await requestAccountDeletion(typed);
       clearLocalAccountData(session.session?.user.id);
       // A conta já não existe no servidor: só falta esquecer a sessão neste aparelho.
       await supabase.auth.signOut({ scope: "local" }).catch(() => {});
       qc.clear();
       onOpenChange(false);
-      navigate("/login", { replace: true });
+      navigate(result.appleManualRevoke ? "/excluir-conta?concluida=apple" : "/login", { replace: true });
       toast({ title: "Conta excluída", description: "Seus dados foram apagados. Obrigado por ter usado o +Louvor." });
     } catch (error) {
       if (error instanceof AccountDeletionError && error.code === "blocked") void preview.refetch();
@@ -227,14 +226,10 @@ function DeleteAccountDialog({ open, onOpenChange, returnFocusRef }: {
                           </span>
                         </div>
                         <p className="mt-0.5 text-footnote text-muted-foreground">{helpFor(team)}</p>
-                        {(team.action === "transfer_required" || team.action === "promote_required") && (
+                        {isBlockingAction(team.action) && (
                           <ResolveTeam team={team} onResolved={refreshAfterResolve} />
                         )}
-                        {team.action === "support_required" && (
-                          <Link to={SUPPORT_TICKETS_PATH} className="mt-2 inline-block text-subhead font-medium text-primary">
-                            Falar com o suporte
-                          </Link>
-                        )}
+
                       </li>
                     );
                   })}

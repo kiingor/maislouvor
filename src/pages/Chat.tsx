@@ -213,9 +213,9 @@ export default function Chat() {
       .limit(100);
 
     if (active.kind === "general") {
-      query = query.is("culto_id", null).is("channel_id", null as any);
+      query = query.is("culto_id", null).is("channel_id", null);
     } else if (active.kind === "custom") {
-      query = query.eq("channel_id" as any, active.id);
+      query = query.eq("channel_id", active.id);
     } else {
       query = query.eq("culto_id", active.id);
     }

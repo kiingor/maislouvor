@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { acceptCurrentTerms } from "@/integrations/supabase/legal-client";
 import { useToast } from "@/hooks/use-toast";
 import { InstallPWABanner } from "@/components/InstallPWABanner";
-import { GoogleButton } from "@/components/GoogleButton";
+import { SocialLoginButtons } from "@/components/SocialLoginButtons";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LegalConsentNotice, LegalDocLink, LegalLinksFooter } from "@/components/legal/LegalConsent";
 import {
@@ -200,7 +200,7 @@ export default function SignUp() {
 
         <AuthDivider />
 
-        <GoogleButton label="Criar conta com Google" onStart={rememberPendingAcceptance} />
+        <SocialLoginButtons label="Criar conta com Google" onStart={rememberPendingAcceptance} />
         <LegalConsentNotice lead="Ao continuar com o Google" onOpen={openDocument} className="mt-3" />
 
         <p className="mt-6 text-center text-subhead text-muted-foreground">

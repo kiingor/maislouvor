@@ -5,7 +5,7 @@
    app não importa áudio do YouTube (o servidor baixaria o vídeo: Apple
    5.2.3 e a política de propriedade intelectual do Play recusam). O
    link da gravação e o player oficial do YouTube continuam; o áudio
-   entra pelo arquivo da própria pessoa ou pelo Moises.
+   entra pelo arquivo da própria pessoa.
 
    O site (maislouvor.com) e o APK de /baixar são compilados sem a
    variável e continuam com a importação. Decidido na compilação, nunca

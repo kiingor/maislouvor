@@ -11,7 +11,6 @@ import {
   ASSISTANT_AI_RETENTION,
   assistantAiDataSent,
   consentVersionLabel,
-  graceUntilLabel,
   openPrivacyPolicy,
   privacyPolicyUrl,
 } from "@/lib/assistantAiConsent";
@@ -87,7 +86,7 @@ function Item({ icon: Icon, title, children }: { icon: LucideIcon; title: string
  * opcional e como revogar. O aceite é gravado por quem abre o diálogo.
  */
 export function AssistantAiConsentDialog({
-  open, variant, assistantName = "Asafe", teamName, groups = 0, legacy = false, graceUntil = null, busy = null,
+  open, variant, assistantName = "Asafe", teamName, groups = 0, busy = null,
   onAccept, onDecline, onClose, blocking = variant === "team-confirm",
 }: Props) {
   const name = assistantName;
@@ -106,22 +105,17 @@ export function AssistantAiConsentDialog({
     "member-review": `Privacidade do ${name}`,
   }[variant];
 
-  const until = graceUntilLabel(graceUntil);
   const lead =
     variant === "team-confirm"
       ? `O ${name} já está ativo em ${groups === 1 ? "1 grupo" : `${groups} grupos`} ${teamName ? `da equipe ${teamName}` : "desta equipe"}. Para continuar, confirme que a equipe aceita o uso de IA de terceiros, ou desative o assistente.`
       : variant === "member-notice"
-        ? legacy
-          ? `Sua equipe usa o ${name} no WhatsApp e ele já reconhece você pelo telefone do cadastro. Escolha se ele pode continuar usando os seus dados.`
-          : `Sua equipe usa o ${name} no WhatsApp. Ele só reconhece você no grupo se você permitir o uso dos seus dados.`
+        ? `Sua equipe usa o ${name} no WhatsApp. Ele só reconhece você no grupo se você permitir o uso dos seus dados.`
         : null;
 
   // O que acontece sem o aceite: tem de bater com o que o banco faz (assistant_member_ai_allowed).
   const optional = team
     ? `Sem o ${name}, a equipe usa o +Louvor normalmente. Além do seu aceite como líder, cada pessoa (inclusive você) escolhe em ${MY_SETTINGS_IN_APP} se o ${name} pode usar os dados dela.`
-    : legacy
-      ? `Até você decidir, o ${name} continua reconhecendo você pelo telefone do cadastro, como já fazia${until ? ` (${until})` : ""}. Se não permitir, ele deixa de reconhecer você e seu nome não vai mais para a IA (nas escalas que ele consulta, você aparece sem nome). No app, nada muda: seu nome continua nas escalas da equipe.`
-      : `Sem isso, o ${name} não reconhece você no grupo e seu nome não vai para a IA (nas escalas que ele consulta, você aparece sem nome). No app, nada muda: seu nome continua nas escalas da equipe.`;
+    : `Sem isso, o ${name} não reconhece você no grupo e seu nome não vai para a IA (nas escalas que ele consulta, você aparece sem nome). No app, nada muda: seu nome continua nas escalas da equipe.`;
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next && !blocking && !busy) onClose(); }}>

@@ -1,3 +1,4 @@
+import { ReportContentButton } from "@/components/moderation/ReportContentButton";
 import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Capacitor } from "@capacitor/core";
@@ -43,7 +44,6 @@ import {
   ASSISTANT_CONSENT_PROMPTS_KEY as CONSENT_PROMPTS_KEY,
   consentErrorMessage,
   giveAssistantConsent,
-  graceUntilLabel,
   isConsentRequiredError,
   revokeAssistantConsent,
 } from "@/lib/assistantAiConsent";
@@ -757,17 +757,12 @@ export function MyAssistantSettings() {
   const consent = data.ai_consent;
   const optedOut = consent?.state === "opted_out";
   const granted = consent?.state === "granted";
-  // Reconhecida hoje só pela tolerância de quem já usava: ainda precisa decidir.
-  const legacy = Boolean(consent && !granted && !optedOut && consent.allowed);
-  const until = graceUntilLabel(consent?.grace_until);
 
   const status = optedOut
     ? { label: "Desligado", className: "text-muted-foreground" }
-    : consent && !consent.allowed
+    : consent && !granted
       ? { label: "Falta autorizar", className: "text-ios-orange" }
-      : legacy
-        ? { label: "Falta decidir", className: "text-ios-orange" }
-        : data.linked
+      : data.linked
           ? { label: "Reconhece você", className: "text-ios-green" }
           : data.has_phone
             ? { label: "Pelo seu telefone", className: "text-muted-foreground" }
@@ -779,9 +774,7 @@ export function MyAssistantSettings() {
       ? `Autorizado${consent.accepted_at ? ` em ${fullDate(consent.accepted_at)}` : ""}. A IA da OpenAI responde suas perguntas no grupo.`
       : optedOut
         ? `Desligado: o ${name} não reconhece você nem usa seus dados nas respostas.`
-        : legacy
-          ? `Você ainda não decidiu. Como sua equipe já usava o ${name}, ele ainda reconhece você pelo telefone${until ? ` ${until}` : ""}. Ligue para permitir ou toque em Não permitir.`
-          : `Não autorizado. O ${name} só reconhece você no grupo depois que você permitir.`;
+        : `Não autorizado. O ${name} só reconhece você no grupo depois que você permitir.`;
 
   const refreshStatus = async () => {
     qc.invalidateQueries({ queryKey: CONSENT_PROMPTS_KEY });
@@ -876,7 +869,7 @@ export function MyAssistantSettings() {
           </Row>
         )}
 
-        {legacy && (
+        {consent && !granted && !optedOut && (
           <button type="button" onClick={() => setOptOutOpen(true)} disabled={consentBusy !== null} className={ROW_BUTTON}>
             <IconTile icon={PowerOff} />
             <span className={ROW_BODY}>
@@ -953,12 +946,12 @@ export function MyAssistantSettings() {
         )}
       </p>
 
+      <ReportContentButton />
       {consent && (
         <AssistantAiConsentDialog
           open={consentDialog !== null}
           variant={consentDialog ?? "member-review"}
           assistantName={name}
-          legacy={legacy}
           graceUntil={consent.grace_until ?? null}
           busy={consentBusy}
           onAccept={handleAcceptConsent}

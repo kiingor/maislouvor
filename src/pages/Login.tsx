@@ -4,11 +4,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { InstallPWABanner } from "@/components/InstallPWABanner";
 import { BrandMark } from "@/components/BrandMark";
-import { GoogleButton } from "@/components/GoogleButton";
+import { SocialLoginButtons } from "@/components/SocialLoginButtons";
 import { LegalLinksFooter } from "@/components/legal/LegalConsent";
 import { cn } from "@/lib/utils";
 import { safeAppRedirect } from "@/lib/authRedirect";
-import { Music, ListMusic, Users, Mic2, MonitorSmartphone, Layers, Eye, EyeOff, Loader2 } from "lucide-react";
+import { LoginShowcase } from "@/components/auth/LoginShowcase";
+import "@/styles/login.css";
+import { Music, ListMusic, Users, Mic2, MonitorSmartphone, Layers, Eye, EyeOff, Loader2, ArrowUpRight } from "lucide-react";
 
 /* ------------------------------------------------------------------
    Kit das telas de autenticação (fora do shell do app).
@@ -213,6 +215,7 @@ export function AuthDivider() {
 }
 
 export default function Login() {
+  const [passwordShown, setPasswordShown] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -266,71 +269,60 @@ export default function Login() {
   };
 
   return (
-    <AuthScreen className="lg:flex-row lg:items-center lg:justify-center lg:gap-20">
-      <AuthHero />
-
-      <AuthPanel title="Bem-vindo de volta" subtitle="Entre na sua conta para continuar">
-        <form onSubmit={handleLogin}>
-          <AuthFieldGroup>
-            <AuthField
-              id="login-email"
-              label="Email"
-              type="email"
-              inputMode="email"
-              autoComplete="email"
-              autoCapitalize="none"
-              spellCheck={false}
-              placeholder="seu@email.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-            <AuthField
-              id="login-password"
-              label="Senha"
-              type="password"
-              autoComplete="current-password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </AuthFieldGroup>
-
-          <div className="mb-3 flex justify-end">
-            <button
-              type="button"
-              onClick={handleForgotPassword}
-              aria-busy={forgotLoading || undefined}
-              className={cn(
-                "-mr-1.5 min-h-[44px] rounded-[10px] px-1.5 text-subhead font-medium text-primary transition-opacity",
-                forgotLoading && "opacity-50",
-              )}
-            >
-              Esqueceu a senha?
-            </button>
+    <main className="login-screen">
+      <div className="login-content">
+        <header className="login-brand">
+          <span className="login-brand-mark"><BrandMark /></span>
+          <span className="login-wordmark">+Louvor</span>
+        </header>
+        <LoginShowcase />
+        <section className="login-form-panel" aria-labelledby="login-title">
+          <div className="login-form-heading">
+            <h1 id="login-title">Entre na sua conta</h1>
+            <button type="button" onClick={handleForgotPassword} disabled={forgotLoading} aria-busy={forgotLoading || undefined} className="login-forgot">Esqueceu a senha?</button>
           </div>
+          <form onSubmit={handleLogin}>
+            <AuthFieldGroup className="login-fields">
+              <AuthField
+                id="login-email"
+                label="Email"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                autoCapitalize="none"
+                spellCheck={false}
+                placeholder="seu@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+              <AuthField
+                id="login-password"
+                label="Senha"
+                type={passwordShown ? "text" : "password"}
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                trailing={<PasswordToggle shown={passwordShown} onToggle={() => setPasswordShown(shown => !shown)} />}
+                required
+              />
+            </AuthFieldGroup>
 
-          <ProminentButton type="submit" disabled={loading} loading={loading}>
-            Entrar
-          </ProminentButton>
-        </form>
+            <ProminentButton className="login-submit" type="submit" disabled={loading} loading={loading}>
+              Entrar
+            </ProminentButton>
+          </form>
 
-        <AuthDivider />
-
-        <GoogleButton label="Entrar com Google" />
-
-        <p className="mt-6 text-center text-subhead text-muted-foreground">
-          Não tem conta?{" "}
-          <AuthInlineLink to="/signup">Criar conta</AuthInlineLink>
-        </p>
-
-        <p className="mt-3 text-center text-footnote text-muted-foreground">Gratuito para equipes pequenas</p>
-
-        <LegalLinksFooter className="mt-4" />
-      </AuthPanel>
-
+          <div className="login-or" aria-hidden="true">ou continue com</div>
+          <div className="login-social-layout"><SocialLoginButtons label="Entrar com Google" /></div>
+          <p className="login-signup">
+            Novo por aqui? <Link to="/signup">Criar conta grátis <ArrowUpRight size={15} aria-hidden="true" /></Link>
+          </p>
+          <LegalLinksFooter className="login-legal" />
+        </section>
+      </div>
       <InstallPWABanner />
-    </AuthScreen>
+    </main>
   );
 }

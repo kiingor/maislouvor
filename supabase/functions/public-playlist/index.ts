@@ -49,11 +49,11 @@ Deno.serve(async (req) => {
     // Fetch songs via repertorio_songs
     const { data: repSongs } = await supabase
       .from("repertorio_songs")
-      .select("sort_order, song_id, songs(id, title, artist, cover_path, audio_path, media_url, lyrics_text, key_current)")
+      .select("sort_order, song_id, songs(id, title, artist, cover_path, audio_path, media_url, lyrics_text, key_current, moderation_blocked)")
       .eq("repertorio_id", repertorio.id)
       .order("sort_order", { ascending: true });
 
-    const songs = (repSongs || []).map((rs: any) => rs.songs).filter(Boolean);
+    const songs = (repSongs || []).map((rs: any) => rs.songs).filter((song: any) => song && song.moderation_blocked === false);
 
     // Generate signed URLs for cover and audio
     const enrichedSongs = await Promise.all(

@@ -10,6 +10,7 @@ import { MemberEditModal } from "@/components/MemberEditModal";
 import { AvatarCropModal } from "@/components/AvatarCropModal";
 import { MyAvailabilityCalendar } from "@/components/MyAvailabilityCalendar";
 import { UserNotificationPrefs } from "@/components/UserNotificationPrefs";
+import { FaceIdSettings } from "@/components/FaceIdSettings";
 import { UserStatsCard } from "@/components/UserStatsCard";
 import { TeamAvailabilitySettings } from "@/components/TeamAvailabilitySettings";
 import { MyAssistantSettings, TeamAssistantSettings } from "@/components/AssistantSettings";
@@ -465,6 +466,7 @@ export default function TeamSettings() {
 
             {/* Assistente no WhatsApp: reconhece a pessoa pelo telefone acima */}
             <MyAssistantSettings />
+            <FaceIdSettings />
 
             {/* Minhas funções */}
             {myMember && (

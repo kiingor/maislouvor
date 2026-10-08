@@ -1,3 +1,4 @@
+import { ReportContentButton } from "@/components/moderation/ReportContentButton";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -221,6 +222,7 @@ export function SongSummaryModal({ open, onOpenChange, songId, cultoNotes, culto
               </button>
             ))}
           </div>
+          <ReportContentButton songId={song.id} />
         </DialogContent>
       </Dialog>
 

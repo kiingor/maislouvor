@@ -20,10 +20,10 @@
  * que redefina a função com a mesma data e publique-a junto com o app. O teste
  * src/lib/legal.test.ts falha se as duas pontas divergirem.
  */
-export const TERMS_VERSION = "2026-10-03";
-export const PRIVACY_VERSION = "2026-10-03";
+export const TERMS_VERSION = "2026-10-07";
+export const PRIVACY_VERSION = "2026-10-07";
 /** Data de vigência exibida nos documentos (AAAA-MM-DD). */
-export const LEGAL_EFFECTIVE_DATE = "2026-10-03";
+export const LEGAL_EFFECTIVE_DATE = "2026-10-07";
 
 export const APP_NAME = "+Louvor";
 export const LEGAL_SITE_URL = "https://maislouvor.com";

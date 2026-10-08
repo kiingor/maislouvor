@@ -24,6 +24,7 @@ const STORE_MIGRATIONS = [
   '20261003131000_terms_acceptance.sql',
   '20261003132000_chat_moderation.sql',
   '20261003133000_assistant_ai_consent.sql',
+  '20261007124000_legal_versions.sql',
 ];
 
 let checks = 0;
@@ -254,15 +255,15 @@ try {
     [constant(legalTs, 'TERMS_VERSION'), constant(legalTs, 'PRIVACY_VERSION')], 'Termos/Privacidade: banco = src/lib/legal.ts');
   check((await one('SELECT public.assistant_ai_consent_version() AS v')).v, constant(consentTs, 'ASSISTANT_AI_CONSENT_VERSION'),
     'aviso do Asafe: banco = src/lib/assistantAiConsent.ts');
-  const VERSION = versions.terms;
+  const VERSION = constant(consentTs, 'ASSISTANT_AI_CONSENT_VERSION');
 
   // ------------------------------------------------ uso com tudo junto
   // Bia aceita os termos e permite o Asafe; Olga confirma a IA da equipe T.
-  await asUser(U.bia, 'SELECT public.accept_terms($1, $2) AS r', [VERSION, VERSION]);
+  await asUser(U.bia, 'SELECT public.accept_terms($1, $2) AS r', [versions.terms, versions.privacy]);
   await asUser(U.bia, `SELECT public.give_assistant_consent('member_link', NULL, $1) AS r`, [VERSION]);
   await asUser(U.olga, `SELECT public.give_assistant_consent('team_activation', $1, $2) AS r`, [team.t, VERSION]);
   await asUser(U.dani, `SELECT public.give_assistant_consent('team_activation', $1, $2) AS r`, [team.d, VERSION]);
-  check((await one('SELECT terms_version FROM public.profiles WHERE id = $1', [P.bia])).terms_version, VERSION);
+  check((await one('SELECT terms_version FROM public.profiles WHERE id = $1', [P.bia])).terms_version, versions.terms);
 
   // Chat: o filtro mascara ao salvar; anexos da Bia (um vira prova de denúncia, o outro não).
   await db.exec(`
@@ -391,6 +392,8 @@ try {
   check((await ownershipNotices()).slice(1), [{ profile_id: P.fabi, team_id: team.s, sender_profile_id: null,
     body: 'A equipe de suporte do +Louvor transferiu a propriedade de Louvor Revisão para você, que agora também é líder.' }],
     'um aviso, da equipe de suporte');
+
+  await (await import('./store_hardening_checks.mjs')).runStoreHardeningChecks(db);
 
   console.log(`${checks} checks passed: as migrações da conformidade juntas e em ordem (duas vezes), objetos e permissões, `
     + 'versões banco = app, exclusão com denúncias/bloqueios/aceites, prova de denúncia, equipe só da pessoa, '

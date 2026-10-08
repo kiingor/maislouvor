@@ -65,6 +65,7 @@ export interface DeleteDataResult {
 
 export interface DeletionDeps {
   preview(userId: string): Promise<DeletionPreview>;
+  revokeProvider?(): Promise<void>;
   deleteData(userId: string): Promise<DeleteDataResult>;
   removeStorage(bucket: string, paths: string[]): Promise<void>;
   /** Tira da fila os arquivos já removidos (account_deletion_storage_done). */
@@ -80,7 +81,7 @@ export interface DeletionOutcome {
 }
 
 export const BLOCKED_MESSAGE =
-  "Antes de excluir a conta, resolva as equipes indicadas: transfira a propriedade, passe a liderança ou fale com o suporte.";
+  "Antes de excluir a conta, resolva as equipes indicadas: transfira a propriedade, passe a liderança ou escolha quem assume a equipe.";
 
 /** Confirmação vinda do corpo da requisição: { confirmation: "EXCLUIR" } (sem diferenciar maiúsculas). */
 export function isDeletionConfirmed(body: unknown): boolean {
@@ -179,6 +180,13 @@ export async function runAccountDeletion(userId: string, deps: DeletionDeps): Pr
   }
   if (!preview.can_delete) {
     return failure(409, "blocked", BLOCKED_MESSAGE, { teams: blockingTeams(preview) });
+  }
+
+  try {
+    await deps.revokeProvider?.();
+  } catch (error) {
+    log("provider", error);
+    return failure(502, "provider_revocation_failed", "A Apple não confirmou a revogação agora. Seus dados continuam no app; tente novamente.");
   }
 
   // Banco primeiro, numa transação: se falhar, nada foi apagado (nem arquivo).

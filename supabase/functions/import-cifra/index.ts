@@ -1,3 +1,4 @@
+import { requireAiConsent } from "../_shared/aiConsent.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
@@ -93,7 +94,10 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { url } = await req.json();
+    const body = await req.json();
+    const denied = await requireAiConsent(req, body, corsHeaders);
+    if (denied) return denied;
+    const { url } = body;
     if (!url || typeof url !== "string") {
       return new Response(JSON.stringify({ error: "URL is required" }), {
         status: 400,

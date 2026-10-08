@@ -156,7 +156,7 @@ async function readFunctionError(error: unknown): Promise<Record<string, unknown
 export async function requestAccountDeletion(confirmation: string) {
   const { data, error } = await supabase.functions.invoke("delete-account", { body: { confirmation } });
   if (!error && data?.ok) {
-    return { alreadyDeleted: data.already_deleted === true, deletedTeamIds: (data.deleted_team_ids ?? []) as string[] };
+    return { appleManualRevoke: data.apple_manual_revoke === true, alreadyDeleted: data.already_deleted === true, deletedTeamIds: (data.deleted_team_ids ?? []) as string[] };
   }
   const body = (data && typeof data === "object" ? data : null) ?? (await readFunctionError(error));
   throw new AccountDeletionError(
@@ -169,9 +169,18 @@ export async function requestAccountDeletion(confirmation: string) {
 /** Esquece o que o app guardou no aparelho para a conta (mesmas chaves do TeamContext). */
 export function clearLocalAccountData(userId: string | null | undefined) {
   try {
-    if (userId) localStorage.removeItem(`louvor_team_cache:${userId}`);
+    if (userId) {
+      localStorage.removeItem(`louvor_team_cache:${userId}`);
+      localStorage.removeItem(`maislouvor.faceid.prompted.${userId}`);
+    }
     localStorage.removeItem("louvor_current_team");
   } catch {
     /* sem storage */
   }
+}
+
+/** Recuperação específica do dono legado de uma equipe sem liderança. */
+export async function recoverDeletionTeam(teamId: string, newOwner: string) {
+  const { data, error } = await supabase.functions.invoke("delete-account", { body: { action: "resolve_team", teamId, newOwner } });
+  if (error || !data?.ok) throw new Error("Não foi possível transferir a equipe. Atualize a tela e tente novamente.");
 }

@@ -675,7 +675,7 @@ export function buildTeam({ teamId, profiles, account }) {
     members: account.people.map((person) => ({
       team_id: teamId, profile_id: profiles[person.key], role: person.role, instruments: [...person.instruments],
     })),
-    assistant: { team_id: teamId, enabled: false, notification_settings: { ...ASSISTANT_NOTICES_OFF } },
+    assistant: { team_id: teamId, enabled: true, notification_settings: { ...ASSISTANT_NOTICES_OFF } },
   };
 }
 

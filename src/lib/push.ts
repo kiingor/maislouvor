@@ -14,7 +14,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return arr;
 }
 
-/** Web Push só funciona no navegador/PWA (não na WebView nativa, que usa FCM). */
+/** Web Push só funciona no navegador/PWA; o Android nativo usa FCM. */
 export function pushSupported(): boolean {
   return (
     !Capacitor.isNativePlatform() &&
@@ -122,7 +122,9 @@ let nativeRegistered = false;
  * o token FCM. `onOpen` é chamado quando o usuário toca numa notificação.
  */
 export async function registerNativePush(onOpen?: (link: string) => void): Promise<void> {
-  if (!Capacitor.isNativePlatform()) return;
+  // O servidor só envia push nativo por FCM. No iOS o plugin retorna APNs:
+  // não pedir permissão nem salvar um token que ainda não podemos entregar.
+  if (Capacitor.getPlatform() !== "android") return;
   try {
     const { PushNotifications } = await import("@capacitor/push-notifications");
 
@@ -131,9 +133,6 @@ export async function registerNativePush(onOpen?: (link: string) => void): Promi
       const { LocalNotifications } = await import("@capacitor/local-notifications");
 
       await PushNotifications.addListener("registration", async (token) => {
-        // Não fixar "android": no iOS este mesmo callback entrega um token APNs,
-        // que precisa ser gravado e enviado por outro caminho. getPlatform()
-        // devolve "ios" | "android" | "web".
         await (supabase as any).rpc("save_device_token", {
           p_token: token.value,
           p_platform: Capacitor.getPlatform(),

@@ -101,7 +101,7 @@ export const termsOfUse: LegalDocumentContent = {
           "gravações, arranjos e composições próprios ou da sua equipe, ou autorizados pelos autores;",
           "obras em domínio público.",
         ],
-        "Importe conteúdo de plataformas de terceiros (como YouTube, Moises ou sites de cifras) **somente quando tiver autorização** do titular dos direitos e os termos da plataforma permitirem. Use o material apenas no ensaio interno da equipe e não o redistribua.",
+        "Importe conteúdo de plataformas de terceiros (como YouTube ou sites de cifras) **somente quando tiver autorização** do titular dos direitos e os termos da plataforma permitirem. Use o material apenas no ensaio interno da equipe e não o redistribua.",
         `**Notificação de violação:** se você acredita que um conteúdo no ${APP_NAME} viola seus direitos autorais, escreva para ${mail(SUPPORT_EMAIL)} com o assunto “Direitos autorais”, informando: (1) seus dados de contato; (2) a obra protegida; (3) onde está o conteúdo (por exemplo, o link público ou uma descrição); (4) a comprovação de que você é o titular ou o representante dele; e (5) uma declaração de boa-fé de que as informações são verdadeiras. Analisaremos o pedido, poderemos remover o conteúdo e avisaremos quem o publicou, que poderá contestar. Contas com violações repetidas serão encerradas.`,
       ],
     },
@@ -147,10 +147,10 @@ export const termsOfUse: LegalDocumentContent = {
       title: "Recursos de inteligência artificial",
       blocks: [
         [
-          "Alguns recursos usam inteligência artificial: sincronizar letras, transpor tons, sugerir músicas para cultos, importar cifras e projetos do Moises e o assistente Asafe.",
-          "**As respostas podem conter erros.** Confira letras, cifras, tons, datas e sugestões antes de usar; elas não substituem a decisão da liderança.",
-          `Para gerar os resultados, o conteúdo necessário é enviado a provedores de inteligência artificial, inclusive no exterior, como explica a ${link("Política de Privacidade", LEGAL_PATHS.privacy)}.`,
-          `O Asafe é opcional e só funciona nas equipes em que um líder o ativa; para ativá-lo, o líder aceita um aviso sobre o envio de dados à OpenAI (equipes que já o usavam recebem o mesmo aviso para manter ou desativar). Cada pessoa escolhe em **${MY_SETTINGS_IN_APP}** se ele pode usar os dados dela (**${ASAFE_ALLOW_LABEL}**): sem essa permissão, ele não reconhece a pessoa nem a marca nos avisos. Quem já usava o Asafe antes do aviso continua reconhecido até decidir. Líderes podem desativá-lo para toda a equipe em **Usuário › Equipe**.`,
+          "O assistente Asafe usa inteligência artificial para responder no WhatsApp. A separação de faixas também usa modelos de processamento de áudio, executados em infraestrutura operada por nós. A transposição de tons das cifras é feita no próprio app.",
+          "**As respostas do Asafe podem conter erros.** Confira as informações antes de usar; elas não substituem a decisão da liderança. As faixas separadas podem conter ruídos ou partes de outros instrumentos.",
+          `Para gerar as respostas do Asafe, o conteúdo necessário é enviado à OpenAI, como explica a ${link("Política de Privacidade", LEGAL_PATHS.privacy)}.`,
+          `O Asafe é opcional e só funciona nas equipes em que um líder o ativa; para ativá-lo, o líder aceita um aviso sobre o envio de dados à OpenAI (equipes que já o usavam recebem o mesmo aviso para manter ou desativar). Cada pessoa escolhe em **${MY_SETTINGS_IN_APP}** se ele pode usar os dados dela (**${ASAFE_ALLOW_LABEL}**): sem essa permissão, ele não reconhece a pessoa nem a marca nos avisos. Contas antigas também precisam dar o aceite atual antes do uso dos dados pela IA. Líderes podem desativá-lo para toda a equipe em **Usuário › Equipe**.`,
           "Não envie ao Asafe dados sensíveis, como informações de saúde, documentos ou senhas.",
         ],
       ],
@@ -167,7 +167,7 @@ export const termsOfUse: LegalDocumentContent = {
       title: "Serviços de terceiros",
       blocks: [
         `O ${APP_NAME} usa os Serviços de API do YouTube para exibir vídeos. Ao assistir a vídeos do YouTube no app, você concorda com os ${link("Termos de Serviço do YouTube", "https://www.youtube.com/t/terms")}, e o Google trata os dados conforme a ${link("Política de Privacidade do Google", "https://policies.google.com/privacy")}.`,
-        "Entrar com Google, notificações e links para sites de terceiros seguem as regras de cada serviço. Não respondemos pelo conteúdo nem pelas práticas desses serviços.",
+        "Entrar com Google, Entrar com Apple, notificações e links para sites de terceiros seguem as regras de cada serviço. Não respondemos pelo conteúdo nem pelas práticas desses serviços.",
       ],
     },
     {

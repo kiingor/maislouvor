@@ -4,6 +4,8 @@ const config: CapacitorConfig = {
   appId: 'com.maislouvor.app',
   appName: 'Louvor Mais',
   webDir: 'dist',
+  // The native bridge carries credentials; never print its payloads, even in Debug.
+  loggingBehavior: 'none',
   // Android usa https://localhost por padrão (bom: chamadas a https://api.maislouvor.com
   // não viram mixed-content). App roda do bundle local (offline-capable).
   plugins: {

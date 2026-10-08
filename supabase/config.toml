@@ -42,12 +42,9 @@ verify_jwt = false
 [functions.whatsapp-assistant]
 verify_jwt = false
 
-# As funções abaixo passaram a exigir JWT em 16/08/2026:
-#
-#   suggest-culto-songs, import-moises, import-cifra, create-invite,
-#   separate-stems  -> chamadas pelo front em contexto autenticado
-#   sync-lyrics, transcribe-sync, transpose -> sem nenhum chamador no código;
-#                                              estavam abertas à toa
-#
-# Se alguma delas quebrar depois do deploy, o chamador não estava enviando
-# sessão — corrija o chamador, não reabra a function.
+# create-invite, separate-stems e transcribe-sync exigem JWT por padrão.
+# Em 07/10/2026 foram retiradas somente a sugestão de músicas por IA
+# e a importação do Moises. Respostas HTTP 410 para clientes antigos:
+# suggest-culto-songs e import-moises.
+# Asafe, separate-stems/stems-callback (Demucs local) e as demais funções
+# permanecem. import-cifra, sync-lyrics e transpose mantêm o estado anterior.
