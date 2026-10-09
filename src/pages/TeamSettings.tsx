@@ -32,7 +32,6 @@ import { cn } from "@/lib/utils";
 import { DELETE_ACCOUNT_ANCHOR } from "@/lib/legal";
 import { personalAvailabilityLabel } from "@/lib/availability";
 import TeamBilling from "@/components/billing/TeamBilling";
-import { BillingBackButton } from "@/components/billing/BillingBackButton";
 
 /* ------------------------------------------------------------------
    Peças de lista agrupada no estilo do app Ajustes (iOS 27).
@@ -102,15 +101,15 @@ export default function TeamSettings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const linkedTab = searchParams.get("billing") === "return" ? "billing"
+    : searchParams.get("aba") === "assinatura" ? "billing"
     : searchParams.get("aba") === "membros" ? "members" : "profile";
   const [activeTab, setActiveTab] = useState(linkedTab);
   useEffect(() => {
     setActiveTab(location.hash === `#${DELETE_ACCOUNT_ANCHOR}` ? "profile" : linkedTab);
   }, [linkedTab, location.hash, location.key]);
-  const billingReturnTab = useRef('profile');
   const [requestedSeats, setRequestedSeats] = useState<number>();
   const changeTab = (tab: string) => {
-    if (tab === 'billing' && activeTab !== 'billing') { billingReturnTab.current = activeTab; setRequestedSeats(undefined); }
+    if (tab === 'billing' && activeTab !== 'billing') setRequestedSeats(undefined);
     setActiveTab(tab);
   };
   const [editMember, setEditMember] = useState<any | null>(null);
@@ -372,7 +371,6 @@ export default function TeamSettings() {
 
       {/* ===== ABA: MEU USUÁRIO ===== */}
       <TabsContent value="billing" className="mt-2">
-        <BillingBackButton onBack={() => setActiveTab(billingReturnTab.current)} />
         <TeamBilling key={`${currentTeam?.id}:${profileId}`} initialSeats={requestedSeats} />
       </TabsContent>
       <TabsContent value="profile" className="mt-2">
@@ -770,7 +768,7 @@ export default function TeamSettings() {
 
       <InviteMemberModal open={inviteOpen} onOpenChange={setInviteOpen} onChoosePlan={(seats, teamId) => {
         if (teamId !== currentTeam?.id) switchTeam(teamId);
-        billingReturnTab.current = 'members'; setRequestedSeats(seats); setActiveTab('billing');
+        setRequestedSeats(seats); setActiveTab('billing');
       }} />
       <MemberEditModal
         open={!!editMember}

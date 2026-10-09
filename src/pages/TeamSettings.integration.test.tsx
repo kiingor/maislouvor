@@ -55,12 +55,23 @@ describe('junção de assinaturas, moderação e ajustes de conta', () => {
     expect(screen.getByRole('tab', { name: 'Assinatura' })).toHaveAttribute('aria-selected', 'true');
   });
 
+  it('a chamada da Home abre Assinatura na equipe indicada, sem botão Voltar', async () => {
+    mount('/app/settings?aba=assinatura&equipe=team-b');
+    expect(await screen.findByText('Plano para 5 pessoas')).toBeVisible();
+    expect(screen.getByRole('tab', { name: 'Assinatura' })).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => expect(team.switchTeam).toHaveBeenCalledExactlyOnceWith('team-b'));
+    expect(screen.queryByRole('button', { name: 'Voltar' })).not.toBeInTheDocument();
+    selectTab('Perfil');
+    expect(await screen.findByText('Excluir minha conta')).toBeVisible();
+  });
+
   it('o link da denúncia mantém Membros ao consumir a equipe e ao voltar da assinatura', async () => {
     mount('/app/settings?aba=membros&equipe=team-b');
     expect(await screen.findByText('Denúncias da equipe')).toBeVisible();
     await waitFor(() => expect(team.switchTeam).toHaveBeenCalledExactlyOnceWith('team-b'));
     selectTab('Assinatura');
-    fireEvent.click(await screen.findByRole('button', { name: 'Voltar' }));
+    expect(await screen.findByText('Plano para 5 pessoas')).toBeVisible();
+    selectTab('Membros');
     expect(screen.getByText('Denúncias da equipe')).toBeVisible();
     expect(team.switchTeam).toHaveBeenCalledTimes(1);
   });
@@ -80,7 +91,7 @@ describe('junção de assinaturas, moderação e ajustes de conta', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Abrir plano da equipe convidada' }));
     expect(await screen.findByText('Plano para 8 pessoas')).toBeVisible();
     expect(team.switchTeam).toHaveBeenCalledExactlyOnceWith('team-b');
-    fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+    selectTab('Membros');
     expect(screen.getByText('Denúncias da equipe')).toBeVisible();
   });
 });

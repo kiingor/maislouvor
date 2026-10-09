@@ -29,6 +29,7 @@ import { NoTeamOnboarding } from "@/components/NoTeamOnboarding";
 import { HomeAlerts, HomeAlertLineup, getHomeAlerts } from "@/components/HomeAlerts";
 import { HomeWeekAvailability } from "@/components/HomeWeekAvailability";
 import { HomeTeamFeed } from "@/components/HomeTeamFeed";
+import { HomeSubscriptionPrompt } from "@/components/HomeSubscriptionPrompt";
 import { StatTile } from "@/components/UserStatsCard";
 import { cn } from "@/lib/utils";
 import {
@@ -540,6 +541,7 @@ export default function Home() {
           {/* Atividade da equipe */}
           <div className="mt-[26px]">
             <HomeTeamFeed teamId={currentTeam.id} />
+            <HomeSubscriptionPrompt />
           </div>
         </div>
       </div>
