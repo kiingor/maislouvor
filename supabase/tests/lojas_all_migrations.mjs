@@ -31,6 +31,7 @@ const STORE_MIGRATIONS = [
   '20261007124000_legal_versions.sql',
   '20261008233000_team_data_consent.sql',
   '20261008234000_privacy_version.sql',
+  '20261008235000_assistant_team_data_guard.sql',
 ];
 
 let checks = 0;
