@@ -1,6 +1,9 @@
 # Separação de faixas: autorização e revisões
 
-Estado: correção preparada e validada localmente; **não aplicada ao servidor**.
+Estado: **backend e workers publicados em 09/10/2026 às 17:23:46 BRT**.
+Commits: `37c13db` (backend/worker/testes), `fbc8dad` (fontes imutáveis web),
+`7cf6760` (diagnóstico StoreKit). A publicação do web fica na frente coordenadora;
+este relatório não afirma que o web foi publicado antes da sua confirmação.
 
 ## Evidência da auditoria
 
@@ -167,3 +170,52 @@ pela migração, e as novas colunas são aditivas; priorizar correção em frent
 - A integridade do conteúdo produzido depende do worker confiável e da chave
   `service_role`. O patch não transforma uma chave administrativa comprometida
   em um principal limitado.
+
+
+## Resultado da implantação e QA
+
+O runner desta execução está em `/private/tmp/maislouvor-stems-rollout.py`, com
+cópia da parte remota e payload em
+`/Volumes/MaisLouvorBuild/Stems-Release-20261009`. O lock de deploy foi mantido
+na janela. Todas as três filas estavam zeradas antes e depois da pausa.
+Nenhum job ativo foi interrompido. O claim de stems legado foi retirado; os
+claims de YouTube/áudios adicionais foram pausados apenas durante a manutenção
+e restaurados com as mesmas definições e ACLs.
+
+Backup remoto privado:
+`/var/lib/maislouvor-deploy/20261009-stems-fencing/database.before.dump`,
+1.502.929 bytes, SHA-256
+`83f2dc80fc9534098bb7c92bb36588b5794a2b9de41b8513b6c4c8e3014d2109`.
+`pg_restore --list` passou. O diretório também contém os originais dos arquivos,
+definições/ACLs dos claims, payload, estado e resultado. Nenhum dump foi restaurado.
+A cópia local do worker GPU e do plist foi comparada antes da troca.
+
+Migração `20261010010000` registrada. O claim antigo retorna vazio; anon e
+usuários autenticados não podem finalizar jobs, enquanto o worker pode.
+CPU VPS e GPU local foram atualizados com suas respectivas variantes;
+67 outros arquivos de funções, imagem/ambiente/mounts dos containers e o plist
+local permaneceram iguais. Ambos os tipos de worker voltaram a enviar heartbeat
+nos últimos 60 segundos. Edge está `healthy`; checagens sem usuário retornaram
+401 em `separate-stems`, 401 em `stems-callback` e 404 esperado no GET do Asafe.
+
+O smoke ocorreu entre **17:25:07 e 17:25:30 BRT**. Foi criada uma única identidade
+temporária, marcada como fixture, com consentimento `review_fixture`, equipe
+exclusiva, Asafe desativado, sem convites/e-mails/avisos. O handler autenticado
+recebeu um WAV gerado localmente (oito segundos, nenhum fonograma de terceiros).
+O worker GPU processou o job em **11 segundos** e produziu **seis faixas**.
+As seis foram baixadas com a sessão do usuário fictício (321.828 bytes cada),
+e a revisão, o job e o estado final da música foram conferidos. Foram encontradas
+zero notificações e apenas o contrato gratuito/manual dessa fixture. A escuta e
+a qualidade musical do isolamento não foram avaliadas por esse sinal sintético.
+
+Depois do heartbeat que confirmou o término do worker, foram removidos apenas
+os 13 arquivos da fixture (fonte, seis saídas e seis caches), metadados de cache,
+equipe, usuário e consentimento fictício. Conferidas ausência de equipe/música
+e ausência dos objetos nos dois prefixes exclusivos. A credencial temporária
+foi apagada após cleanup confirmado. A demo Apple não foi usada nem alterada.
+Relatório sem identidades em
+`/Volumes/MaisLouvorBuild/Stems-Release-20261009/qa-result.json`.
+
+A segunda GPU conhecida não foi alterada remotamente. Uma versão antiga que
+voltar usando o claim legado fica sem novos jobs de stems até atualização;
+a CPU e a GPU local atualizadas mantêm o processamento disponível.
