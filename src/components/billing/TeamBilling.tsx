@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { getBillingContext, getWebBillingPortal, requireBillingOwner, syncBilling } from '@/lib/billing/api';
 import { billingPlatform, getBillingOffers, isBillingConfigured, isPurchaseCancelled, openBillingManagement, expandSubscription, purchaseSubscription, restoreSubscriptions } from '@/lib/billing/revenuecat';
 import { canStartSubscription, type BillingOffer } from '@/lib/billing/types';
+import { NativeBillingError } from '@/lib/billing/errors';
 import PlanBuilder from './PlanBuilder';
 import { displayDate, planLabels, subscriptionStatusLabels } from '@/lib/platform';
 
@@ -81,7 +82,7 @@ export default function TeamBilling({ initialSeats }: { initialSeats?: number })
         description: stillPending ? 'A confirmação está em processamento. Use Atualizar em alguns instantes.' : undefined });
     } catch (error) {
       if (!isPurchaseCancelled(error)) toast({ title: purchased ? 'Compra recebida; confirmação pendente' : 'Não foi possível concluir',
-        description: purchased ? 'Não compre novamente. Use Atualizar para confirmar a assinatura.' : error instanceof Error ? error.message : 'Confira sua conexão e tente novamente.',
+        description: purchased ? 'Não compre novamente. Use Atualizar para confirmar a assinatura.' : error instanceof NativeBillingError ? `${error.message} Código de suporte: ${error.supportCode}` : 'Confira sua conexão e tente novamente.',
         variant: purchased ? 'default' : 'destructive' });
       // A checkout error may still leave a pending store purchase. Reload SDK state.
       void refresh();
@@ -96,6 +97,7 @@ export default function TeamBilling({ initialSeats }: { initialSeats?: number })
   const canBuy = configured && canStartSubscription(context) && !offers.data?.active && !awaitingConfirmation;
   const canBuild = !subscription.is_unlimited && (canBuy || configured && context.can_manage && subscription.is_active && subscription.provider === 'revenuecat' && !awaitingConfirmation);
   const native = billingPlatform() !== 'web';
+  const offerError = offers.error instanceof NativeBillingError ? offers.error : null;
   const accountDetails = <GlassCard className="billing-account p-5 space-y-4">
       <div className="flex items-start gap-3"><CreditCard className="mt-1 h-5 w-5 shrink-0" /><div>
         <h2 className="billing-account-heading font-semibold">Assinatura da equipe</h2>
@@ -121,7 +123,11 @@ export default function TeamBilling({ initialSeats }: { initialSeats?: number })
   return <div className="billing-design billing-team" data-new-plan={canBuild && !subscription.is_active} aria-busy={busy}>
     {(!canBuild || subscription.is_active) && accountDetails}
     {context.can_manage && !subscription.is_unlimited && !configured && <p className="text-sm text-muted-foreground">Novas assinaturas estarão disponíveis em breve.</p>}
-    {context.can_manage && configured && offers.isError && <GlassCard className="p-5 space-y-3"><p role="alert">Não foi possível carregar os planos.</p><Button variant="outline" disabled={busy} onClick={() => void offers.refetch()}>Recarregar planos</Button></GlassCard>}
+    {context.can_manage && configured && offers.isError && <GlassCard className="p-5 space-y-3">
+      <p role="alert">{offerError?.message ?? 'Não foi possível carregar os planos.'}</p>
+      {offerError && <p className="text-xs text-muted-foreground">Código de suporte: <code className="select-all break-all">{offerError.supportCode}</code></p>}
+      <Button variant="outline" disabled={busy} onClick={() => void offers.refetch()}>Recarregar planos</Button>
+    </GlassCard>}
     {canBuild && !offers.isError && (offers.isLoading ? <p role="status">Carregando planos…</p> :
       <PlanBuilder key={`${teamId}:${subscription.product_id ?? 'new'}`} context={context} offers={offers.data?.offers ?? []}
         loading={offers.isLoading} busy={busy} platform={billingPlatform()} initialSeats={initialSeats}

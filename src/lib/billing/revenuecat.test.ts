@@ -3,10 +3,11 @@ import { Capacitor } from '@capacitor/core';
 import { requireBillingOwner, syncBilling } from './api';
 import { getBillingOffers, expandSubscription, isPurchaseCancelled, purchaseSubscription, restoreSubscriptions } from './revenuecat';
 import type { BillingContext } from './types';
+import { NativeBillingError } from './errors';
 
 const { web, native, webConfigure } = vi.hoisted(() => ({
   web: { getAppUserId: vi.fn(), changeUser: vi.fn(), getOfferings: vi.fn(), getCustomerInfo: vi.fn(), purchase: vi.fn() },
-  native: { isConfigured: vi.fn(), configure: vi.fn(), getAppUserID: vi.fn(), logIn: vi.fn(), getOfferings: vi.fn(), getCustomerInfo: vi.fn(), purchasePackage: vi.fn(), restorePurchases: vi.fn() },
+  native: { isConfigured: vi.fn(), configure: vi.fn(), getAppUserID: vi.fn(), logIn: vi.fn(), getOfferings: vi.fn(), getCustomerInfo: vi.fn(), getStorefront: vi.fn(), purchasePackage: vi.fn(), restorePurchases: vi.fn() },
   webConfigure: vi.fn(),
 }));
 vi.mock('@capacitor/core', () => ({ Capacitor: { getPlatform: vi.fn() } }));
@@ -35,6 +36,8 @@ beforeEach(() => {
   web.getCustomerInfo.mockResolvedValue({ entitlements: { active: {} } });
   web.purchase.mockResolvedValue({});
   native.isConfigured.mockResolvedValue({ isConfigured: false });
+  native.configure.mockResolvedValue(undefined);
+  native.getStorefront.mockResolvedValue({ countryCode: 'BRA', identifier: 'not-for-support' });
   native.getOfferings.mockImplementation(async () => ({ current: { availablePackages: [pkg] }, all: {} }));
   native.getCustomerInfo.mockResolvedValue({ customerInfo: { entitlements: { active: {} } } });
 });
@@ -58,6 +61,53 @@ describe('RevenueCat SDK integration', () => {
     web.getCustomerInfo.mockResolvedValue({ entitlements: { active: {} }, activeSubscriptions: new Set(['stripe_pending_mapping']) });
     await expect(purchaseSubscription('team', offers[0])).rejects.toThrow('compra ativa');
     expect(web.purchase).not.toHaveBeenCalled();
+  });
+  it('blocks duplicate native purchases even when an active subscription has no entitlement yet', async () => {
+    vi.mocked(Capacitor.getPlatform).mockReturnValue('ios');
+    const { offers } = await getBillingOffers('team');
+    native.getCustomerInfo.mockResolvedValue({ customerInfo: { entitlements: { active: {} }, activeSubscriptions: ['completo_20'] } });
+    expect((await getBillingOffers('team')).active).toBe(true);
+    await expect(purchaseSubscription('team', offers[0])).rejects.toThrow('compra ativa');
+    expect(native.purchasePackage).not.toHaveBeenCalled();
+    expect(syncBilling).not.toHaveBeenCalled();
+  });
+  it('reports native offerings error 23 with only the stage, code and storefront country', async () => {
+    vi.mocked(Capacitor.getPlatform).mockReturnValue('ios');
+    native.getOfferings.mockRejectedValueOnce({ code: '23', message: 'secret-api-key customer-123', userInfo: { appUserID: 'customer-123' } });
+    const error = await getBillingOffers('team').catch((value) => value);
+    expect(error).toBeInstanceOf(NativeBillingError);
+    expect(error.supportCode).toBe('ML-IOS-OFFERINGS-23-BRA');
+    expect(error.message).toBe('Não foi possível consultar os planos na loja. Tente novamente em instantes.');
+    expect(JSON.stringify(error)).not.toMatch(/secret-api-key|customer-123|not-for-support/);
+    expect(native.getStorefront).toHaveBeenCalledOnce();
+  });
+  it('keeps customer-info failures distinct and does not query the storefront', async () => {
+    vi.mocked(Capacitor.getPlatform).mockReturnValue('ios');
+    native.getCustomerInfo.mockRejectedValueOnce({ code: 29, message: 'private receipt' });
+    await expect(getBillingOffers('team')).rejects.toMatchObject({
+      supportCode: 'ML-IOS-CUSTOMER-INFO-29', message: 'Não foi possível conferir suas compras na loja. Tente novamente.',
+    });
+    expect(native.getStorefront).not.toHaveBeenCalled();
+    expect(native.purchasePackage).not.toHaveBeenCalled();
+  });
+  it('reports configuration failures without exposing native errors or fetching offers', async () => {
+    vi.mocked(Capacitor.getPlatform).mockReturnValue('android');
+    native.configure.mockRejectedValueOnce({ code: 11, message: 'private key and customer id' });
+    await expect(getBillingOffers('team')).rejects.toMatchObject({ supportCode: 'ML-ANDROID-CONFIGURE-11', message: 'Não foi possível conectar à loja. Tente novamente.' });
+    expect(native.getOfferings).not.toHaveBeenCalled();
+    expect(native.getStorefront).not.toHaveBeenCalled();
+  });
+  it('preserves the original offerings error when storefront lookup fails', async () => {
+    vi.mocked(Capacitor.getPlatform).mockReturnValue('ios');
+    native.getOfferings.mockRejectedValueOnce({ code: 23 });
+    native.getStorefront.mockRejectedValueOnce(new Error('storefront unavailable and private'));
+    await expect(getBillingOffers('team')).rejects.toMatchObject({ supportCode: 'ML-IOS-OFFERINGS-23' });
+  });
+  it('does not query storefront or restrict successful native offers by country', async () => {
+    vi.mocked(Capacitor.getPlatform).mockReturnValue('ios');
+    native.getStorefront.mockResolvedValue({ countryCode: 'USA' });
+    expect((await getBillingOffers('team')).offers).toHaveLength(1);
+    expect(native.getStorefront).not.toHaveBeenCalled();
   });
   it('identifies the team, uses provider prices and does not expose purchase callbacks', async () => {
     const result = await getBillingOffers('team');

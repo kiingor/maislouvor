@@ -3,6 +3,7 @@ import { formatMoney } from './catalog';
 import { Capacitor } from '@capacitor/core';
 import { requireBillingOwner, syncBilling } from './api';
 import { canStartSubscription, type BillingContext, type BillingOffer, type BillingProduct } from './types';
+import { diagnosticStorefront, NativeBillingError } from './errors';
 
 export function billingPlatform(): 'ios' | 'android' | 'web' {
   const platform = Capacitor.getPlatform();
@@ -29,11 +30,18 @@ function serialized<T>(operation: () => Promise<T>): Promise<T> {
 async function sdk(context: BillingContext) {
   const key = apiKey();
   if (!key || !context.app_user_id) throw new Error('As assinaturas ainda não estão disponíveis nesta plataforma.');
-  if (billingPlatform() !== 'web') {
-    const { Purchases } = await import('@revenuecat/purchases-capacitor');
-    if (!(await Purchases.isConfigured()).isConfigured) await Purchases.configure({ apiKey: key, appUserID: context.app_user_id });
-    else if ((await Purchases.getAppUserID()).appUserID !== context.app_user_id) await Purchases.logIn({ appUserID: context.app_user_id });
-    return { kind: 'native' as const, purchases: Purchases };
+  const platform = billingPlatform();
+  if (platform !== 'web') {
+    const { Purchases } = await import('@revenuecat/purchases-capacitor').catch((error: unknown) => {
+      throw new NativeBillingError('sdk', platform, error);
+    });
+    try {
+      if (!(await Purchases.isConfigured()).isConfigured) await Purchases.configure({ apiKey: key, appUserID: context.app_user_id });
+      else if ((await Purchases.getAppUserID()).appUserID !== context.app_user_id) await Purchases.logIn({ appUserID: context.app_user_id });
+    } catch (error) {
+      throw new NativeBillingError('configure', platform, error);
+    }
+    return { kind: 'native' as const, platform, purchases: Purchases };
   }
   const { Purchases } = await import('@revenuecat/purchases-js');
   const purchases = Purchases.isConfigured() ? Purchases.getSharedInstance() : Purchases.configure({ apiKey: key, appUserId: context.app_user_id });
@@ -50,11 +58,23 @@ async function load(context: BillingContext): Promise<{ active: boolean; activeP
   const client = await sdk(context);
   const offeringId = (client.kind === 'web' ? import.meta.env.VITE_REVENUECAT_WEB_OFFERING_ID?.trim() : '') || import.meta.env.VITE_REVENUECAT_OFFERING_ID?.trim();
   if (client.kind === 'native') {
-    const [offerings, { customerInfo }] = await Promise.all([client.purchases.getOfferings(), client.purchases.getCustomerInfo()]);
+    const [offerings, { customerInfo }] = await Promise.all([
+      Promise.resolve().then(() => client.purchases.getOfferings()).catch(async (error: unknown) => {
+        const country = await diagnosticStorefront(() => client.purchases.getStorefront());
+        throw new NativeBillingError('offerings', client.platform, error, country);
+      }),
+      Promise.resolve().then(() => client.purchases.getCustomerInfo()).catch((error: unknown) => {
+        throw new NativeBillingError('customer-info', client.platform, error);
+      }),
+    ]);
     const offering = offeringId ? offerings.all[offeringId] : offerings.current;
+    const activeProductIds = [...new Set([
+      ...(customerInfo.activeSubscriptions ?? []),
+      ...Object.values(customerInfo.entitlements.active).map((entitlement) => entitlement.productIdentifier),
+    ])];
     return {
-      active: Object.keys(customerInfo.entitlements.active).length > 0,
-      activeProductIds: Object.values(customerInfo.entitlements.active).map((entitlement) => entitlement.productIdentifier),
+      active: Object.keys(customerInfo.entitlements.active).length > 0 || activeProductIds.length > 0,
+      activeProductIds,
       offers: (offering?.availablePackages ?? []).flatMap((pkg) => {
         const product = productFor(context, pkg.product.identifier, pkg.product.subscriptionPeriod);
         return product ? [{ key: pkg.identifier, product, title: pkg.product.title, price: pkg.product.priceString,

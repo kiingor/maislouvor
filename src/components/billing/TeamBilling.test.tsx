@@ -5,6 +5,7 @@ import TeamBilling from './TeamBilling';
 import { getBillingContext, getWebBillingPortal, requireBillingOwner, syncBilling } from '@/lib/billing/api';
 import { billingPlatform, getBillingOffers, expandSubscription, openBillingManagement, purchaseSubscription, restoreSubscriptions } from '@/lib/billing/revenuecat';
 import type { BillingContext } from '@/lib/billing/types';
+import { NativeBillingError } from '@/lib/billing/errors';
 
 const { toast } = vi.hoisted(() => ({ toast: vi.fn() }));
 vi.mock('@/contexts/TeamContext', () => ({ useTeam: () => ({ currentTeam: { id: 'team', name: 'Louvor Central' }, profileId: 'profile' }) }));
@@ -38,6 +39,30 @@ function mount() {
 }
 
 describe('Team subscription UI', () => {
+  it('shows safe native support details and can reload the plans', async () => {
+    vi.mocked(getBillingOffers).mockRejectedValueOnce(new NativeBillingError('offerings', 'ios', { code: 23, message: 'private-customer' }, 'BRA'));
+    mount();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível consultar os planos na loja.');
+    expect(screen.getByText('ML-IOS-OFFERINGS-23-BRA')).toHaveClass('select-all');
+    expect(screen.queryByText(/private-customer/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Recarregar planos' }));
+    expect((await screen.findAllByText('R$ 61,90')).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Código de suporte:/)).not.toBeInTheDocument();
+  });
+  it('uses the generic fallback for external errors even if they contain diagnostic-looking fields', async () => {
+    vi.mocked(getBillingOffers).mockRejectedValueOnce(Object.assign(new Error('private-key customer-id'), { supportCode: 'private-user-info' }));
+    mount();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível carregar os planos.');
+    expect(screen.queryByText(/private|Código de suporte:/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Recarregar planos' })).toBeEnabled();
+  });
+  it('does not expose raw checkout SDK errors in the toast', async () => {
+    vi.mocked(purchaseSubscription).mockRejectedValueOnce(new Error('private receipt and customer-id'));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Continuar com este plano: Completo/ }));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ description: 'Confira sua conexão e tente novamente.' })));
+    expect(JSON.stringify(toast.mock.calls)).not.toMatch(/private|customer-id/);
+  });
   it('opens a web capacity confirmation without treating the portal session as a purchase', async () => {
     vi.mocked(billingPlatform).mockReturnValue('web');
     context.member_count = 20;
