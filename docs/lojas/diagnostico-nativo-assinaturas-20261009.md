@@ -92,3 +92,35 @@ Preparada uma versão completa de desenvolvimento, sem mudar o código do build 
 O disco interno havia esgotado o espaço. Sete pastas antigas de compilação desta sessão (`tmp/ios-internal-testflight`, variantes 2 a 6 e `tmp/ios-native-validation`) foram copiadas para `/Volumes/MaisLouvorBuild/Preserved-Local-Builds-20261009`, comparadas integralmente por SHA-256 e metadados de links, e só então removidas da origem, mantendo links nos caminhos originais. Relatórios individuais preservados no destino. Nenhum archive enviado foi descartado. A preparação recuperou aproximadamente 2,9 GiB internos; novas saídas e temporários foram direcionados ao NVMe autorizado.
 
 Não houve alteração funcional, publicação, compra ou mudança de conta pessoal. Este pacote permite investigar o catálogo Apple real com assinatura de desenvolvimento; seu sucesso ainda não comprovará sozinho a correção do TestFlight.
+
+## Consulta direta StoreKit — 09/10, 17:07 BRT
+
+Executado um probe nativo isolado com o mesmo bundle, sem RevenueCat, sem arquivo
+`.storekit`, sem compra/restauração e sem mudar a conta pessoal. Resultado lido em
+`/Volumes/MaisLouvorBuild/StoreKit-Direct-20261009/results-direct.json`:
+
+| Consulta | Pedidos | Retornados | Resultado |
+|---|---:|---:|---|
+| StoreKit 2 direto, um produto | 1 | 0 | Concluiu sem erro, lista vazia |
+| StoreKit 2 direto, catálogo habilitado | 66 | 0 | Concluiu sem erro, lista vazia |
+| StoreKit 1 direto | 66 | 0 | 66 identificadores classificados inválidos; sem NSError |
+
+Ambas as APIs reportaram **USA**, no simulador iOS 27.0 (24A434). Nesse ambiente,
+a ausência de produtos também ocorre fora do RevenueCat; o SDK não é necessário
+para reproduzi-la. A consulta de um único produto exclui o tamanho do lote de 66
+como explicação dessa reprodução. Isso **não comprova a causa da falha BRA no
+iPhone** e não torna os mesmos IDs inválidos globalmente.
+
+A inspeção do SDK instalado mostrou que `PurchasesOrchestrator.getProducts`
+também transforma determinadas falhas internas em lista vazia. Por isso a
+consulta anterior pelo RevenueCat, sozinha, não distinguia resposta vazia de
+erro Apple. O probe direto agora distingue esses casos no simulador: não houve
+erro retornado por StoreKit. A [API Product.products(for:)](https://developer.apple.com/documentation/storekit/product/products(for:))
+retorna os produtos encontrados e pode lançar erros; esta execução retornou
+zero produtos sem lançar erro.
+
+O teste decisivo restante é executar o mesmo probe no iPhone brasileiro com
+assinatura de desenvolvimento, preservando a conta pessoal, e comparar a
+resposta direta com o comportamento do TestFlight. Contratos, IDs e preços
+já conferidos não devem ser alterados por especulação. Não houve publicação,
+compra, alteração territorial ou concessão de plano nesta consulta.
