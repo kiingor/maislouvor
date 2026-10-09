@@ -42,3 +42,23 @@ Archive: `/Volumes/MaisLouvorBuild/Archives/MaisLouvor-1.0.0-9.xcarchive`. Fonte
 Upload interno concluído às **22:24:12 BRT de 08/10**, `EXPORT SUCCEEDED`. **1.0.0 (9) disponível às 22:28 BRT**, status **Em testes**, grupo **Teste iPhone** com um tester existente. Instruções de teste gravadas e grupo associado, sem novos convites. Compilação Apple `e0e7c4a1-80e3-49d1-8d03-5885a89c67f6`. Confirmação local: `tmp/testflight-build9-em-testes.png`.
 
 Solicitado ao responsável atualizar para o build 9, abrir Assinatura → Recarregar planos e informar o código de suporte caso continue falhando. Ainda falta o resultado da consulta no iPhone brasileiro e a compra/restauração. Esta melhoria torna a falha diagnosticável; **não é evidência de que a oferta ou a compra já funciona no aparelho**.
+
+## Feedback real do build 9 — 08/10, 22:37 BRT
+
+O feedback com captura enviado pelo TestFlight foi aberto no App Store Connect e a imagem original foi lida. Confirmados **1.0.0 (9)**, iPhone 17 Pro Max, iOS 27.0.1 e código **ML-IOS-OFFERINGS-23-BRA**. O storefront brasileiro está confirmado pelo SDK no aparelho; a divergência USA do simulador não explica esse resultado. O erro ocorre na consulta das ofertas, depois da obtenção do contexto da equipe e da configuração do SDK. Não é um relatório de encerramento inesperado do aplicativo.
+
+Auditoria somente de leitura no RevenueCat:
+
+- Resposta pública utilizada pelo SDK: HTTP 200, oferta atual `default`, 66 pacotes e 66 IDs únicos, exatamente os produtos Apple habilitados do manifesto local. A chave corresponde à embarcada no archive 9.
+- Os 66 vínculos pacote → produto foram consultados individualmente via API V2: produto Apple esperado, app correto, elegibilidade `all`, sem divergências ou paginação pendente.
+- A interface Apple mostra 70 produtos no grupo, localização pt-BR do grupo preenchida e produto mensal representativo com ID, preço, duração, disponibilidade e localização coerentes. A comparação integral dos IDs Apple usa o catálogo local; não se inspecionaram todos os metadados dos 70 produtos nesta etapa.
+
+A consulta de identificadores no RevenueCat está válida. A falha é compatível com a obtenção dos produtos pela Apple/StoreKit, mas o código isolado não determina qual condição do catálogo a provoca. Não há evidência para alterar chaves, preços de assinaturas, territórios das assinaturas ou enviar outro binário.
+
+### Pendência independente de cadastro corrigida
+
+O aplicativo principal ainda mostrava **Configurar disponibilidade** e **Adicionar preços**, sem cadastro inicial. Foi salva a disponibilidade **somente Brasil**, status **Disponível no lançamento do app**, e preço de download **R$ 0,00**, com Brasil como referência. A Apple calcula a tabela de preços para 175 regiões, mas a disponibilidade continua limitada a uma região. Não houve submissão à revisão, lançamento público, compra, convite ou alteração no preço das assinaturas.
+
+Confirmações locais: `tmp/app-brasil-disponivel-lancamento.png` e `tmp/app-preco-gratuito-brasil.png`. O preço do app é requisito de preparação para submissão, mas a [TN3186](https://developer.apple.com/documentation/technotes/tn3186-troubleshooting-in-app-purchases-availability-in-the-sandbox) não o lista como requisito explícito do sandbox. **Essa correção não comprova a causa nem a solução do erro 23.**
+
+Solicitado um novo teste na mesma versão 9, fechando e reabrindo o app e usando Assinatura → Recarregar planos, sem realizar compra. A disponibilidade efetiva dos produtos no iPhone e a compra/restauração continuam sem confirmação. Nenhuma mudança de código ou publicação adicional foi feita nesta investigação.
