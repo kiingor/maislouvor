@@ -64,6 +64,7 @@ import { detectBpmFromUrl } from "@/lib/detectBpm";
 import { useState, useEffect, useId, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { youtubeImportEnabled } from "@/lib/storeBuild";
+import { openYouTubeExternally, usesExternalYouTube } from "@/lib/youtubePlayback";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -1333,9 +1334,12 @@ export default function SongEditor({
                         {youtubeId && (
                           <Button
                             variant="outline"
-                            onClick={() => setPreviewOpen(true)}
+                            onClick={() => {
+                              if (usesExternalYouTube()) openYouTubeExternally(youtubeId);
+                              else setPreviewOpen(true);
+                            }}
                           >
-                            Conferir versão
+                            {usesExternalYouTube() ? "Conferir no YouTube" : "Conferir versão"}
                           </Button>
                         )}
                       </div>
@@ -2117,7 +2121,7 @@ export default function SongEditor({
           <DialogDescription>
             Confira se é a versão que a equipe vai tocar.
           </DialogDescription>
-          {previewOpen && youtubeId && (
+          {!usesExternalYouTube() && previewOpen && youtubeId && (
             <iframe
               src={`https://www.youtube.com/embed/${youtubeId}`}
               className="aspect-video w-full rounded-[13px]"

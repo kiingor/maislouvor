@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import Presentation from "./Presentation";
+import { Capacitor } from "@capacitor/core";
 
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
@@ -70,14 +71,15 @@ const loops = [loop,
   { ...loop, id: "ending", label: "Final", start_time: 110, end_time: 120, sort_order: 2 },
 ];
 
-async function setup({ audio = true, tracks = true, timestamps }: {
+async function setup({ audio = true, tracks = true, timestamps, mediaUrl }: {
   audio?: boolean;
   tracks?: boolean;
   timestamps?: { voz: number[] };
+  mediaUrl?: string;
 } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   queryClient.setQueryData(["presentation-songs", "repertorio", "repertorio-1"], [
-    { id: "song-1", title: "Aleluia, Hosana", audio_path: audio ? "main" : null, cifra_text: lyrics, lyrics_text: lyrics, cover_path: null, segment_timestamps: timestamps },
+    { id: "song-1", title: "Aleluia, Hosana", audio_path: audio ? "main" : null, cifra_text: lyrics, lyrics_text: lyrics, cover_path: null, segment_timestamps: timestamps, media_url: mediaUrl },
     { id: "song-2", title: "Próxima música", audio_path: "next", cifra_text: "[Intro]\nLetra seguinte", cover_path: null },
   ]);
   for (const id of ["song-1", "song-2"]) {
@@ -125,6 +127,21 @@ afterEach(() => vi.useRealTimers());
 afterAll(() => vi.unstubAllGlobals());
 
 describe("áudios adicionais e sequência de loops", () => {
+  it.each([true, false])("opens YouTube externally only on native (%s)", async (native) => {
+    const platform = vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(native);
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    try {
+      await setup({ audio: false, tracks: false, mediaUrl: "https://youtu.be/abcdefghijk" });
+      fireEvent.click(screen.getByRole("button", { name: native ? "Abrir no YouTube" : "Tocar música" }));
+      if (native) {
+        expect(open).toHaveBeenCalledWith("https://www.youtube.com/watch?v=abcdefghijk", "_blank", "noopener,noreferrer");
+        expect(document.querySelector("iframe")).toBeNull();
+      } else {
+        expect(document.querySelector("iframe")).toHaveAttribute("src", "https://www.youtube.com/embed/abcdefghijk?autoplay=1&controls=1");
+        expect(open).not.toHaveBeenCalled();
+      }
+    } finally { platform.mockRestore(); open.mockRestore(); }
+  });
   it("pausa os players e retoma a segunda repetição na mesma posição e velocidade", async () => {
     const main = (await setup())!;
     fireEvent.click(screen.getByTitle("Modo Ensaio"));

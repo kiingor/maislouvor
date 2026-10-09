@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SongEditor from "./SongEditor";
+import { Capacitor } from "@capacitor/core";
 const mocks = vi.hoisted(() => ({
   song: {} as Record<string, unknown>,
   updates: vi.fn(),
@@ -264,6 +265,8 @@ describe("song registration lifecycle", () => {
 
 describe("app consumption and rehearsal", () => {
   it("opens a published song read-only and still starts local stem separation", async () => {
+    vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(true);
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
     vi.stubEnv("VITE_STORE_BUILD", "1");
     Object.assign(mocks.song, { is_draft: false, media_url: "https://youtu.be/abcdefghijk" });
     mocks.invoke.mockResolvedValue({ data: { success: true }, error: null });
@@ -274,6 +277,9 @@ describe("app consumption and rehearsal", () => {
     expect(await screen.findByLabelText("Link da gravação")).toHaveAttribute("readonly");
     expect(document.body.textContent).not.toMatch(/Envie|Importe|Cole o link|escolha um arquivo/);
     expect(screen.queryByRole("button", { name: /Importar/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Conferir no YouTube" }));
+    expect(open).toHaveBeenCalledWith("https://www.youtube.com/watch?v=abcdefghijk", "_blank", "noopener,noreferrer");
+    expect(document.querySelector("iframe")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Separar em faixas (IA)" }));
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith("separate-stems", {
       body: { song_id: "song", audio_path: "team/song.mp3" },
@@ -282,6 +288,13 @@ describe("app consumption and rehearsal", () => {
     expect(await screen.findByRole("button", { name: "Trechos para repetir no ensaio" })).toBeEnabled();
     expect(mocks.updates).not.toHaveBeenCalled();
     expect(mocks.invoke).not.toHaveBeenCalledWith("import-youtube", expect.anything());
+  });
+  it("keeps the recording preview embedded on the web", async () => {
+    Object.assign(mocks.song, { is_draft: false, media_url: "https://youtu.be/abcdefghijk" });
+    await start();
+    fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Conferir versão" }));
+    expect(screen.getByTitle("Prévia da gravação")).toHaveAttribute("src", "https://www.youtube.com/embed/abcdefghijk");
   });
   it("does not allow an app deep link to resume a draft", async () => {
     vi.stubEnv("VITE_STORE_BUILD", "1");

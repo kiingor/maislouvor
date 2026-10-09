@@ -19,6 +19,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { applyAppearance } from "@/lib/appearance";
+import { openYouTubeExternally, usesExternalYouTube } from "@/lib/youtubePlayback";
 
 // Padrão estável: `= []` criava um array novo a cada render enquanto a consulta carregava,
 // e o efeito [songTracks] realimentava o estado em loop ("Maximum update depth exceeded").
@@ -2871,13 +2872,14 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
             className={`${PLAIN_CIRCLE} ${showMediaPlayer ? LENS_ON : ""}`}
             onClick={() => {
               if (youtubeId) {
-                setShowMediaPlayer((v) => !v);
+                if (usesExternalYouTube()) openYouTubeExternally(youtubeId);
+                else setShowMediaPlayer((v) => !v);
               } else {
                 window.open(mediaUrl, "_blank");
               }
             }}
-            title="Tocar música"
-            aria-label="Tocar música"
+            title={youtubeId && usesExternalYouTube() ? "Abrir no YouTube" : "Tocar música"}
+            aria-label={youtubeId && usesExternalYouTube() ? "Abrir no YouTube" : "Tocar música"}
           >
             <Music className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
           </button>
@@ -2953,7 +2955,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
 
       {/* YouTube Mini Player — cartão flutuante logo acima da barra de transporte (como antes: não cobre
           o início da letra nem as zonas de toque do topo). O ✕ fica no canto de fora, longe dos controles do vídeo. */}
-      {showMediaPlayer && youtubeId && (
+      {!usesExternalYouTube() && showMediaPlayer && youtubeId && (
         <div className="fixed right-4 z-50" style={{ bottom: (transportH || 88) + 8 }}>
           <button
             onClick={() => setShowMediaPlayer(false)}

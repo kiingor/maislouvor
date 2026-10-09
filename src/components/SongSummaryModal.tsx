@@ -9,6 +9,7 @@ import { SongContentModal } from "@/components/SongContentModal";
 import { SongAudioAttachmentsDialog } from "@/components/SongAudioAttachmentsDialog";
 import { Music, FileText, Youtube, Volume2, ChevronRight, MessageSquare, Headphones } from "lucide-react";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+import { openYouTubeExternally, usesExternalYouTube } from "@/lib/youtubePlayback";
 
 // Lista agrupada dentro da folha (protótipo `.group` / `.group-label`).
 const group = "overflow-hidden rounded-card bg-card";
@@ -101,10 +102,13 @@ export function SongSummaryModal({ open, onOpenChange, songId, cultoNotes, culto
     },
     {
       key: "video",
-      label: "Vídeo",
+      label: usesExternalYouTube() ? "Abrir no YouTube" : "Vídeo",
       icon: Youtube,
       available: !!youtubeId,
-      onClick: () => setMediaOpen("video"),
+      onClick: () => {
+        if (usesExternalYouTube()) openYouTubeExternally(youtubeId!);
+        else setMediaOpen("video");
+      },
     },
     {
       key: "additional",
@@ -262,7 +266,7 @@ export function SongSummaryModal({ open, onOpenChange, songId, cultoNotes, culto
           <DialogHeader>
             <DialogTitle className="truncate">{song.title} — Vídeo</DialogTitle>
           </DialogHeader>
-          {youtubeId && (
+          {!usesExternalYouTube() && youtubeId && (
             <div className="overflow-hidden rounded-[16px] bg-fill-tertiary">
               <AspectRatio ratio={16 / 9}>
                 <iframe

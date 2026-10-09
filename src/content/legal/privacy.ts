@@ -40,7 +40,7 @@ export const privacyPolicy: LegalDocumentContent = {
       blocks: [
         [
           `Usamos seus dados para o ${APP_NAME} funcionar para você e para a sua equipe: conta, escalas, repertórios, músicas, chat e notificações.`,
-          "**Não vendemos** dados pessoais, **não exibimos anúncios** e **não rastreamos** você em outros apps ou sites.",
+          "**Não vendemos** dados pessoais nem usamos os dados da sua conta e equipe para direcionar publicidade. Não incluímos publicidade própria. Na web, vídeos incorporados do YouTube podem exibir anúncios e o Google trata dados conforme sua política. No app nativo, o vídeo abre no YouTube ou no navegador externo.",
           `O assistente Asafe, no WhatsApp, é opcional: um líder o ativa na equipe, ele envia mensagens e dados da equipe à ${ASAFE_AI_PROVIDER}, e cada pessoa escolhe no app se ele pode usar os dados dela — e muda de ideia quando quiser.`,
           "No chat, um filtro automático esconde palavras ofensivas, e você pode denunciar mensagens e bloquear pessoas.",
           `Você pode acessar, corrigir e excluir seus dados — inclusive excluir a conta pelo app ou pela página ${link("Excluir conta", LEGAL_PATHS.deleteAccount)}.`,
@@ -76,7 +76,7 @@ export const privacyPolicy: LegalDocumentContent = {
         ],
         "**Dados gerados pelo uso:**",
         [
-          "**Notificações push:** o token do aparelho no Firebase Cloud Messaging (app Android/iOS) ou a assinatura de notificações do navegador (app web), para enviar os avisos da equipe.",
+          "**Notificações push:** o token do aparelho no Firebase Cloud Messaging (app Android) ou a assinatura de notificações do navegador (app web), para enviar os avisos da equipe.",
           `**Asafe (assistente no WhatsApp):** só nas equipes em que um líder ativa o assistente e só de quem permite o uso dos próprios dados, em **${ASAFE_ALLOW_LABEL}** (em ${MY_SETTINGS_IN_APP}). Com a permissão, o Asafe reconhece você comparando o número do WhatsApp com o telefone do seu perfil (ou pelo código de vínculo que você gerar no app) e guarda esse vínculo, o identificador do WhatsApp, o nome exibido, as mensagens que você envia ao Asafe nos grupos ativados, as respostas geradas e contadores de uso. A permissão é exigida também de quem já usava o Asafe: sem o aceite atual, o assistente não reconhece a pessoa nem envia seus dados à IA. Se você não permitir ou desligar a permissão, ele deixa de reconhecer você, apaga o vínculo e o seu histórico de conversas e não marca mais você nos avisos. Guardamos também a sua escolha (permitir ou não, com a versão do aviso e a data).`,
           "**Assinaturas:** identificador de cobrança da equipe, plano, produto, capacidade, transações, estado e validade da assinatura. O SDK de compras também trata informações técnicas do aparelho necessárias à verificação da compra.",
           "**Registros técnicos:** endereço IP, data e hora de acesso, tipo de aparelho e de navegador e registros de erro, mantidos pelo servidor.",
@@ -119,7 +119,7 @@ export const privacyPolicy: LegalDocumentContent = {
           "**Sua equipe:** os membros veem seu nome, foto, funções, disponibilidade, escalas, mensagens do chat e o conteúdo da equipe, conforme as permissões definidas pelos líderes.",
           `**Denúncias:** quando você denuncia uma mensagem, os líderes da equipe e a equipe do ${APP_NAME} veem a denúncia, com o seu nome, o motivo e a cópia da mensagem; se ela for sobre alguém da liderança, só a equipe do ${APP_NAME} vê. A pessoa denunciada não é avisada da denúncia nem de quem a fez. Denúncias de músicas e respostas de IA são visíveis apenas para a moderação da plataforma e incluem o conteúdo denunciado, o motivo e os detalhes informados.`,
           `**Infraestrutura:** o banco de dados, os arquivos e a autenticação ficam em servidor contratado junto a ${value(INFRA_PROVIDER)}, onde operamos o software de código aberto Supabase.`,
-          `**Google:** login com Google (se você escolher), entrega de notificações pelo Firebase Cloud Messaging e o player do YouTube incorporado ao app, que usa os Serviços de API do YouTube. Ao reproduzir um vídeo, o Google pode coletar dados conforme a ${link("Política de Privacidade do Google", "https://policies.google.com/privacy")}. Quando você importa o áudio de um link do YouTube, nosso servidor acessa o vídeo indicado por você.`,
+          `**Google:** login com Google (se você escolher), entrega de notificações pelo Firebase Cloud Messaging no Android e o player do YouTube incorporado na web, que usa os Serviços de API do YouTube. O player pode coletar dados ao carregar e ao reproduzir um vídeo, inclusive para personalização e anúncios, conforme a ${link("Política de Privacidade do Google", "https://policies.google.com/privacy")}. No app nativo, o vídeo abre no aplicativo YouTube ou no navegador externo; o uso nesse aplicativo ou navegador segue as políticas do respectivo serviço. Quando você importa o áudio de um link do YouTube pela web, nosso servidor acessa o vídeo indicado por você.`,
           `**Pagamentos e assinaturas:** a RevenueCat recebe o identificador de cobrança da equipe e os dados necessários para verificar e sincronizar compras. Pagamentos na web passam pela Stripe; compras nativas, quando disponíveis, pela Apple ou pelo Google. Consulte a ${link("Política de Privacidade da RevenueCat", "https://www.revenuecat.com/privacy")} e a ${link("Política de Privacidade da Stripe", "https://stripe.com/privacy")}.`,
           "**Serviços de notificação dos navegadores** (como Google, Mozilla, Apple e Microsoft), que entregam os avisos do app web.",
           "**Apple:** verifica sua identidade quando você escolhe Entrar com Apple no app iOS. Guardamos de forma criptografada a credencial necessária para revogar essa autorização ao excluir a conta. Contas antigas sem essa credencial recebem as instruções de revogação da Apple após a exclusão. O Face ID opcional é verificado pelo próprio aparelho; os dados biométricos não são enviados ao servidor do +Louvor.",
@@ -131,7 +131,7 @@ export const privacyPolicy: LegalDocumentContent = {
           "**Reorganizações societárias:** em caso de fusão, aquisição ou venda do serviço, os dados seguem com o serviço, protegidos por esta política.",
         ],
         `Os operadores só podem usar os dados para prestar o serviço ao ${APP_NAME}, segundo nossas instruções. **Exigimos, por contrato ou pelos termos dos serviços contratados, que ofereçam aos dados pessoais proteção igual ou superior à descrita nesta Política e à exigida pela LGPD.**`,
-        "**Não vendemos nem alugamos dados pessoais, não os usamos para publicidade e não os repassamos a corretores de dados.** Também não rastreamos você em apps ou sites de outras empresas.",
+        "**Não vendemos nem alugamos dados pessoais e não os repassamos a corretores de dados.** Não usamos os dados da sua conta e equipe para direcionar publicidade. O player YouTube incorporado na web tem as práticas de coleta e publicidade descritas acima; no app nativo, os vídeos abrem externamente.",
       ],
     },
     {

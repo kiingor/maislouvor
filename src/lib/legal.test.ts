@@ -145,6 +145,12 @@ describe("legal documents content", () => {
     const privacy = all(privacyPolicy);
     expect(privacy).toMatch(/OpenAI \(Estados Unidos\)/);
     expect(privacy).toMatch(/Não vendemos/);
+    expect(privacy).toContain("Firebase Cloud Messaging (app Android)");
+    expect(privacy).not.toContain("app Android/iOS");
+    expect(privacy).toContain("No app nativo, o vídeo abre no YouTube ou no navegador externo");
+    expect(privacy).toContain("player do YouTube incorporado na web");
+    expect(privacy).toContain("coletar dados ao carregar e ao reproduzir");
+    expect(privacy).not.toMatch(/não exibimos anúncios|não rastreamos/);
     expect(privacy).toContain("(/excluir-conta)");
     expect(privacy).toMatch(/Qualquer pessoa com o link/);
     // Apple 5.1.1(i): terceiros com proteção igual à desta política.

@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { applyAppearance, isAppearanceDark, paintTheme } from "@/lib/appearance";
+import { openYouTubeExternally, usesExternalYouTube } from "@/lib/youtubePlayback";
 
 interface PlaylistSong {
   id: string;
@@ -54,6 +55,7 @@ function extractYouTubeId(url: string): string | null {
 }
 
 export default function PublicPlaylist() {
+  const externalVideo = usesExternalYouTube();
   const { token } = useParams<{ token: string }>();
   const [data, setData] = useState<PlaylistData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,7 +107,7 @@ export default function PublicPlaylist() {
   const hasVideoOption = !!videoId;
   const hasAudioOption = !!currentSong?.audio_url;
   const hasBothOptions = hasVideoOption && hasAudioOption;
-  const isVideoMode = showVideo && hasVideoOption;
+  const isVideoMode = !externalVideo && showVideo && hasVideoOption;
   const hasLyrics = !!currentSong?.lyrics_text;
 
   // Fetch playlist data
@@ -168,12 +170,12 @@ export default function PublicPlaylist() {
 
   // Load YouTube IFrame API
   useEffect(() => {
-    if (!hasVideoOption) return;
+    if (externalVideo || !hasVideoOption) return;
     if ((window as any).YT) return;
     const tag = document.createElement("script");
     tag.src = "https://www.youtube.com/iframe_api";
     document.head.appendChild(tag);
-  }, [hasVideoOption]);
+  }, [externalVideo, hasVideoOption]);
 
   // Create/update YT player
   useEffect(() => {
@@ -298,6 +300,10 @@ export default function PublicPlaylist() {
   }, [currentSong?.id, currentSong?.audio_url, isVideoMode, videoId]);
 
   const togglePlay = useCallback(() => {
+    if (externalVideo && videoId && !currentSong?.audio_url) {
+      openYouTubeExternally(videoId);
+      return;
+    }
     if (isVideoMode) {
       const p = ytPlayerRef.current;
       if (!p) return;
@@ -320,7 +326,7 @@ export default function PublicPlaylist() {
         audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
       }
     }
-  }, [isVideoMode, isPlaying, currentSong?.audio_url]);
+  }, [externalVideo, videoId, isVideoMode, isPlaying, currentSong?.audio_url]);
 
   const seek = useCallback(
     (val: number[]) => {
@@ -536,7 +542,7 @@ export default function PublicPlaylist() {
               type="button"
               className="grid h-[68px] w-[68px] place-items-center rounded-full bg-prominent text-prominent-foreground shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_8px_20px_-8px_var(--lg-shadow)] transition-transform duration-200 active:scale-95 motion-reduce:transition-none"
               onClick={togglePlay}
-              aria-label={isPlaying ? "Pausar" : "Reproduzir"}
+              aria-label={externalVideo && videoId && !hasAudioOption ? "Abrir no YouTube" : isPlaying ? "Pausar" : "Reproduzir"}
             >
               {isPlaying ? (
                 <Pause className="h-8 w-8" fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
@@ -597,11 +603,17 @@ export default function PublicPlaylist() {
               <MessageSquareQuote className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden="true" />
             </button>
 
-            {hasBothOptions && (
+            {(hasBothOptions || (externalVideo && hasVideoOption)) && (
               <button
                 type="button"
                 className={toolButton}
                 onClick={() => {
+                  if (externalVideo && videoId) {
+                    audioRef.current?.pause();
+                    setIsPlaying(false);
+                    openYouTubeExternally(videoId);
+                    return;
+                  }
                   // Stop current playback
                   if (isVideoMode) {
                     try { ytPlayerRef.current?.pauseVideo(); } catch {}
@@ -614,8 +626,8 @@ export default function PublicPlaylist() {
                   setIsPlaying(true);
                   setShowVideo(!showVideo);
                 }}
-                title={showVideo ? "Ver áudio" : "Ver vídeo"}
-                aria-label={showVideo ? "Ver áudio" : "Ver vídeo"}
+                title={externalVideo ? "Ver vídeo no YouTube" : showVideo ? "Ver áudio" : "Ver vídeo"}
+                aria-label={externalVideo ? "Ver vídeo no YouTube" : showVideo ? "Ver áudio" : "Ver vídeo"}
               >
                 {showVideo ? <Music className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden="true" /> : <Video className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden="true" />}
               </button>
