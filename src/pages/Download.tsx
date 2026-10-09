@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { BrandMark } from "@/components/BrandMark";
 import { Download as DownloadIcon, Smartphone, ShieldCheck, ChevronRight, Info } from "lucide-react";
 
-const APP_VERSION = "1.0.5";
+const APP_VERSION = "1.0.6";
 const APK_URL = `/LouvorMais-${APP_VERSION}.apk`;
 
 /** Página pública do APK, no estilo de página de produto da App Store sobre o fundo agrupado. */
@@ -87,7 +87,8 @@ export default function Download() {
             <p className="mt-1 text-footnote text-muted-foreground">
               Toque em <strong className="font-semibold text-foreground">Baixar APK</strong> → abra o arquivo → se o Android avisar,
               permita a instalação para o navegador usado → Instalar. Se você usa a versão 1.0,
-              leia o aviso acima antes de remover o app antigo. Depois, entre na mesma conta.
+              leia o aviso acima antes de remover o app antigo. Ao abrir, use a mesma conta e revise
+              o aviso “Sua participação, sua escolha” para continuar acessando sua equipe.
             </p>
           </div>
         </div>
