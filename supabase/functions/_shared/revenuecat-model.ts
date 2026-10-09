@@ -9,6 +9,13 @@ export interface BillingProduct {
   enabled: boolean;
 }
 export type BillingEnvironment = 'PRODUCTION' | 'SANDBOX';
+export interface BillingCustomerPolicy {
+  known: boolean;
+  environment: BillingEnvironment;
+  store: 'app_store' | null;
+  may_sync: boolean;
+  requires_test_reset: boolean;
+}
 interface Entitlement {
   product_identifier: string;
   expires_date: string | null;
@@ -40,7 +47,7 @@ function timestamp(value: string | null | undefined): number {
   return result;
 }
 
-export function projectSubscriber(data: SubscriberResponse, products: BillingProduct[], environment: BillingEnvironment) {
+export function projectSubscriber(data: SubscriberResponse, products: BillingProduct[], environment: BillingEnvironment, allowedStore?: 'app_store') {
   if (!Number.isSafeInteger(data?.request_date_ms) || data.request_date_ms <= 0 ||
     !data.subscriber?.entitlements || typeof data.subscriber.entitlements !== 'object' || Array.isArray(data.subscriber.entitlements) ||
     !data.subscriber?.subscriptions || typeof data.subscriber.subscriptions !== 'object' || Array.isArray(data.subscriber.subscriptions)) {
@@ -54,6 +61,7 @@ export function projectSubscriber(data: SubscriberResponse, products: BillingPro
     if (!subscription) return []; // One-time and promotional grants are not team subscriptions.
     if (typeof subscription.is_sandbox !== 'boolean' || typeof subscription.store !== 'string') throw new Error('Invalid subscription');
     if (subscription.is_sandbox !== (environment === 'SANDBOX')) return [];
+    if (allowedStore && subscription.store !== allowedStore) return [];
     const expires = timestamp(entitlement.expires_date);
     const accessExpires = Math.max(expires, timestamp(entitlement.grace_period_expires_date), timestamp(subscription.grace_period_expires_date));
     const active = !subscription.refunded_at && expires > 0 && accessExpires > now;
@@ -89,15 +97,40 @@ export function projectSubscriber(data: SubscriberResponse, products: BillingPro
   };
 }
 
+export function projectCustomerSubscriber(data: SubscriberResponse, products: BillingProduct[], policy: BillingCustomerPolicy) {
+  if (!policy.known || !policy.may_sync) throw new Error('Customer billing policy does not allow synchronization');
+  if (policy.environment === 'SANDBOX') {
+    if (policy.store !== 'app_store') throw new Error('Sandbox policy requires App Store scope');
+    // A real contract appearing at the provider must not be replaced by testing,
+    // even if its webhook has not reached our database yet.
+    if (projectSubscriber(data, products, 'PRODUCTION').is_active) {
+      throw new Error('Production purchase requires controlled closure of this test');
+    }
+  }
+  const snapshot = projectSubscriber(data, products, policy.environment, policy.environment === 'SANDBOX' ? 'app_store' : undefined);
+  return policy.environment === 'SANDBOX' ? { ...snapshot, store: 'app_store' } : snapshot;
+}
+
 export interface RevenueCatEvent {
   id: string;
   type: string;
   environment?: string;
+  store?: string;
   app_user_id?: string;
   original_app_user_id?: string;
   aliases?: string[];
   transferred_from?: string[];
   transferred_to?: string[];
+}
+
+export function eventMatchesCustomerPolicy(event: RevenueCatEvent, policy: BillingCustomerPolicy): boolean {
+  if (!policy.known || !policy.may_sync) return false;
+  // Both transfer sides fetch their own current provider state and apply their
+  // own policy; event details never grant access or move the exception itself.
+  if (event.type === 'TRANSFER') return true;
+  if (event.environment != null && event.environment !== policy.environment) return false;
+  if (policy.environment === 'SANDBOX' && event.store != null && event.store.toLowerCase() !== 'app_store') return false;
+  return true;
 }
 
 export function eventCustomerIds(event: RevenueCatEvent): string[] {

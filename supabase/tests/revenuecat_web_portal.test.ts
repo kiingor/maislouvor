@@ -17,17 +17,17 @@ function request(expand = true) {
 }
 function harness() {
   const originalFetch = globalThis.fetch; const originalEnv = new Map<string, string | undefined>();
-  for (const [name, value] of Object.entries({ SUPABASE_URL: 'https://supabase.test', SUPABASE_ANON_KEY: 'anon-fixture', SUPABASE_SERVICE_ROLE_KEY: 'service-fixture', REVENUECAT_ENVIRONMENT: 'SANDBOX', REVENUECAT_SECRET_API_KEY: 'rc-v1-fixture', REVENUECAT_V2_SECRET_API_KEY: 'rc-v2-fixture', REVENUECAT_PROJECT_ID: 'projfixture', STRIPE_SECRET_KEY: 'sk_test_fixture', STRIPE_PORTAL_CONFIGURATION_ID: 'bpc_general', BILLING_WEB_RETURN_URL: 'https://app.example.test/app/settings' })) {
+  for (const [name, value] of Object.entries({ SUPABASE_URL: 'https://supabase.test', SUPABASE_ANON_KEY: 'anon-fixture', SUPABASE_SERVICE_ROLE_KEY: 'service-fixture', REVENUECAT_ENVIRONMENT: 'PRODUCTION', REVENUECAT_SECRET_API_KEY: 'rc-v1-fixture', REVENUECAT_V2_SECRET_API_KEY: 'rc-v2-fixture', REVENUECAT_PROJECT_ID: 'projfixture', STRIPE_SECRET_KEY: 'sk_live_fixture', STRIPE_PORTAL_CONFIGURATION_ID: 'bpc_general', BILLING_WEB_RETURN_URL: 'https://app.example.test/app/settings' })) {
     originalEnv.set(name, Deno.env.get(name)); Deno.env.set(name, value);
   }
-  const mapping = { product_id: 'prod_old', stripe_product_id: 'prod_old', stripe_price_id: 'price_old', revenuecat_product_id: 'prodrcold', portal_configuration_id: 'bpc_expand', environment: 'SANDBOX' };
+  const mapping = { product_id: 'prod_old', stripe_product_id: 'prod_old', stripe_price_id: 'price_old', revenuecat_product_id: 'prodrcold', portal_configuration_id: 'bpc_expand', environment: 'PRODUCTION' };
   const state = { calls: [] as string[], sessions: [] as URLSearchParams[], wrongOwner: false, rateAllowed: true, failProvider: false, count: 20,
-    current: { provider: 'revenuecat', store: 'stripe', product_id: 'prod_old', revenuecat_environment: 'SANDBOX', is_unlimited: false },
+    current: { provider: 'revenuecat', store: 'stripe', product_id: 'prod_old', revenuecat_environment: 'PRODUCTION', is_unlimited: false },
     target: { ...oldProduct, product_id: 'prod_new', member_limit: 40 },
-    price: { id: 'price_new', product: 'prod_new', active: true, livemode: false, currency: 'brl', unit_amount: 8990, recurring: { interval: 'month', interval_count: 1 } },
+    price: { id: 'price_new', product: 'prod_new', active: true, livemode: true, currency: 'brl', unit_amount: 8990, recurring: { interval: 'month', interval_count: 1 } },
     item: { id: 'si_source', subscription: 'sub_source', quantity: 1, price: { id: 'price_old', product: 'prod_old', currency: 'brl', unit_amount: 6190 } },
-    subscription: { id: 'sub_source', customer: 'cus_team', livemode: false, status: 'active', cancel_at_period_end: false, pending_update: null as unknown, schedule: null as string | null },
-    rc: [{ product_id: 'prodrcold', store: 'stripe', environment: 'sandbox', store_subscription_identifier: 'si_source', gives_access: true, current_period_ends_at: Date.now() + 86400000 }],
+    subscription: { id: 'sub_source', customer: 'cus_team', livemode: true, status: 'active', cancel_at_period_end: false, pending_update: null as unknown, schedule: null as string | null },
+    rc: [{ product_id: 'prodrcold', store: 'stripe', environment: 'production', store_subscription_identifier: 'si_source', gives_access: true, current_period_ends_at: Date.now() + 86400000 }],
   };
   globalThis.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input)); state.calls.push(url.pathname);
@@ -39,14 +39,14 @@ function harness() {
         return json({ items: state.rc, next_page: null });
       }
       equal(url.pathname, `/v1/subscribers/${customer}`);
-      return json({ request_date_ms: Date.now(), subscriber: { entitlements: { completo: { product_identifier: 'prod_old', expires_date: '2099-01-01T00:00:00Z' } }, subscriptions: { prod_old: { is_sandbox: true, store: 'stripe', expires_date: '2099-01-01T00:00:00Z' } } } });
+      return json({ request_date_ms: Date.now(), subscriber: { entitlements: { completo: { product_identifier: 'prod_old', expires_date: '2099-01-01T00:00:00Z' } }, subscriptions: { prod_old: { is_sandbox: false, store: 'stripe', expires_date: '2099-01-01T00:00:00Z' } } } });
     }
     if (url.hostname === 'api.stripe.com') {
-      equal(new Headers(init?.headers).get('Authorization'), 'Bearer sk_test_fixture');
+      equal(new Headers(init?.headers).get('Authorization'), 'Bearer sk_live_fixture');
       if (url.pathname === '/v1/subscription_items/si_source') return json(state.item);
       if (url.pathname === '/v1/subscriptions/sub_source') return json({ ...state.subscription, items: { data: [state.item] } });
       if (url.pathname === '/v1/prices/price_new') return json(state.price);
-      if (url.pathname === '/v1/billing_portal/sessions') { state.sessions.push(new URLSearchParams(String(init?.body))); return json({ url: 'https://billing.stripe.com/p/session/test', livemode: false }); }
+      if (url.pathname === '/v1/billing_portal/sessions') { state.sessions.push(new URLSearchParams(String(init?.body))); return json({ url: 'https://billing.stripe.com/p/session/test', livemode: true }); }
       throw new Error(`Unexpected Stripe operation: ${url.pathname}`);
     }
     if (url.hostname !== 'supabase.test') throw new Error(`Unexpected provider: ${url.hostname}`);
@@ -59,6 +59,7 @@ function harness() {
     if (url.pathname.endsWith('/revenuecat_products')) return json(url.searchParams.has('product_id') ? url.searchParams.get('product_id') === 'eq.prod_old' ? oldProduct : state.target : [oldProduct, state.target]);
     if (url.pathname.endsWith('/team_members')) return new Response(null, { headers: { 'Content-Range': `0-${state.count - 1}/${state.count}` } });
     if (url.pathname.endsWith('/rpc/consume_edge_rate_limit')) return json(state.rateAllowed);
+    if (url.pathname.endsWith('/rpc/revenuecat_customer_policy')) return json({ known: true, may_sync: true, environment: 'PRODUCTION', store: null, requires_test_reset: false });
     if (url.pathname.endsWith('/rpc/apply_revenuecat_snapshot')) return json(true);
     throw new Error(`Unhandled path: ${url.pathname}`);
   };
@@ -92,7 +93,7 @@ for (const [label, modify, status] of [
   ['provider outage', s => { s.failProvider = true; }, 502],
   ['legacy unlimited', s => { s.current.is_unlimited = true; }, 409],
   ['Apple contract', s => { s.current.store = 'app_store'; }, 409],
-  ['wrong environment', s => { s.subscription.livemode = true; }, 409],
+  ['wrong environment', s => { s.subscription.livemode = false; }, 409],
   ['changed source product', s => { s.item.price.product = 'prod_other'; }, 409],
   ['team outgrew target', s => { s.count = 41; }, 409],
   ['different plan', s => { s.target.plan = 'asafe'; }, 409],

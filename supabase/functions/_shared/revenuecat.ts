@@ -1,6 +1,6 @@
 import type { SecurityContext } from './security.ts';
 import { HttpError, readResponseText, requiredEnv } from './security.ts';
-import { projectSubscriber, safeManagementUrl, type BillingEnvironment, type BillingProduct, type SubscriberResponse } from './revenuecat-model.ts';
+import { projectCustomerSubscriber, safeManagementUrl, type BillingCustomerPolicy, type BillingEnvironment, type BillingProduct, type SubscriberResponse } from './revenuecat-model.ts';
 
 export function billingEnvironment(): BillingEnvironment {
   const value = requiredEnv('REVENUECAT_ENVIRONMENT');
@@ -8,8 +8,19 @@ export function billingEnvironment(): BillingEnvironment {
   return value;
 }
 
+export async function customerBillingPolicy(admin: SecurityContext['admin'], appUserId: string): Promise<BillingCustomerPolicy> {
+  const { data, error } = await admin.rpc('revenuecat_customer_policy', { p_app_user_id: appUserId });
+  if (error || !data || typeof data.known !== 'boolean' || typeof data.may_sync !== 'boolean' ||
+    !['PRODUCTION', 'SANDBOX'].includes(data.environment) ||
+    (data.environment === 'SANDBOX' ? data.store !== 'app_store' : data.store !== null)) {
+    throw new HttpError(503, 'Política de cobrança indisponível.');
+  }
+  return data as BillingCustomerPolicy;
+}
+
 export async function syncRevenueCat(admin: SecurityContext['admin'], appUserId: string) {
-  const environment = billingEnvironment();
+  const policy = await customerBillingPolicy(admin, appUserId);
+  if (!policy.known || !policy.may_sync) throw new HttpError(409, 'O teste desta equipe foi encerrado. Entre em contato com o suporte.');
   const response = await fetch(`https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`, {
     headers: { Authorization: `Bearer ${requiredEnv('REVENUECAT_SECRET_API_KEY')}`, Accept: 'application/json' },
     signal: AbortSignal.timeout(10000),
@@ -19,7 +30,7 @@ export async function syncRevenueCat(admin: SecurityContext['admin'], appUserId:
   const subscriber = JSON.parse(await readResponseText(response, 1_048_576)) as SubscriberResponse;
   const { data: products, error: catalogError } = await admin.from('revenuecat_products').select('*');
   if (catalogError) throw new HttpError(503, 'Catálogo de assinaturas indisponível.');
-  const snapshot = projectSubscriber(subscriber, products as BillingProduct[], environment);
+  const snapshot = projectCustomerSubscriber(subscriber, products as BillingProduct[], policy);
   const { error } = await admin.rpc('apply_revenuecat_snapshot', { p_app_user_id: appUserId, p_snapshot: snapshot });
   if (error) throw new HttpError(503, 'Não foi possível atualizar a assinatura.');
   return { management_url: safeManagementUrl(subscriber.subscriber.management_url), is_active: snapshot.is_active };
