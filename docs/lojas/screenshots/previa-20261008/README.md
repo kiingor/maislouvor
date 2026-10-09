@@ -36,3 +36,12 @@ O projeto mantém suporte a iPhone e iPad (`TARGETED_DEVICE_FAMILY = 1,2`). Falt
 capturas para iPad de 13″, além da conferência dos slots exigidos na ficha Apple.
 Nenhuma imagem foi enviada nesta etapa. Ver o
 [registro de preparação](../../preparacao-revisao-20261009.md).
+
+## Slots observados posteriormente no App Store Connect — 09/10
+
+A ficha passou a exibir como principal **iPhone com Dynamic Island (tela média)**,
+com 0/10 capturas e dimensões de retrato 1179×2556 ou 1206×2622. Também aparecem
+iPhone Duo e iPad de 13″. Reavaliar as dimensões da captura final usando esses
+slots atuais; os 1320×2868 deste diretório continuam como prévia histórica e não
+devem ser enviados ao slot principal observado. A ausência de capturas não foi
+listada na primeira validação sem build associado; isso não comprova dispensa.

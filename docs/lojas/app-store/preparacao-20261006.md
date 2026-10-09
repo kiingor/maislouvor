@@ -282,3 +282,15 @@ salvos. Login da demo/notas/contato estão preenchidos, mas **ainda não salvos*
 falta o telefone de contato solicitado ao titular. Questionário de privacidade
 incompleto, incluindo análise dos embeds YouTube; nada submetido/publicado e
 nenhum novo TestFlight. [Registro e retomada](../preenchimento-app-store-20261009.md).
+
+**09/10 — ícone e compilação elegível:** salvamento do contato/login/notas da
+revisão confirmado após reload, incluindo o telefone informado pelo titular.
+Categoria Música e classificação 13+ (com equivalências regionais) salvas.
+Ícone original corrigido para fundo completo; Xcode/actool e 525 testes passaram.
+Fonte `e497632`, upload **1.0.0 (10)** concluído às 14:49 (-03:00), desta vez com
+distribuição App Store Connect sem restrição Internal Only. Processamento
+concluído e build associado à ficha; ícone confirmado visualmente no painel,
+lançamento manual preservado. Grupo Teste iPhone associado ao build 10.
+A validação agora exige privacidade, direitos de conteúdo e capturas iPhone/iPad.
+Assinaturas continuam sem compra/restauração bem-sucedidas; não houve submissão
+para revisão pública. [Evidência e pendências](../icone-validacao-20261009.md).

@@ -24,19 +24,16 @@ O questionário continua com **configuração adicional necessária** e não foi
 publicado. Finalidades, vínculos e rastreamento ainda não foram confirmados na
 ficha. Não confundir seleção dos tipos com declaração final de privacidade.
 
-## Preparado no formulário, ainda não salvo
+## Acesso da revisão — salvamento confirmado
 
-Foram preenchidos e conferidos os campos de login/senha da conta de demonstração
-Apple, notas em inglês (**3.908 caracteres**), nome/sobrenome do responsável e
-`suporte@maislouvor.com`. A Apple mantém **Salvar desabilitado** porque falta o
-telefone para contato da revisão. O número foi solicitado ao titular; não foi
-inferido de outras contas ou serviços.
+O titular completou o contato e informou que salvou. Na conferência seguinte,
+após recarregar a página, persistiram login/senha da conta de demonstração Apple,
+notas em inglês (**3.908 caracteres**), nome/sobrenome, e-mail e telefone. O número
+não foi copiado para este registro; login e senha foram comparados em memória
+com o arquivo privado. **Salvar desabilitado** agora indica ausência de alterações.
 
-O formulário permanece aberto no Safari, janela 51, aba 10 nesta sessão. A aba 11
-contém Privacidade do app. Revalidar a janela/aba e o estado antes de retomar.
-Não recarregar a aba da versão antes de concluir ou preservar o rascunho: esses
-campos de revisão ainda não persistiram. Os metadados listados acima foram salvos
-separadamente antes de preencher novamente o acesso da demo.
+Nesta sessão, a janela 51, aba 10, contém a ficha e a aba 11 contém Privacidade
+do app. Revalidar a janela/aba e o estado antes de retomar.
 
 Credenciais apenas no arquivo local privado já documentado; não copiadas neste
 registro. A senha da conta Apple do titular e o código de dois fatores não foram
@@ -66,12 +63,17 @@ Fontes conferidas: [definições da Apple](https://developer.apple.com/app-store
 [políticas YouTube](https://developers.google.com/youtube/terms/developer-policies)
 e [player incorporado](https://support.google.com/youtube/answer/171780).
 
-## Sem distribuição nova
+## Validação preliminar após o salvamento
 
-Não foram adicionadas compilações ou capturas, nem acionados **Adicionar para
-revisão**, **Publicar** ou lançamento. O TestFlight continua **1.0.0 (9)**. Erro
-das ofertas, compra/restauração, capturas finais e validação pública permanecem
-como no [registro anterior](preparacao-revisao-20261009.md).
+Foi acionado **Adicionar para revisão** para executar a validação do formulário.
+A Apple recusou adicionar a versão, indicando cinco pendências: classificação
+etária, categoria primária, compilação, privacidade e direitos de conteúdo.
+Não foi criado um envio para análise. Categoria e classificação foram então
+preenchidas e confirmadas após recarregar; detalhes e situação da nova compilação
+no [registro do ícone e validação](icone-validacao-20261009.md).
+
+O erro das ofertas, compra/restauração, capturas finais e validação pública
+permanecem como no [registro anterior](preparacao-revisao-20261009.md).
 
 Nota operacional: nesta sessão, Orca leu a interface e acionou links/botões,
 mas `AXSetValue` e eventos sintéticos não alteraram os campos do Safari. A edição
