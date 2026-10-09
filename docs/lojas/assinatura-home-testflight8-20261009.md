@@ -26,11 +26,11 @@ As capturas da Home e da Assinatura em [home-assinatura-20261009](screenshots/ho
 - Archive em `/Volumes/MaisLouvorBuild/Archives/MaisLouvor-1.0.0-8.xcarchive`.
 - 223 arquivos web conferidos por hash entre o bundle de lojas e o aplicativo assinado. Assinatura verificada; logs da bridge desativados; sem URL remota; plugin Purchases presente.
 - Fonte e evidências em `/Volumes/MaisLouvorBuild/Release-1.0.0-8`.
-- Upload interno concluído em 08/10/2026 às 21:39 BRT, `EXPORT SUCCEEDED`; a Apple informou que o pacote entrou em processamento. Disponibilidade no grupo Teste iPhone ainda precisa ser confirmada.
+- Upload interno concluído em 08/10/2026 às 21:39 BRT, `EXPORT SUCCEEDED`; a Apple informou que o pacote entrou em processamento. Disponibilidade confirmada em 08/10/2026 às 21:50 BRT: status **Em testes**, grupo **Teste iPhone**, um tester existente. As instruções de teste foram salvas e o grupo foi associado, sem novos convites. Compilação Apple `8b29957a-80d9-468f-88ce-59ca5caf7589`. Evidência local privada: `tmp/testflight-build8-em-testes.png`.
 
 ## Planos: diagnóstico e limite da confirmação
 
-O acordo de apps pagos estava sem aceite. Após o responsável aceitar, a Apple passou a mostrar “Informações do usuário pendentes”, com conta bancária e declarações fiscais dos EUA pendentes. O responsável enviou os formulários fiscais, e os três passaram a Ativo na interface. O cadastro bancário continua em preenchimento; nenhuma declaração fiscal ou aceite foi enviado pelo agente. A navegação para conferir o TestFlight foi interrompida pela atividade do usuário no Safari, e o formulário bancário foi preservado.
+O acordo de apps pagos estava sem aceite. Após o responsável aceitar, a Apple passou a mostrar “Informações do usuário pendentes”, com conta bancária e declarações fiscais dos EUA pendentes. O responsável enviou os formulários fiscais, e os três passaram a Ativo na interface. O responsável concluiu o cadastro bancário, e a conta passou a **Processando**. A Apple informa prazo de até 24 horas para atualizar os dados bancários; o acordo de apps pagos ainda aparece com informações pendentes. Nenhuma declaração fiscal ou aceite foi enviado pelo agente. A conferência do TestFlight foi retomada depois do preenchimento e concluiu a liberação do build 8.
 
 O catálogo RevenueCat foi inspecionado: bundle correto, oferta padrão atual e 66 pacotes Apple. O contexto da equipe e as chamadas de sincronização consultadas não mostraram falha de backend. Isso não substitui a confirmação de `getOfferings()` no aparelho após a ativação comercial. Detalhes em [diagnóstico](diagnostico-revenuecat-testflight-20261009.md).
 

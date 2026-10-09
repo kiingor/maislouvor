@@ -245,7 +245,7 @@ Referências da correção nativa:
 
 ## Atualização de 08/10/2026 — Home, assinatura e upload do build 8
 
-A web recebeu a chamada discreta de planos abaixo de Atividade da equipe e a aba Assinatura ficou sem o botão Voltar. **1.0.0 (8) enviado com sucesso à Apple às 21:39 BRT**; ainda não há confirmação de disponibilidade no grupo Teste iPhone. A conferência no Safari ficou pendente enquanto o responsável preenche os dados bancários. Os três formulários fiscais já aparecem Ativos; o acordo de apps pagos ainda mostrava Informações do usuário pendentes.
+A web recebeu a chamada discreta de planos abaixo de Atividade da equipe e a aba Assinatura ficou sem o botão Voltar. **1.0.0 (8) disponível no TestFlight**, confirmado às 21:50 BRT após upload às 21:39 BRT. Status Em testes, grupo Teste iPhone com um tester existente; instruções de teste salvas. Os três formulários fiscais aparecem Ativos, e o cadastro bancário enviado pelo responsável está Processando (a Apple informa até 24 horas). O acordo de apps pagos ainda mostra Informações do usuário pendentes.
 
 O backend foi ajustado para reconhecer compras sandbox da App Store somente na equipe de teste autorizada, por 14 dias, mantendo produção/Stripe. A configuração não concedeu plano pago. Carregamento das ofertas e compra/restauração no aparelho ainda precisam ser confirmados após a regularização comercial. Registro completo: [Home, assinatura e build 8](../assinatura-home-testflight8-20261009.md).
 
