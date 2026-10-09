@@ -1,0 +1,17 @@
+[Unit]
+Description=Retenção de 30 dias das cópias do MaisLouvor
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/maislouvor-retention-run
+UMask=0077
+Nice=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/backups/maislouvor /var/lib/maislouvor-deploy /var/backups/maislouvor-managed/restic /run/lock
+# Keep restic metadata cache private/ephemeral under the service's private /tmp.
+Environment=RESTIC_CACHE_DIR=/tmp/maislouvor-restic-retention-cache
