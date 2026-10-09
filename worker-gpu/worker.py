@@ -33,6 +33,7 @@ import time
 import glob
 import shutil
 import hashlib
+import uuid
 import tempfile
 import pathlib
 import subprocess
@@ -93,7 +94,7 @@ def heartbeat():
 
 def claim(min_age=0):
     try:
-        j = rpc("claim_stem_job", {"p_worker": WORKER, "p_min_age_seconds": min_age})
+        j = rpc("claim_stem_job_v2", {"p_worker": WORKER, "p_min_age_seconds": min_age})
     except Exception as e:
         log("claim failed:", e)
         return None
@@ -227,95 +228,82 @@ def separate_file(infile, outdir):
 
 
 def process(job):
-    jid, song, team, audio = job["id"], job["song_id"], job["team_id"], job["audio_path"]
-    log(f"claimed job {jid[:8]}  song={song[:8]}  audio={audio}")
+    """Stage immutable outputs; commit only through the versioned DB fence."""
+    jid = job["id"]
     work = pathlib.Path(tempfile.mkdtemp(prefix="louvor_"))
+    # An ambiguous finalization timeout must keep staged files: the DB may have
+    # committed. Orphans can be reconciled later, never by blind cleanup here.
     try:
-        ext = os.path.splitext(audio)[1] or ".mp3"
-        infile = work / ("audio" + ext)
+        context = rpc("stem_job_context", {"p_job_id": jid, "p_worker": WORKER})
+        if not context or not context.get("allowed"):
+            rpc("finish_stem_job", {"p_job_id": jid, "p_worker": WORKER, "p_tracks": None})
+            return
+        song, team, audio = context["song_id"], context["team_id"], context["audio_path"]
+        prefix = f"{team}/{song}/stems/{jid}/{uuid.uuid4().hex}"
+        infile = work / ("audio" + (os.path.splitext(audio)[1] or ".mp3"))
         storage_download(audio, infile)
-
         sha = sha256_file(infile)
-        prefix = f"{team}/{song}/stems"
-
-        # ---- Acervo de stems: o MESMO áudio + mesmo modelo já foi separado? Só copia. ----
         try:
             cached = select("stem_cache", {"audio_sha256": f"eq.{sha}", "model": f"eq.{MODEL}",
                                            "select": "stems", "limit": "1"})
-        except Exception as ce:
+        except Exception:
             cached = []
-            log("stem cache lookup failed (segue separando):", ce)
+        produced = []
         if cached:
-            stems = cached[0]["stems"]
-            log(f"job {jid[:8]} CACHE HIT — reaproveitando {len(stems)} stems (sem rodar o Demucs)")
-            delete("song_tracks", {"song_id": f"eq.{song}", "audio_path": f"like.{prefix}/%"})
-            for i, st in enumerate(stems):
-                key, label = st["key"], st["label"]
-                storage_copy(f"_stemcache/{sha}/{key}.mp3", f"{prefix}/{key}.mp3")
-                insert("song_tracks", {"song_id": song, "track_name": label,
-                                       "audio_path": f"{prefix}/{key}.mp3", "sort_order": i})
-            patch("songs", {"id": f"eq.{song}"}, {"stems_status": "done", "stems_error": None})
-            patch("stem_jobs", {"id": f"eq.{jid}"}, {"status": "done"})
-            log(f"job {jid[:8]} DONE (reaproveitado do acervo, sem GPU)")
+            # Cache contains only key metadata; never trust paths or labels.
+            keys = {st.get("key") for st in cached[0].get("stems", []) if isinstance(st, dict)}
+            for key, label in STEMS:
+                if key in keys:
+                    local = work / f"{key}.mp3"
+                    storage_download(f"_stemcache/{sha}/{key}.mp3", local)
+                    if local.stat().st_size == 0:
+                        raise RuntimeError("Empty cached stem")
+                    produced.append((key, label, str(local)))
+        else:
+            outdir = work / "out"
+            separate_file(infile, outdir)
+            for key, label in STEMS:
+                matches = glob.glob(str(outdir / "**" / f"{key}.mp3"), recursive=True)
+                if matches and pathlib.Path(matches[0]).stat().st_size:
+                    produced.append((key, label, matches[0]))
+        if not produced:
+            raise RuntimeError("No stems produced")
+        # Recheck before upload; final RPC checks again after upload under locks.
+        context = rpc("stem_job_context", {"p_job_id": jid, "p_worker": WORKER})
+        if not context or not context.get("allowed"):
+            rpc("finish_stem_job", {"p_job_id": jid, "p_worker": WORKER, "p_tracks": None})
             return
 
-        # ---- Cache miss: roda o Demucs ----
-        outdir = work / "out"
-        log(f"separating (model={MODEL}, device={DEVICE}, segment={SEGMENT or 'default'})")
-        t0 = time.time()
-        separate_file(infile, outdir)
-        log(f"separated in {int(time.time() - t0)}s")
-
-        # Replace any previous auto-generated stems for this song (keep manual tracks)
-        delete("song_tracks", {"song_id": f"eq.{song}", "audio_path": f"like.{prefix}/%"})
-
-        produced = []  # (key, label, localpath) in STEMS order
-        for key, label in STEMS:
-            matches = glob.glob(str(outdir / "**" / f"{key}.mp3"), recursive=True)
-            if matches:
-                produced.append((key, label, matches[0]))
-        if not produced:
-            raise RuntimeError("demucs produced no stems")
-
-        # Upload the stems in parallel — far faster than one-by-one over a home uplink.
         def _upload(item):
-            key, label, path = item
+            key, _label, path = item
+            dest = f"{prefix}/{key}.mp3"
             with open(path, "rb") as f:
-                storage_upload(f"{prefix}/{key}.mp3", f.read())
-            return key, label
+                storage_upload(dest, f.read())
+            return {"key": key, "audio_path": dest}
 
-        t1 = time.time()
         with ThreadPoolExecutor(max_workers=6) as ex:
-            uploaded = list(ex.map(_upload, produced))
-        for i, (key, label) in enumerate(uploaded):
-            insert("song_tracks", {"song_id": song, "track_name": label,
-                                   "audio_path": f"{prefix}/{key}.mp3", "sort_order": i})
-        stored = len(uploaded)
-        log(f"uploaded {stored} stems in {int(time.time() - t1)}s")
-
-        # Arquiva no acervo global (mesmos arquivos locais) pra próximos do MESMO áudio.
+            tracks = list(ex.map(_upload, produced))
+        result = rpc("finish_stem_job", {"p_job_id": jid, "p_worker": WORKER, "p_tracks": tracks})
+        if not result or not result.get("applied"):
+            log("stem result ignored: job no longer current")
+            return
+        log(f"separation completed ({len(tracks)} stems)")
+        # Cache population remains optional and only follows accepted completion.
+        if not cached:
+            try:
+                for key, _label, path in produced:
+                    with open(path, "rb") as f:
+                        storage_upload(f"_stemcache/{sha}/{key}.mp3", f.read())
+                upsert_ignore("stem_cache", {"audio_sha256": sha, "model": MODEL,
+                    "stems": [{"key": k, "label": l} for k, l, _ in produced]}, "audio_sha256,model")
+            except Exception:
+                log("stem cache store failed (non-fatal)")
+    except Exception:
+        log("separation failed; existing tracks preserved")
         try:
-            for key, label, path in produced:
-                with open(path, "rb") as f:
-                    storage_upload(f"_stemcache/{sha}/{key}.mp3", f.read())
-            upsert_ignore("stem_cache",
-                          {"audio_sha256": sha, "model": MODEL,
-                           "stems": [{"key": k, "label": l} for k, l, _ in produced]},
-                          "audio_sha256,model")
-            log(f"job {jid[:8]} arquivado no acervo de stems ({sha[:12]}…)")
-        except Exception as ce:
-            log("stem cache store failed (non-fatal):", ce)
-
-        patch("songs", {"id": f"eq.{song}"}, {"stems_status": "done", "stems_error": None})
-        patch("stem_jobs", {"id": f"eq.{jid}"}, {"status": "done"})
-        log(f"job {jid[:8]} DONE ({stored} stems)")
-    except Exception as e:
-        log("job FAILED:", e)
-        try:
-            patch("songs", {"id": f"eq.{song}"}, {"stems_status": "error", "stems_error": str(e)[:300]})
-            patch("stem_jobs", {"id": f"eq.{jid}"}, {"status": "error", "error": str(e)[:300]})
-        except Exception as e2:
-            log("could not mark error:", e2)
+            rpc("finish_stem_job", {"p_job_id": jid, "p_worker": WORKER, "p_tracks": None})
+        except Exception:
+            log("could not finalize job failure; reconciliation required")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
