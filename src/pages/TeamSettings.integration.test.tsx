@@ -5,14 +5,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TeamSettings from './TeamSettings';
 
 const team = vi.hoisted(() => ({
-  currentTeam: { id: 'team-a', name: 'Equipe A', role: 'admin' },
+  currentTeam: { id: 'team-a', name: 'Equipe A', role: 'admin' } as { id: string; name: string; role: string } | null,
   teams: [{ id: 'team-a', name: 'Equipe A', role: 'admin' }, { id: 'team-b', name: 'Equipe B', role: 'admin' }],
   isAdmin: true, profileId: 'profile', can: () => true, refetch: vi.fn(), switchTeam: vi.fn(),
 }));
+const profileApi = vi.hoisted(() => ({
+  data: { id: 'profile', user_id: 'auth-user', full_name: 'Pessoa de teste', phone: '83999990000', avatar_url: null },
+  error: null as { message: string } | null,
+  filter: vi.fn(),
+}));
 vi.mock('@/contexts/TeamContext', () => ({ useTeam: () => team }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {
-  auth: { getUser: async () => ({ data: { user: { email: 'qa@example.test' } } }) },
-  from: () => { const query = { select: () => query, eq: () => query, single: async () => ({ data: null }),
+  auth: { getUser: async () => ({ data: { user: { id: 'auth-user', email: 'qa@example.test' } } }) },
+  from: (table: string) => { const query = { select: () => query,
+    eq: (key: string, value: string) => { profileApi.filter(table, key, value); return query; },
+    single: async () => table === 'profiles' ? { data: profileApi.error ? null : profileApi.data, error: profileApi.error } : { data: null },
     then: (resolve: (value: unknown) => void) => Promise.resolve({ data: [] }).then(resolve) }; return query; },
   rpc: async () => ({ data: [] }),
 } }));
@@ -46,9 +53,34 @@ function selectTab(name: string) {
   fireEvent.mouseDown(screen.getByRole('tab', { name }), { button: 0, ctrlKey: false });
 }
 afterEach(cleanup);
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  team.currentTeam = { id: 'team-a', name: 'Equipe A', role: 'admin' };
+  profileApi.error = null;
+});
 
 describe('junção de assinaturas, moderação e ajustes de conta', () => {
+  it('mantém o próprio nome e telefone quando nenhum vínculo de equipe está acessível', async () => {
+    team.currentTeam = null;
+    mount();
+    expect(await screen.findByRole('heading', { name: 'Pessoa de teste' })).toBeVisible();
+    expect(screen.getByLabelText('Telefone / WhatsApp')).toHaveValue('83999990000');
+    expect(profileApi.filter).toHaveBeenCalledWith('profiles', 'user_id', 'auth-user');
+    expect(screen.queryByText('Sem nome')).not.toBeInTheDocument();
+  });
+
+  it('exibe erro e permite repetir a leitura do perfil sem apresentá-lo como apagado', async () => {
+    team.currentTeam = null;
+    profileApi.error = { message: 'network unavailable' };
+    mount();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível carregar seu perfil.');
+    expect(screen.queryByText('Sem nome')).not.toBeInTheDocument();
+    profileApi.error = null;
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(await screen.findByRole('heading', { name: 'Pessoa de teste' })).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('abre a assinatura no retorno do pagamento', async () => {
     mount('/app/settings?billing=return');
     expect(await screen.findByText('Plano para 5 pessoas')).toBeVisible();

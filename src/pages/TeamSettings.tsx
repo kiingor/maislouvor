@@ -135,10 +135,15 @@ export default function TeamSettings() {
 
   // Current user email
   const [userEmail, setUserEmail] = useState("");
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
   useEffect(() => {
+    let active = true;
     supabase.auth.getUser().then(({ data }) => {
+      if (!active) return;
       setUserEmail(data.user?.email ?? "");
+      setAuthUserId(data.user?.id ?? null);
     });
+    return () => { active = false; };
   }, []);
 
   // Editable name state
@@ -164,8 +169,22 @@ export default function TeamSettings() {
     enabled: !!currentTeam,
   });
 
+  // O perfil da conta não depende de ter uma equipe acessível. A RLS permite
+  // ler o próprio perfil mesmo quando a participação ainda aguarda autorização.
+  const ownProfile = useQuery({
+    queryKey: ["my-profile", authUserId],
+    enabled: !!authUserId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("profiles")
+        .select("id, full_name, user_id, avatar_url, phone, notification_prefs")
+        .eq("user_id", authUserId!).single();
+      if (error) throw error;
+      if (!data) throw new Error("Perfil indisponível");
+      return data;
+    },
+  });
   const myMember: any = members.find((m: any) => m.profile_id === profileId);
-  const myProfile = myMember ? (myMember as any).profiles : null;
+  const myProfile = ownProfile.data ?? (myMember ? (myMember as any).profiles : null);
   const myInstruments: string[] = (myMember as any)?.instruments || [];
   const myInstrumentLevels: Record<string, string> = (myMember as any)?.instrument_levels || {};
   const myNotificationPrefs = (myProfile as any)?.notification_prefs ?? null;
@@ -289,7 +308,7 @@ export default function TeamSettings() {
     const avatarUrl = urlData.publicUrl + "?t=" + Date.now();
     const { error } = await supabase.from("profiles").update({ avatar_url: avatarUrl }).eq("id", profileTableId);
     if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
-    else { toast({ title: "Foto atualizada!" }); qc.invalidateQueries({ queryKey: ["team-members"] }); }
+    else { toast({ title: "Foto atualizada!" }); qc.invalidateQueries({ queryKey: ["team-members"] }); qc.invalidateQueries({ queryKey: ["my-profile"] }); }
   };
 
   const handleSaveName = async () => {
@@ -302,6 +321,7 @@ export default function TeamSettings() {
       toast({ title: "Nome atualizado!" });
       setEditingName(false);
       qc.invalidateQueries({ queryKey: ["team-members"] });
+      qc.invalidateQueries({ queryKey: ["my-profile"] });
     }
   };
 
@@ -318,6 +338,7 @@ export default function TeamSettings() {
       toast({ title: "Telefone atualizado!" });
       setEditingPhone(false);
       qc.invalidateQueries({ queryKey: ["team-members"] });
+      qc.invalidateQueries({ queryKey: ["my-profile"] });
       qc.invalidateQueries({ queryKey: ["assistant-my-status"] });
     }
   };
@@ -405,9 +426,13 @@ export default function TeamSettings() {
               />
               <div className="min-w-0 flex-1">
                 <h2 className="truncate text-title3">
-                  {myProfile?.full_name ?? (isLoading ? <span className="inline-block h-5 w-32 rounded-[8px] bg-fill-tertiary align-middle animate-pulse" aria-label="Carregando" /> : "Sem nome")}
+                  {myProfile?.full_name ?? (isLoading || ownProfile.isLoading ? <span className="inline-block h-5 w-32 rounded-[8px] bg-fill-tertiary align-middle animate-pulse" aria-label="Carregando" /> : "Seu perfil")}
                 </h2>
                 {userEmail && <p className="truncate text-subhead text-muted-foreground">{userEmail}</p>}
+                {ownProfile.isError && !myProfile && <div className="mt-2 text-sm">
+                  <p role="alert">Não foi possível carregar seu perfil.</p>
+                  <button className="mt-1 min-h-11 text-primary" onClick={() => void ownProfile.refetch()}>Tentar novamente</button>
+                </div>}
                 {(myMember || currentTeam) && (
                   <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
                     {myMember && <RoleBadge role={myMember.role} />}

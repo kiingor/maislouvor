@@ -1,6 +1,7 @@
 const INVITE_PATH = /^\/invite\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PENDING_KEY = "maislouvor-auth-destination";
 const MAX_AGE = 30 * 60_000;
+export const RECOVER_ACCESS_PATH = "/baixar/recuperar-acesso";
 
 export function clearAuthRedirect() {
   for (const name of ["sessionStorage", "localStorage"] as const) {
@@ -8,9 +9,10 @@ export function clearAuthRedirect() {
   }
 }
 
-/** Somente rotas internas do app e convites com UUID completo. */
+/** Somente rotas internas do app, recuperação e convites com UUID completo. */
 export function safeAppRedirect(value: string | null | undefined, fallback = "/app/home") {
   if (!value || value.startsWith("//") || /[\\\s]/.test(value)) return fallback;
+  if (value === RECOVER_ACCESS_PATH) return value;
   if (INVITE_PATH.test(value)) return value;
   if (!value.startsWith("/app/")) return fallback;
   try {

@@ -29,6 +29,7 @@ import {
 } from "./lib/routeLoaders";
 const AuthCallback = lazy(() => import("./pages/AuthCallback"));
 const Download = lazy(() => import("./pages/Download"));
+const RecoverAccess = lazy(() => import("./pages/RecoverAccess"));
 const DeleteAccountInfo = lazy(() => import("./pages/DeleteAccountInfo"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const SignUp = lazy(() => import("./pages/SignUp"));
@@ -123,6 +124,7 @@ const App = () => {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<SignUp />} />
           <Route path="/baixar" element={<Download />} />
+          <Route path="/baixar/recuperar-acesso" element={<RecoverAccess />} />
           <Route path="/minha-privacidade" element={<AuthGuard requireTeamConsent={false}><PrivacyChoices /></AuthGuard>} />
           <Route path="/privacidade" element={<PrivacyPolicy />} />
           <Route path="/termos" element={<TermsOfUse />} />
