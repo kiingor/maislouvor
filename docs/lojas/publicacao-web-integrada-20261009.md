@@ -54,6 +54,13 @@ para. Faça nova inspeção e preparação com outro identificador; não remova 
 travas e não reutilize uma tentativa antiga. O script não executa migrações,
 não altera SMTP, billing, Caddy ou infraestrutura.
 
+Exceção explícita para commits posteriores exclusivamente de backend/scripts/
+documentação: `apply --allow-source-identical-descendant` aceita o mesmo pacote
+somente se o HEAD descender do commit preparado e o diff de todas as fontes e
+configurações de build do aplicativo estiver vazio. Alterações não commitadas
+nessas fontes continuam bloqueadas. Isso evita rebuild sem mudar o pacote
+revisado; o resultado local registra também o commit conferido no checkout.
+
 ## Preservação e reversão
 
 - Snapshot dos hashes de todos os arquivos do app, da árvore separada de
@@ -84,10 +91,12 @@ alteração posterior no site interrompe a reversão para não sobrescrevê-la.
 
 ## Validação da preparação
 
-Seis testes isolados, sem rede nem produção: publicação e reversão completas;
+Dez testes isolados, sem rede nem produção: publicação e reversão completas;
 preservação de APK/assets; bloqueio de produção alterada; reversão automática
 quando a rota HTTPS difere; proteção contra pacote alterado/traversal; bloqueio
-de reversão sobre uma publicação posterior. A inspeção remota é somente leitura.
+de reversão sobre uma publicação posterior; aceitação explícita de descendente
+com fonte idêntica e rejeição de fonte alterada, suja ou história não descendente.
+A inspeção remota é somente leitura.
 
 Falta registrar aqui o commit efetivamente publicado, horário, hashes finais e
 verificação visual de `/login`. Não houve publicação ao criar este documento.

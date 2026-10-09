@@ -8,6 +8,7 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+import subprocess
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('publish_web', Path(__file__).with_name('publish-integrated-web.py'))
@@ -135,6 +136,53 @@ class PublicationSafetyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Invalid bundle'):
             deploy.extract_bundle(archive, self.root / 'payload')
         self.assertFalse((self.root / 'outside').exists())
+
+
+class SourceIdentityTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix='maislouvor-source-test-')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.git('init', '-q')
+        self.git('config', 'user.email', 'test@example.invalid')
+        self.git('config', 'user.name', 'Release Test')
+        (self.root / 'src').mkdir()
+        (self.root / 'src/app.ts').write_text('approved app')
+        self.commit('application')
+        self.prepared = self.git('rev-parse', 'HEAD').strip()
+
+    def git(self, *args):
+        return subprocess.check_output(['git', *args], cwd=self.root, text=True)
+
+    def commit(self, message):
+        self.git('add', '.')
+        self.git('commit', '-qm', message)
+
+    def test_identical_source_descendant_requires_explicit_option(self):
+        (self.root / 'backend.sql').write_text('backend deployment')
+        self.commit('backend')
+        with self.assertRaisesRegex(RuntimeError, 'Expected commit'):
+            deploy.check_source(self.root, self.prepared)
+        self.assertEqual(deploy.check_source(self.root, self.prepared, True), self.git('rev-parse', 'HEAD').strip())
+
+    def test_changed_frontend_descendant_is_rejected(self):
+        (self.root / 'src/app.ts').write_text('different app')
+        self.commit('frontend changed')
+        with self.assertRaisesRegex(RuntimeError, 'identical application'):
+            deploy.check_source(self.root, self.prepared, True)
+
+    def test_uncommitted_frontend_is_rejected_after_backend_commit(self):
+        (self.root / 'backend.sql').write_text('backend deployment')
+        self.commit('backend')
+        (self.root / 'src/app.ts').write_text('unreviewed change')
+        with self.assertRaisesRegex(RuntimeError, 'Commit application/build source'):
+            deploy.check_source(self.root, self.prepared, True)
+
+    def test_non_descendant_with_same_frontend_is_rejected(self):
+        self.git('checkout', '--orphan', 'unrelated')
+        self.commit('unrelated history, same files')
+        with self.assertRaisesRegex(RuntimeError, 'must descend'):
+            deploy.check_source(self.root, self.prepared, True)
 
 
 if __name__ == '__main__':

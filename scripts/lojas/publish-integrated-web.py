@@ -265,10 +265,17 @@ def ssh(action, release_id=None, bundle_hash=None):
     return json.loads(result.stdout)
 
 
-def check_source(root, expected):
+def check_source(root, expected, allow_identical_descendant=False):
+    if not re.fullmatch(r'[a-f0-9]{40}', expected):
+        raise ValueError('Expected commit must be a complete 40-character Git SHA')
     actual = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
     if actual != expected:
-        raise RuntimeError(f'Expected commit {expected}, found {actual}')
+        if not allow_identical_descendant:
+            raise RuntimeError(f'Expected commit {expected}, found {actual}')
+        ancestor = subprocess.run(['git', 'merge-base', '--is-ancestor', expected, actual], cwd=root)
+        unchanged = subprocess.run(['git', 'diff', '--quiet', expected, actual, '--', *SOURCE_PATHS], cwd=root)
+        if ancestor.returncode or unchanged.returncode:
+            raise RuntimeError('Current HEAD must descend from the prepared commit with identical application/build source')
     dirty = subprocess.check_output(['git', 'status', '--porcelain', '--', *SOURCE_PATHS], cwd=root, text=True)
     if dirty.strip():
         raise RuntimeError('Commit application/build source changes before preparing this release: ' + dirty)
@@ -280,6 +287,8 @@ def main():
     parser.add_argument('action', nargs='?', choices=['inspect', 'prepare', 'apply', 'rollback'])
     parser.add_argument('--release', type=validate_id)
     parser.add_argument('--expect-commit')
+    parser.add_argument('--allow-source-identical-descendant', action='store_true',
+                        help='On apply, allow later backend/docs commits only when application/build sources are identical')
     parser.add_argument('--remote', choices=['inspect', 'stage', 'apply', 'rollback'], help=argparse.SUPPRESS)
     parser.add_argument('--bundle-hash', help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -329,7 +338,7 @@ def main():
                           'files': len(files), 'bundle': str(archive)}, indent=2))
     elif args.action == 'apply':
         manifest = json.loads((local / 'release.json').read_text())
-        check_source(root, manifest['source_commit'])
+        checked_head = check_source(root, manifest['source_commit'], args.allow_source_identical_descendant)
         archive = local / 'bundle.tar.gz'
         sha = digest(archive)
         if sha != (local / 'bundle.sha256').read_text().strip():
@@ -340,6 +349,7 @@ def main():
         ssh('stage', args.release)
         subprocess.run(['scp', '-q', str(archive), f'{HOST}:{RELEASES / args.release}/bundle.tar.gz'], check=True)
         result = ssh('apply', args.release, sha)
+        result['checked_checkout_commit'] = checked_head
         (local / 'result.json').write_text(json.dumps(result, indent=2))
         print(json.dumps(result, indent=2))
     elif args.action == 'rollback':
