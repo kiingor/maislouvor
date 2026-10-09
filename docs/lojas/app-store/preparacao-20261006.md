@@ -243,4 +243,10 @@ Referências da correção nativa:
 
 **1.0.0 (7) disponível no TestFlight interno**, status Em testes no App Store Connect, grupo Teste iPhone com um tester. Upload assinado e liberação confirmados. Web publicada com o carrossel aprovado e alinhada ao beta; consentimento individual, convites, orientação para líderes e políticas atuais implantados em conjunto com o backend. Backups/retenção e SMTP GoDaddy configurados. Registro completo: [privacidade, publicação web e build 7](../privacidade-backups-screenshots-20261008.md).
 
+## Atualização de 08/10/2026 — Home, assinatura e upload do build 8
+
+A web recebeu a chamada discreta de planos abaixo de Atividade da equipe e a aba Assinatura ficou sem o botão Voltar. **1.0.0 (8) enviado com sucesso à Apple às 21:39 BRT**; ainda não há confirmação de disponibilidade no grupo Teste iPhone. A conferência no Safari ficou pendente enquanto o responsável preenche os dados bancários. Os três formulários fiscais já aparecem Ativos; o acordo de apps pagos ainda mostrava Informações do usuário pendentes.
+
+O backend foi ajustado para reconhecer compras sandbox da App Store somente na equipe de teste autorizada, por 14 dias, mantendo produção/Stripe. A configuração não concedeu plano pago. Carregamento das ofertas e compra/restauração no aparelho ainda precisam ser confirmados após a regularização comercial. Registro completo: [Home, assinatura e build 8](../assinatura-home-testflight8-20261009.md).
+
 Google/Apple/Face ID já haviam sido testados pelo titular. Ainda testar compra/restauração RevenueCat no iPhone. Não houve submissão pública à App Store; licenças musicais e análise jurídica continuam pendências independentes. Não solicitar novamente instalação do Xcode ou dados de responsável já fornecidos. Monitor anterior já pausado.
