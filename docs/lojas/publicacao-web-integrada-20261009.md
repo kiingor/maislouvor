@@ -98,5 +98,38 @@ de reversão sobre uma publicação posterior; aceitação explícita de descend
 com fonte idêntica e rejeição de fonte alterada, suja ou história não descendente.
 A inspeção remota é somente leitura.
 
-Falta registrar aqui o commit efetivamente publicado, horário, hashes finais e
-verificação visual de `/login`. Não houve publicação ao criar este documento.
+## Publicação confirmada
+
+Aplicação concluída em **09/10/2026 às 00:17:42 UTC**, correspondente a
+**08/10/2026 às 21:17:42 de Brasília**, depois da confirmação do backend de
+consentimento. Fonte do pacote: `d9346dd507f5702c4f2eaee40cf2fdc8659ef378`.
+Checkout na aplicação: `759eb9b98f9aed9d2ccb20005527edb4b4d52a04`, descendente
+com fontes do app idênticas, verificado pelo modo explícito acima.
+
+- Release: `20261009-web-integrada`, com `published: true` no `result.json`.
+- 223 arquivos verificados no servidor, 140 assets/shell conferidos por HTTPS
+  e sete rotas principais aprovadas.
+- Novo `index.html`: `9ae4dd994d87c79a76e1b2ef0c469ed6d06528852a3d742183e27389e097cad6`.
+- Marketing, Caddy, APKs, service worker da landing e assets anteriores
+  preservados. Reversão automática não foi necessária.
+- Build de produção normal e trava legal passaram. As fontes não foram
+  recompiladas depois dos commits exclusivamente de backend/scripts.
+
+QA visual feita com Chrome via CUA, em aba própria, pois o navegador integrado
+não estava disponível nessa execução; Safari não foi utilizado. Login compacto
+conferido em 440 × 956 e 1440 × 900, sem rolagem horizontal ou vertical nesses
+tamanhos. Navegação manual e avanço automático do carrossel observados, sem
+botão play/pause. A política mostra o provedor e a retenção confirmados, sem
+marcadores pendentes; `/suporte` aponta para `suporte@maislouvor.com`. O contato
+de privacidade permanece no e-mail Outlook confirmado, até a segunda caixa ser
+definida. Nenhuma credencial, cadastro ou compra foi enviado nesta QA visual.
+
+O Chrome já tinha o service worker anterior: o primeiro acesso ainda mostrou o
+login antigo enquanto o navegador instalava os novos arquivos. Depois da
+instalação e de recarregar, `/login` passou a mostrar o novo formulário e o asset
+`index-DoFg0z4t.js`. Não foi feita limpeza de cache ou dos dados do usuário.
+Abas antigas podem precisar ser reabertas/recarregadas depois da atualização.
+
+Capturas reais do domínio publicado e do pacote previamente revisado ficam em
+`docs/lojas/screenshots/web-release-20261009/`. Não são capturas do binário iOS e
+não substituem a validação do TestFlight.
