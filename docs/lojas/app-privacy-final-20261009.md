@@ -2,8 +2,24 @@
 
 Revisão de 09/10/2026. Base: `3d86495be7d1b4cab21461c424221710a39d5ec5`,
 mais a alteração local autorizada de abertura externa do YouTube descrita abaixo.
-Este documento prepara respostas; não comprova seu salvamento ou publicação no
-App Store Connect e não certifica direitos de conteúdo ou conformidade jurídica.
+A seção seguinte registra o salvamento posterior no App Store Connect. A matriz
+preserva o raciocínio da auditoria; não certifica direitos de conteúdo ou
+conformidade jurídica.
+
+## Estado confirmado após a preparação
+
+Em 09/10/2026, a compilação **1.0.0 (11)** da fonte `94b9a93` foi enviada e
+selecionada na ficha. O código de abertura externa está no archive; o helper e
+o bridge Capacitor foram testados em harness nativo, abrindo Safari e retornando
+ao app. Isso não equivale a testar todas as quatro telas nem um iPhone físico.
+
+O App Store Connect confirmou **Publicado**: doze categorias, todas vinculadas;
+User ID e Purchase History com Funcionalidade e Análise, demais categorias com
+Funcionalidade, nenhuma para rastreamento. Política e opções salvas:
+`https://maislouvor.com/privacidade` e `https://maislouvor.com/minha-privacidade`.
+A web com a política correspondente foi publicada. Não houve declaração ou
+aceite de direitos de conteúdo. Abaixo fica o raciocínio da auditoria original;
+referências à “próxima compilação” descrevem o estado anterior à entrega.
 
 ## Qual compilação esta matriz cobre
 
