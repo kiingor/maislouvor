@@ -4,7 +4,7 @@ import { Capacitor } from "@capacitor/core";
 import { exchangeNativeGoogleCode } from "@/lib/nativeGoogleOAuth";
 import { useToast } from "@/hooks/use-toast";
 import { completeNativeAuth, isNativeAuthCallback } from "@/lib/nativeAuth";
-import { safeAppRedirect } from "@/lib/authRedirect";
+import { consumeAuthRedirect } from "@/lib/authRedirect";
 
 // Face ID unmounts private routes while locked. Keep delivery history for the
 // app process so getLaunchUrl cannot replay an already-consumed OAuth code.
@@ -26,7 +26,7 @@ export function NativeAuthHandler() {
         handledCallbacks.add(url);
         try {
           await completeNativeAuth(url, { exchangeCodeForSession: exchangeNativeGoogleCode });
-          if (!disposed) navigate(safeAppRedirect(new URLSearchParams(window.location.search).get("redirect")), { replace: true });
+          if (!disposed) navigate(consumeAuthRedirect(new URLSearchParams(window.location.search).get("redirect"), true), { replace: true });
         } catch {
           if (!disposed) toast({ title: "Não foi possível entrar", description: "O login não foi concluído. Tente novamente.", variant: "destructive" });
         } finally {

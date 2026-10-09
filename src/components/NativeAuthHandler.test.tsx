@@ -9,17 +9,26 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: { auth: { setSessio
 vi.mock("@/lib/nativeGoogleOAuth", () => ({ exchangeNativeGoogleCode: mock.setSession }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: mock.toast }) }));
 import { NativeAuthHandler } from "./NativeAuthHandler";
+import { rememberAuthRedirect, clearAuthRedirect } from "@/lib/authRedirect";
+import { memoryStorage } from "@/test/memoryStorage";
 let attempt = 0;
 let url: string;
-const mount = () => render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><NativeAuthHandler /><Routes><Route path="/" element={<p>Login</p>} /><Route path="/app/home" element={<p>Home</p>} /></Routes></MemoryRouter>);
+const mount = () => render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><NativeAuthHandler /><Routes><Route path="/" element={<p>Login</p>} /><Route path="/app/home" element={<p>Home</p>} /><Route path="/invite/:token" element={<p>Convite</p>} /></Routes></MemoryRouter>);
 beforeEach(() => {
   vi.clearAllMocks(); mock.native = true;
+  vi.stubGlobal("localStorage", memoryStorage()); vi.stubGlobal("sessionStorage", memoryStorage());
+  clearAuthRedirect();
   url = `com.maislouvor.app://auth/callback?code=sample-${++attempt}`;
   mock.addListener.mockResolvedValue({ remove: mock.remove }); mock.getLaunchUrl.mockResolvedValue(undefined);
   mock.remove.mockResolvedValue(undefined); mock.close.mockResolvedValue(undefined);
   mock.setSession.mockResolvedValue({ data: { session: {} }, error: null });
 });
 describe("native authentication lifecycle", () => {
+  it("restores the invitation after a native Google cold launch", async () => {
+    rememberAuthRedirect("/invite/911021fb-bdbf-4300-8f22-4f602f61673c", true);
+    mock.getLaunchUrl.mockResolvedValue({ url }); mount();
+    expect(await screen.findByText("Convite")).toBeVisible();
+  });
   it("finishes sign-in when the callback launches the app", async () => {
     mock.getLaunchUrl.mockResolvedValue({ url }); mount();
     expect(await screen.findByText("Home")).toBeVisible();

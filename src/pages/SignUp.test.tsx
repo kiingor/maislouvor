@@ -14,12 +14,14 @@ vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: mocks.toast }) }
 // O banner de instalação não interessa aqui (usa APIs do navegador).
 vi.mock("@/components/InstallPWABanner", () => ({ InstallPWABanner: () => null }));
 
-function renderSignUp() {
+const invite = "/invite/911021fb-bdbf-4300-8f22-4f602f61673c";
+function renderSignUp(entry = "/signup") {
   return render(
-    <MemoryRouter initialEntries={["/signup"]}>
+    <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/signup" element={<SignUp />} />
         <Route path="/app/home" element={<p>Início do app</p>} />
+        <Route path="/invite/:token" element={<p>Convite da equipe</p>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -40,6 +42,16 @@ afterEach(() => {
 });
 
 describe("SignUp terms acceptance", () => {
+  it("returns a new account to its invitation and preserves it in email confirmation", async () => {
+    mocks.signUp.mockResolvedValue({ data: { session: { user: { id: "u1" } } }, error: null });
+    mocks.rpc.mockResolvedValue({ data: { terms_version: TERMS_VERSION, privacy_version: PRIVACY_VERSION }, error: null });
+    renderSignUp(`/signup?redirect=${encodeURIComponent(invite)}`); fillForm();
+    expect(screen.getByRole("link", { name: "Entrar" })).toHaveAttribute("href", `/login?redirect=${encodeURIComponent(invite)}`);
+    fireEvent.click(screen.getByRole("checkbox", { name: /Li e aceito/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Criar conta" }));
+    await screen.findByText("Convite da equipe");
+    expect(mocks.signUp).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ emailRedirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(invite)}` }) }));
+  });
   it("does not create the account until the terms checkbox is checked", async () => {
     renderSignUp();
     fillForm();

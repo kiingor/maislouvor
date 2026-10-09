@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { platformRpc } from "@/lib/platform";
 import { PlatformAccessContext } from "./PlatformAccessContext";
+import { clearAuthRedirect } from "@/lib/authRedirect";
 
 export function PlatformAccessProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
@@ -25,6 +26,7 @@ export function PlatformAccessProvider({ children }: { children: ReactNode }) {
       setAuthLoading(false);
     };
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (_event === "SIGNED_OUT") clearAuthRedirect();
       authEventReceived = true;
       applyUser(session?.user.id ?? null);
     });

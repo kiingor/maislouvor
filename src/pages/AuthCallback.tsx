@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { authPageUrl, consumeAuthRedirect } from "@/lib/authRedirect";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AuthAppIcon, AuthScreen } from "./Login";
@@ -12,33 +13,35 @@ import { AuthAppIcon, AuthScreen } from "./Login";
  */
 export default function AuthCallback() {
   const navigate = useNavigate();
+  const { search } = useLocation();
   const [erro, setErro] = useState(false);
 
   useEffect(() => {
     let done = false;
-    const go = (path: string) => {
+    const go = (authenticated: boolean) => {
       if (done) return;
       done = true;
-      navigate(path, { replace: true });
+      const destination = consumeAuthRedirect(new URLSearchParams(search).get("redirect"));
+      navigate(authenticated ? destination : authPageUrl("/login", destination), { replace: true });
     };
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) go("/app/home");
+      if (session) go(true);
     });
 
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) go("/app/home");
+      if (data.session) go(true);
     });
 
     // Fallback: se em alguns segundos não houver sessão, volta pro login.
     const t = setTimeout(async () => {
       const { data } = await supabase.auth.getSession();
-      if (data.session) go("/app/home");
-      else { setErro(true); go("/login"); }
+      if (data.session) go(true);
+      else { setErro(true); go(false); }
     }, 4000);
 
-    return () => { sub.subscription.unsubscribe(); clearTimeout(t); };
-  }, [navigate]);
+    return () => { done = true; sub.subscription.unsubscribe(); clearTimeout(t); };
+  }, [navigate, search]);
 
   return (
     <AuthScreen className="items-center">

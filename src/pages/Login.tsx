@@ -1,5 +1,5 @@
 import { useState, useEffect, forwardRef, type InputHTMLAttributes, type ReactNode, type ButtonHTMLAttributes } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { InstallPWABanner } from "@/components/InstallPWABanner";
@@ -7,7 +7,7 @@ import { BrandMark } from "@/components/BrandMark";
 import { SocialLoginButtons } from "@/components/SocialLoginButtons";
 import { LegalLinksFooter } from "@/components/legal/LegalConsent";
 import { cn } from "@/lib/utils";
-import { safeAppRedirect } from "@/lib/authRedirect";
+import { authPageUrl, safeAppRedirect } from "@/lib/authRedirect";
 import { LoginShowcase } from "@/components/auth/LoginShowcase";
 import "@/styles/login.css";
 import { Music, ListMusic, Users, Mic2, MonitorSmartphone, Layers, Eye, EyeOff, Loader2, ArrowUpRight } from "lucide-react";
@@ -221,8 +221,8 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
-  // ?redirect=/app/... (ex.: a página pública /excluir-conta leva direto aos Ajustes).
-  const afterLogin = safeAppRedirect(new URLSearchParams(window.location.search).get("redirect"));
+  const { search } = useLocation();
+  const afterLogin = safeAppRedirect(new URLSearchParams(search).get("redirect"));
 
   // Redirect if already logged in
   useEffect(() => {
@@ -317,7 +317,7 @@ export default function Login() {
           <div className="login-or" aria-hidden="true">ou continue com</div>
           <div className="login-social-layout"><SocialLoginButtons label="Entrar com Google" /></div>
           <p className="login-signup">
-            Novo por aqui? <Link to="/signup">Criar conta grátis <ArrowUpRight size={15} aria-hidden="true" /></Link>
+            Novo por aqui? <Link to={authPageUrl("/signup", afterLogin)}>Criar conta grátis <ArrowUpRight size={15} aria-hidden="true" /></Link>
           </p>
           <LegalLinksFooter className="login-legal" />
         </section>

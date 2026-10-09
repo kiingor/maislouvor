@@ -7,6 +7,7 @@ import { functionError } from "@/lib/function-error";
 import { AuthAppIcon, AuthScreen, ProminentButton } from "./Login";
 import { TeamDataConsentGate } from "@/components/legal/TeamDataConsentGate";
 import { LegalConsentNotice } from "@/components/legal/LegalConsent";
+import { authPageUrl } from "@/lib/authRedirect";
 
 export default function AcceptInvite() {
   const [sessionState, setSessionState] = useState<{ ready: boolean; userId: string | null }>({ ready: false, userId: null });
@@ -83,10 +84,10 @@ function AcceptInviteAction() {
                 Você precisa estar logado para aceitar o convite.
               </p>
               <div className="mt-8 space-y-3">
-                <ProminentButton type="button" onClick={() => navigate(`/login?redirect=/invite/${token}`)}>
+                <ProminentButton type="button" onClick={() => navigate(authPageUrl("/login", `/invite/${token}`))}>
                   Entrar
                 </ProminentButton>
-                <ProminentButton type="button" variant="gray" onClick={() => navigate(`/signup?redirect=/invite/${token}`)}>
+                <ProminentButton type="button" variant="gray" onClick={() => navigate(authPageUrl("/signup", `/invite/${token}`))}>
                   Criar conta
                 </ProminentButton>
               </div>

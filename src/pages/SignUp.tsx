@@ -1,5 +1,6 @@
 import { lazy, Suspense, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { authPageUrl, safeAppRedirect } from "@/lib/authRedirect";
 import { supabase } from "@/integrations/supabase/client";
 import { acceptCurrentTerms } from "@/integrations/supabase/legal-client";
 import { useToast } from "@/hooks/use-toast";
@@ -46,6 +47,8 @@ export default function SignUp() {
   const termsRef = useRef<HTMLButtonElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { search } = useLocation();
+  const afterSignUp = safeAppRedirect(new URLSearchParams(search).get("redirect"));
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,7 +68,7 @@ export default function SignUp() {
       password,
       options: {
         data: { full_name: fullName, ...legalAcceptanceMetadata() },
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: afterSignUp === "/app/home" ? window.location.origin : `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(afterSignUp)}`,
       },
     });
 
@@ -88,7 +91,7 @@ export default function SignUp() {
       } catch {
         /* o TermsGate tenta de novo ao entrar no app */
       }
-      navigate("/app/home", { replace: true });
+      navigate(afterSignUp, { replace: true });
       return;
     }
 
@@ -107,7 +110,7 @@ export default function SignUp() {
             Enviamos um link de confirmação para <strong className="font-semibold text-foreground">{email}</strong>.
           </p>
           <Link
-            to="/login"
+            to={authPageUrl("/login", afterSignUp)}
             className="mt-6 inline-flex min-h-[44px] items-center rounded-[10px] px-2 text-subhead font-semibold text-primary underline-offset-4 hover:underline"
           >
             Voltar ao login
@@ -205,7 +208,7 @@ export default function SignUp() {
 
         <p className="mt-6 text-center text-subhead text-muted-foreground">
           Já tem conta?{" "}
-          <AuthInlineLink to="/login">Entrar</AuthInlineLink>
+          <AuthInlineLink to={authPageUrl("/login", afterSignUp)}>Entrar</AuthInlineLink>
         </p>
 
         <p className="mt-3 text-center text-footnote text-muted-foreground">Gratuito para equipes pequenas</p>

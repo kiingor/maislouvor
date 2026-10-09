@@ -9,12 +9,16 @@ vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: mock.toast }) })
 const session = vi.hoisted(() => ({ signInWithIdToken: vi.fn(), invoke: vi.fn(), signOut: vi.fn() }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { functions: { invoke: session.invoke }, auth: { signOut: session.signOut, signInWithOAuth: mock.google, signInWithIdToken: session.signInWithIdToken } } }));
 import { SocialLoginButtons } from "./SocialLoginButtons";
+import { consumeAuthRedirect, clearAuthRedirect } from "@/lib/authRedirect";
+import { memoryStorage } from "@/test/memoryStorage";
 
-function mount(onStart?: () => void) {
-  render(<MemoryRouter><Routes><Route path="/" element={<SocialLoginButtons onStart={onStart} />} /><Route path="/app/home" element={<p>Área do app</p>} /></Routes></MemoryRouter>);
+function mount(onStart?: () => void, entry = "/") {
+  render(<MemoryRouter initialEntries={[entry]}><Routes><Route path="/" element={<SocialLoginButtons onStart={onStart} />} /><Route path="/app/home" element={<p>Área do app</p>} /><Route path="/invite/:token" element={<p>Convite da equipe</p>} /></Routes></MemoryRouter>);
 }
 beforeEach(() => {
   vi.clearAllMocks(); mock.platform = "ios";
+  vi.stubGlobal("localStorage", memoryStorage()); vi.stubGlobal("sessionStorage", memoryStorage());
+  clearAuthRedirect();
   mock.apple.mockResolvedValue({ identityToken: "apple-token", nonce: "raw-nonce", authorizationCode: "single-use-code" });
   session.signInWithIdToken.mockResolvedValue({ data: { session: {}, user: { id: "user", user_metadata: {} } }, error: null });
   mock.google.mockResolvedValue({ data: { url: "https://accounts.google.com/" }, error: null });
@@ -23,6 +27,18 @@ beforeEach(() => {
   mock.open.mockResolvedValue(undefined);
 });
 describe("social login", () => {
+  it("preserves an invitation through Apple sign-in", async () => {
+    mount(undefined, "/?redirect=%2Finvite%2F911021fb-bdbf-4300-8f22-4f602f61673c");
+    fireEvent.click(screen.getByRole("button", { name: "Entrar com Apple" }));
+    expect(await screen.findByText("Convite da equipe")).toBeVisible();
+  });
+  it.each(["web", "ios"])("remembers an invitation before leaving for Google on %s", async platform => {
+    mock.platform = platform; const invite = "/invite/911021fb-bdbf-4300-8f22-4f602f61673c";
+    mount(undefined, `/?redirect=${encodeURIComponent(invite)}`);
+    fireEvent.click(screen.getByRole("button", { name: "Continuar com Google" }));
+    await waitFor(() => expect(mock.google).toHaveBeenCalledOnce());
+    expect(consumeAuthRedirect(null, platform !== "web")).toBe(invite);
+  });
   it.each(["web", "android"])("shows Google and hides Apple on %s", platform => {
     mock.platform = platform; mount();
     expect(screen.getByRole("button", { name: "Continuar com Google" })).toBeVisible();

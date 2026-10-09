@@ -1,6 +1,8 @@
 import { NATIVE_AUTH_CALLBACK } from "@/lib/nativeAuth";
 import { getNativeGoogleOAuth } from "@/lib/nativeGoogleOAuth";
 import { useState } from "react";
+import { useLocation } from "react-router-dom";
+import { rememberAuthRedirect, safeAppRedirect } from "@/lib/authRedirect";
 import { Capacitor } from "@capacitor/core";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -42,6 +44,7 @@ export function GoogleButton({ label = "Continuar com Google", onStart }: {
 }) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const { search } = useLocation();
 
   const handle = async () => {
     if (loading) return;
@@ -49,6 +52,7 @@ export function GoogleButton({ label = "Continuar com Google", onStart }: {
     try {
       onStart?.();
       const native = Capacitor.isNativePlatform();
+      rememberAuthRedirect(safeAppRedirect(new URLSearchParams(search).get("redirect")), native);
       const auth = native ? getNativeGoogleOAuth() : supabase.auth;
       const { data, error } = await auth.signInWithOAuth({
         provider: "google",

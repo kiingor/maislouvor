@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { GoogleButton } from "./GoogleButton";
 import { useToast } from "@/hooks/use-toast";
@@ -9,6 +9,7 @@ import { safeAppRedirect } from "@/lib/authRedirect";
 export function SocialLoginButtons({ label, onStart }: { label?: string; onStart?: () => void }) {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { search } = useLocation();
   const { toast } = useToast();
   const handleApple = async () => {
     if (loading) return;
@@ -17,7 +18,7 @@ export function SocialLoginButtons({ label, onStart }: { label?: string; onStart
       onStart?.();
       const { nameSaved } = await signInWithApple();
       if (!nameSaved) toast({ title: "Login concluído", description: "Você pode completar seu nome nos Ajustes." });
-      navigate(safeAppRedirect(new URLSearchParams(window.location.search).get("redirect")), { replace: true });
+      navigate(safeAppRedirect(new URLSearchParams(search).get("redirect")), { replace: true });
     } catch (error) {
       if (!isAppleSignInCancelled(error)) toast({ title: "Não foi possível entrar com a Apple", description: "Tente novamente. Se o problema continuar, entre com seu e-mail.", variant: "destructive" });
     } finally { setLoading(false); }
