@@ -6,7 +6,7 @@ A atualização integrada foi publicada na web em **08/10/2026, 21h17 de Brasíl
 
 Backend publicado coordenadamente antes da web: sete migrações em uma transação e oito arquivos edge; 11 dependências preservadas, somente o contêiner edge reiniciado, cinco verificações sem gravação aprovadas. Contagem de consentimentos antes, após migrações e após saúde: zero. Nenhuma autorização foi concedida a usuários reais. [Registro técnico](deploy-consentimento-coordenado-20261008.md).
 
-**iOS 1.0.0 (7)** compilado, archive assinado validado e upload para TestFlight interno concluído às 21h15 de Brasília. Receita/plugin RevenueCat e todos os arquivos do bundle conferidos no archive. A disponibilidade no grupo depende do processamento na Apple e é registrada abaixo após confirmação. Não houve envio para revisão pública da App Store.
+**iOS 1.0.0 (7)** compilado, archive assinado validado e upload para TestFlight interno concluído às 21h15 de Brasília. Receita/plugin RevenueCat e todos os arquivos do bundle conferidos no archive. Processamento concluído e grupo **Teste iPhone** vinculado: App Store Connect confirmou **Em testes**, um tester, expiração em 90 dias. Instruções de teste em português foram salvas. Disponível para atualizar no iPhone. Não houve envio para revisão pública da App Store.
 
 Filipe confirmou nesta sessão que Google, Apple e Face ID funcionaram no iPhone. RevenueCat permanece aguardando teste no próximo beta. Não usar o script antigo `ios-internal-testflight.mjs` para esse beta: ele usa uma base anterior que não contém esta integração.
 
@@ -73,3 +73,10 @@ Compilação nativa **Debug para dispositivo, sem assinatura, aprovada** no NVMe
 Archive `/Volumes/MaisLouvorBuild/Archives/MaisLouvor-1.0.0-7.xcarchive`; fonte congelada em `/Volumes/MaisLouvorBuild/Release-1.0.0-7` com versão sobrescrita para 7 no Xcode. Logs de bundle, sync, archive e upload nesse diretório. `ARCHIVE SUCCEEDED`, assinatura verificada, versão/bundle/plugin corretos, conteúdo público comparado por hash e `EXPORT SUCCEEDED`. Opção `testFlightInternalTestingOnly=true`. O projeto foi atualizado para manter `CURRENT_PROJECT_VERSION=7` nos próximos builds.
 
 O teste da compra e restauração RevenueCat no iPhone continua com o titular. SMTP autenticou e foi aplicado, sem envio de e-mail de teste. O contato público de suporte é `suporte@maislouvor.com`; privacidade continua no Outlook até a segunda caixa estar disponível. Licenças musicais e avaliação profissional das questões legais continuam independentes da publicação técnica.
+
+
+## Confirmação final
+
+App Store Connect: `1.0.0 (7)`, ID de compilação `2c49b659-8865-489b-bedb-99cf90c517d9`, status **Em testes**, grupo **Teste iPhone**, um tester. Não foram reenviados convites nem submetida revisão pública. Evidência visual local privada: `tmp/testflight-build7-em-testes.png`. O monitor antigo já estava pausado.
+
+A web foi conferida no navegador após a instalação automática do service worker: carrossel aprovado e login sem scroll em 440 × 956 e 1440 × 900. Uma aba que permaneça com a versão antiga pode precisar ser fechada/reaberta ou recarregada após a atualização; nenhum dado do usuário foi limpo. [Capturas reais](screenshots/web-release-20261009/README.md).

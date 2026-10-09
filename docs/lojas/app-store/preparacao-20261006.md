@@ -237,3 +237,10 @@ as definições operacionais da política e a escolha de login do primeiro beta.
 Referências da correção nativa:
 - https://capacitorjs.com/docs/updating/8-5
 - https://developer.apple.com/documentation/technotes/tn3187-migrating-to-the-uikit-scene-based-life-cycle
+
+
+## Atualização de 08/10/2026 — build 7 e web integrada
+
+**1.0.0 (7) disponível no TestFlight interno**, status Em testes no App Store Connect, grupo Teste iPhone com um tester. Upload assinado e liberação confirmados. Web publicada com o carrossel aprovado e alinhada ao beta; consentimento individual, convites, orientação para líderes e políticas atuais implantados em conjunto com o backend. Backups/retenção e SMTP GoDaddy configurados. Registro completo: [privacidade, publicação web e build 7](../privacidade-backups-screenshots-20261008.md).
+
+Google/Apple/Face ID já haviam sido testados pelo titular. Ainda testar compra/restauração RevenueCat no iPhone. Não houve submissão pública à App Store; licenças musicais e análise jurídica continuam pendências independentes. Não solicitar novamente instalação do Xcode ou dados de responsável já fornecidos. Monitor anterior já pausado.
