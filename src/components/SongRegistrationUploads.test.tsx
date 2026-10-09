@@ -55,8 +55,10 @@ describe("registration file lifecycle", () => {
         files: [new File(["audio"], "audio.mp3", { type: "audio/mpeg" })],
       },
     });
-    await waitFor(() => expect(saved).toHaveBeenCalledWith("team/song.mp3"));
+    await waitFor(() => expect(saved).toHaveBeenCalledWith(expect.stringMatching(/^team\/song\/recordings\/[a-f0-9-]+\.mp3$/)));
     expect(busy).toHaveBeenLastCalledWith(true);
+    expect(mocks.sign).not.toHaveBeenCalled();
+    expect(mocks.upload).toHaveBeenCalledWith(expect.any(String), expect.any(File), { upsert: false });
     expect(mocks.toast).not.toHaveBeenCalledWith(
       expect.objectContaining({ title: "Áudio enviado com sucesso" })
     );
@@ -93,6 +95,24 @@ describe("registration file lifecycle", () => {
     expect(mocks.toast).not.toHaveBeenCalledWith(
       expect.objectContaining({ title: "Áudio enviado com sucesso" })
     );
+  });
+  it("preserves the previous recording if unlink fails", async () => {
+    const saved = vi.fn().mockRejectedValue(new Error("Offline"));
+    render(<AudioUpload compact songId="song" teamId="team" audioPath="team/song.mp3" onUpload={saved} />);
+    fireEvent.click(await screen.findByRole("button", { name: /remover/i }));
+    await waitFor(() => expect(saved).toHaveBeenCalledWith(null));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ variant: "destructive" })));
+    expect(mocks.upload).not.toHaveBeenCalled();
+    expect(mocks.toast).not.toHaveBeenCalledWith({ title: "Áudio removido" });
+  });
+  it("confirms unlink before reporting success without deleting a live object", async () => {
+    let finish: () => void = () => {};
+    const saved = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    render(<AudioUpload compact songId="song" teamId="team" audioPath="team/song.mp3" onUpload={saved} />);
+    fireEvent.click(await screen.findByRole("button", { name: /remover/i }));
+    expect(saved).toHaveBeenCalledWith(null);
+    expect(mocks.toast).not.toHaveBeenCalledWith({ title: "Áudio removido" });
+    finish(); await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({ title: "Áudio removido" }));
   });
   it("rejects unsupported or oversized artwork before uploading", async () => {
     const { container } = render(

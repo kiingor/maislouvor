@@ -1,3 +1,4 @@
+import { saveTrimmedRecording } from "@/lib/recordingStorage";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -450,32 +451,7 @@ export function AudioTrimmer({
       // Encode to WAV
       const wavBlob = encodeWAV(newBuffer);
 
-      // Upload replacing original
-      const ext = audioPath.split(".").pop() || "wav";
-      const path = audioPath.endsWith(".wav")
-        ? audioPath
-        : audioPath.replace(/\.[^.]+$/, ".wav");
-
-      const { error } = await supabase.storage
-        .from("audio")
-        .upload(path, wavBlob, {
-          upsert: true,
-          contentType: "audio/wav",
-        });
-
-      if (error) throw error;
-
-      // Persist the recording revision before removing the former file.
-      const { error: saveError } = await supabase
-        .from("songs")
-        .update({
-          audio_path: path,
-          audio_revision: crypto.randomUUID(),
-        } as never)
-        .eq("id", songId);
-      if (saveError) throw saveError;
-      if (path !== audioPath)
-        await supabase.storage.from("audio").remove([audioPath]);
+      await saveTrimmedRecording(teamId, songId, audioPath, wavBlob);
       await onTrimmed();
 
       toast({

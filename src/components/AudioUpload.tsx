@@ -1,3 +1,4 @@
+import { newRecordingPath } from "@/lib/recordingStorage";
 import { musicManagementEnabled } from "@/lib/storeBuild";
 import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -56,15 +57,15 @@ export function AudioUpload({
     const file = e.target.files?.[0];
     if (readOnly || !file) return;
 
-    const ext = file.name.split(".").pop();
-    const path = `${teamId}/${songId}.${ext}`;
+    const ext = file.name.split(".").pop() || "bin";
+    const { path } = newRecordingPath(teamId, songId, ext);
 
     setUploading(true);
     onBusyChange?.(true);
     try {
       const { error } = await supabase.storage
         .from("audio")
-        .upload(path, file, { upsert: true });
+        .upload(path, file, { upsert: false });
 
       if (error) {
         toast({
@@ -75,11 +76,11 @@ export function AudioUpload({
         return;
       }
 
+      await onUpload(path);
       const { data } = await supabase.storage
         .from("audio")
         .createSignedUrl(path, 3600);
       if (data?.signedUrl) setSignedUrl(data.signedUrl);
-      await onUpload(path);
       toast({ title: "Áudio enviado com sucesso" });
     } catch (error) {
       toast({
@@ -100,12 +101,10 @@ export function AudioUpload({
     setUploading(true);
     onBusyChange?.(true);
     try {
-      const { error } = await supabase.storage
-        .from("audio")
-        .remove([audioPath]);
-      if (error) throw error;
-      setSignedUrl(null);
+      // Commit the unlink before changing the preview. Preserve the object for
+      // in-flight readers/jobs; server reconciliation can collect it later.
       await onUpload(null);
+      setSignedUrl(null);
       toast({ title: "Áudio removido" });
     } catch (error) {
       toast({
