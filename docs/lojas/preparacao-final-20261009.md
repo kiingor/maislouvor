@@ -82,13 +82,20 @@ isoladamente e depois na suíte completa com dois workers, ambas aprovadas.
    (SK1 marcou os 66 inválidos), sem erro nativo SK2. Isso não prova a causa no
    iPhone brasileiro. Não há correção confirmada nem solicitação de logout da
    conta pessoal. Materiais de revisão dos produtos dependem desse fluxo real.
-2. **Direitos do conteúdo:** faltam autorizações/licenças para o acervo e as
-   fontes usadas. Importação somente pela web não documenta os direitos das
-   músicas reproduzidas no app. O modelo de solicitação está preparado e não
-   foi enviado nem convertido em declaração de direitos na Apple.
-3. **Acesso de revisão ao Asafe:** falta grupo WhatsApp controlado e acesso
-   correspondente ao plano. A demo não concede aceite de IA automaticamente
-   nem comprova o assistente de ponta a ponta.
+2. **Direitos do conteúdo:** a base de autorização dos conteúdos e fontes
+   continua sem comprovação geral. Isso não significa uma obrigação universal
+   de anexar uma carta para cada upload antes de submeter um app com conteúdo
+   dos usuários. A apresentação deve explicar o modelo real, a moderação e
+   os usos; a Apple pode exigir comprovantes pelas regras 5.2.2/5.2.3. Não foi
+   marcada declaração de direitos sem suporte. Importação somente na web não
+   autoriza extração do YouTube ou reprodução no app. A demo licenciada não
+   comprova direitos sobre os arquivos de terceiros.
+3. **Acesso de revisão ao Asafe:** grupo de teste conectado à demo a pedido
+   expresso do responsável em 09/10. Avisos desligados, somente ativação
+   administrativa da fixture registrada, sem consentimentos pessoais. O
+   revisor/testador ainda deve vincular seu WhatsApp e validar uma conversa
+   real; as instruções e o convite foram salvos nas notas privadas da Apple.
+   Ver [registro do grupo](asafe-grupo-revisao-20261009.md).
 
 Pendências operacionais registradas, sem alegar resolução: prova da retenção/
 rotação de logs conforme a política, atualização da segunda GPU e reconciliação

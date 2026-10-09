@@ -13,7 +13,9 @@ publicada com doze categorias. Ver o
 liberação do plano no build 11 continuam sem validação concluída. O teste direto
 StoreKit do simulador USA não encontrou produtos, mas não explica sozinho a
 falha brasileira. Não é solicitado logout da conta Apple pessoal. Também faltam
-documentação dos direitos do acervo e acesso controlado de revisão ao Asafe.
+conferência dos direitos e da apresentação do conteúdo enviado por usuários. O
+grupo do Asafe foi conectado à demo; vínculo pessoal e teste de conversa seguem
+pendentes, conforme o [registro específico](asafe-grupo-revisao-20261009.md).
 Ver o [diagnóstico](diagnostico-nativo-assinaturas-20261009.md).
 
 ## Contas e campos privados
@@ -56,6 +58,8 @@ exigidos pela loja devem ser preenchidos diretamente no formulário privado.
 **Password:** `{{APPLE_REVIEW_PASSWORD}}`
 
 Texto em inglês salvo no App Store Connect e conferido por leitura após salvar.
+O marcador do convite abaixo foi substituído somente no formulário privado da
+Apple; não publicar o link do grupo no Git ou na ficha pública.
 Atualizar as ressalvas somente quando os respectivos testes estiverem concluídos.
 
 ```text
@@ -78,10 +82,10 @@ SUBSCRIPTIONS
 Usuário > Assinatura. Essencial is free for up to five team members including the owner. Paid plans expand capacity and may include separation, Asafe or both. Only the owner manages billing. iOS uses Apple In-App Purchase through RevenueCat and offers Restaurar compras and Atualizar. Gerenciar assinatura appears for RevenueCat subscriptions. +Louvor includes no advertising SDK.
 
 ASAFE (OPTIONAL WHATSAPP ASSISTANT)
-Usuário > Equipe > Assistente no WhatsApp > Gerar código de ativação presents the OpenAI data-sharing notice. A leader authorizes activation; each person separately permits their own data under Usuário > Perfil > Permitir que o Asafe use meus dados. Both choices are revocable. No WhatsApp test group is connected to this demo and no AI consent was automatically accepted; end-to-end assistant review still requires controlled group setup and plan access.
+Usuário > Equipe > Assistente no WhatsApp > Gerar código de ativação presents the OpenAI data-sharing notice. A leader authorizes activation; each person separately permits their own data under Usuário > Perfil > Permitir que o Asafe use meus dados. Both choices are revocable. Group Teste a safe is connected only to this fictitious team; automatic notices are off. Join: {{PRIVATE_WHATSAPP_REVIEW_INVITE}} . In Perfil > Assistente no WhatsApp, allow personal AI sharing and generate a link code; send it privately to Asafe, then mention Asafe in the group. Team activation was prepared under the fictitious account at the owner's request. No real member consent or identity was assigned; conversational QA remains pending.
 
 VALIDATION LIMIT
-The earlier Brazilian iPhone TestFlight test reported ML-IOS-OFFERINGS-23-BRA. Build 11 purchase/restoration and paid access are not yet validated. Public submission is held pending resolution and content-rights documentation.
+The earlier Brazilian iPhone TestFlight test reported ML-IOS-OFFERINGS-23-BRA. Build 11 purchase/restoration and paid access are not yet validated. Public submission is held while purchases remain unresolved. Content is user-supplied; demo material is original/licensed. No blanket rights over user uploads are claimed.
 
 Support: https://maislouvor.com/suporte
 Privacy: https://maislouvor.com/privacidade
