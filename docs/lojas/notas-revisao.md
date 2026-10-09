@@ -1,156 +1,199 @@
 # Notas para a revisão das lojas
 
-Textos prontos para o App Store Connect ("App Review Information") e para o Play
-Console ("Conteúdo do app → Acesso ao app"), em inglês, e um checklist em
-português das respostas dos formulários.
+Material de preparação atualizado em **09/10/2026**, conferido contra a fonte
+**`26013cc`**, usada no iOS **1.0.0 (9)**. O build está no TestFlight interno;
+não foi submetido à revisão pública. Esta atualização é somente local: não
+confirma que os textos ou as respostas tenham sido salvos nas lojas.
 
-As contas são criadas por `scripts/review-demo/seed.mjs` (ver o README da pasta):
-**uma por loja**, cada uma com a sua equipe, para a revisão de uma loja não
-atrapalhar a da outra. Rode `--reset --yes --store <loja>` **antes** de cada envio
-para aquela loja e depois de cada resposta dela, **nunca durante** a revisão dela
-(o reset apaga e recria a conta, e a sessão do revisor cairia). O reset de uma loja
-não toca na conta da outra.
+**Pendência de envio:** o build 9 ainda apresentou `ML-IOS-OFFERINGS-23-BRA` no
+iPhone. Carregamento dos produtos Apple, compra, restauração e liberação do plano
+continuam sem validação física concluída. Não enviar como versão final antes de
+resolver e validar esse fluxo. O teste físico está adiado; esta preparação não
+solicita alteração da conta Apple pessoal. Ver o
+[diagnóstico e as evidências](diagnostico-nativo-assinaturas-20261009.md).
 
-| Loja | Login | Senha (campo do `credentials.json`) | Equipe |
-| --- | --- | --- | --- |
-| App Store | `revisao@maislouvor.com` | `accounts.apple.password` | Igreja Demonstração (App Review) |
-| Google Play | `revisao.google@maislouvor.com` | `accounts.google.password` | Igreja Demonstração (Play Review) |
+## Contas e campos privados
 
-## Como preencher
+O roteiro usa as equipes fictícias de `scripts/review-demo/seed.mjs`, uma por
+loja. Conferir login, estado atual, plano e permissões antes de copiar as notas.
+Em **09/10/2026**, a conta Apple foi criada sem reset, após inspeção dos cinco
+e-mails e implantação da migração pendente do catálogo. Login e leitura com as
+permissões da própria conta foram validados pela API: cinco integrantes, seis
+músicas, cinco faixas, um repertório, dois cultos, onze mensagens e onze arquivos
+de áudio acessíveis. O aceite dos termos permanece para o primeiro acesso do
+revisor. A navegação no binário e uma nova separação ainda precisam de QA;
+não confundir os stems prontos com execução do worker. A conta Google não foi
+criada nesta etapa. Ver o [registro de preparação](preparacao-revisao-20261009.md).
 
-Os marcadores abaixo se preenchem **só nos formulários das lojas**, na hora de
-colar. **Não edite este arquivo com a senha** nem o commite preenchido: a senha
-ficaria no histórico do git. Ela existe só em
-`~/.local/share/maislouvor-review/credentials.json` (arquivo `600`).
+Preencher os marcadores somente nos formulários privados das lojas, a partir de
+`~/.local/share/maislouvor-review/credentials.json`. Não gravar credenciais no
+Git, em screenshots ou em notas públicas. A preparação coordenada está no
+[README do seed](../../scripts/review-demo/README.md). Nunca recriar a conta
+quando a respectiva loja estiver revisando o app: isso encerra a sessão do revisor.
 
-| Marcador | De onde vem |
+| Marcador | Origem |
 | --- | --- |
-| `{{APPLE_REVIEW_PASSWORD}}` | `accounts.apple.password` do arquivo de credenciais |
-| `{{GOOGLE_REVIEW_PASSWORD}}` | `accounts.google.password` do arquivo de credenciais |
-| `{{CONTACT_EMAIL}}` | e-mail de contato para a revisão — **a definir** (ex.: o e-mail de suporte de `platform_settings`) |
+| `{{APPLE_REVIEW_EMAIL}}` / `{{APPLE_REVIEW_PASSWORD}}` | Conta Apple no arquivo privado |
+| `{{GOOGLE_REVIEW_EMAIL}}` / `{{GOOGLE_REVIEW_PASSWORD}}` | Conta Google no arquivo privado |
 
-Os rótulos entre aspas são os textos da interface em português, como o revisor vai
-vê-los. Foram conferidos de novo depois da integração em `feat/conformidade-lojas`
-(exclusão de conta, moderação do chat, termos e consentimento do Asafe).
-
----
+Contato público para suporte e estas notas: **suporte@maislouvor.com**. Pedidos de
+privacidade seguem o canal informado em `https://maislouvor.com/privacidade`;
+não presumir que uma segunda caixa no domínio já exista. Dados pessoais de contato
+exigidos pela loja devem ser preenchidos diretamente no formulário privado.
 
 ## App Store Connect — Notes for Review
 
 **Sign-in required:** Yes
-**User name:** `revisao@maislouvor.com`
+
+**User name:** `{{APPLE_REVIEW_EMAIL}}`
+
 **Password:** `{{APPLE_REVIEW_PASSWORD}}`
 
+Rascunho em inglês. Conferir a demo e atualizar a ressalva de validação ao preparar
+o binário elegível para revisão pública, somente após comprovar a resolução.
+
 ```text
-+Louvor helps church worship teams plan services, rehearse songs and talk to each other. The app is in Brazilian Portuguese.
++Louvor helps church worship teams organize services, rehearse and communicate. The interface is in Brazilian Portuguese.
 
-DEMO ACCOUNT
-Sign in with the e-mail and password above on the login screen and tap "Entrar" (please do not use "Entrar com Google"). On the first sign-in, tap "Aceitar e continuar" to accept the Terms of Use and Privacy Policy. The account is the leader and owner of a fictitious team, "Igreja Demonstração (App Review)", with four fictitious members. All data is made up for this review, and the account is used only for App Store review.
+ACCESS AND PRIVACY
+Use the supplied demo e-mail/password and tap "Entrar". Google, Apple and Face ID are not required for this account. Accept the current Terms/Privacy Policy with "Aceitar e continuar" if prompted. The account owns "Igreja Demonstração (App Review)", with four fictitious members.
 
-WHERE TO FIND THE MAIN FEATURES (bottom tab bar: "Cultos", "Repertório", "Início", "Chat", "Usuário")
-1. Repertoire: "Repertório" > "Repertório da Demonstração" (6 songs). Tap a song to see its chord chart, key and lyrics.
-2. Rehearsal mode with multitrack mixer: in the repertoire tap "Ensaio", then pick "Baby Bird (demo)". Tap "Mixer" to mute/solo its 5 tracks (vocals, drums, bass, guitar, keys). Tap "Loop" (repeat icon) to see the saved loops with notes. This recording is a CC BY 3.0 excerpt by Admiral Bob (credit in the song's chart). The other 5 songs were written for this demo and use a synthesized guide track.
-3. Services and schedule: "Cultos" > "Culto de Domingo" shows the order of service, the lineup ("Escala") with confirmed and pending members, and a per-service key. "Modo ensaio" is also available there.
-4. Availability: on "Início" tap the "Disponibilidade" card to open the calendar and mark days as available or unavailable.
-5. Chat, report and block: "Chat" > "Geral" has messages from the fictitious members (there is also the "Ensaios" channel). Touch and hold a message from "Ana Exemplo" to open its menu, then choose "Denunciar" (report: pick a reason and tap "Enviar") or "Bloquear Ana" (block). Reports are reviewed by the team leaders and by the +Louvor team within 24 hours: the content is removed, the author can be removed from the team, and the +Louvor team can suspend the account of an abusive user (including a team owner). As the leader of this team you can see the reports in "Usuário" > "Membros" > "Denúncias do chat". Blocked users are listed, and can be unblocked, in "Usuário" > "Meu usuário" > "Usuários bloqueados".
-6. Account deletion: "Usuário" > "Meu usuário" > "Excluir minha conta" (near the end of the page, above "Sair"). Because this account owns a team with other members, the app first asks who will take over the team: under "Novo dono(a)" choose "Ana Exemplo · Editor" and tap "Transferir". Then type EXCLUIR in the confirmation field and tap "Excluir conta". The account and its personal data are deleted; the team stays with its new owner. Deletion is also explained on the web at https://maislouvor.com/excluir-conta. We restore this demo account after the review.
-7. Privacy Policy: https://maislouvor.com/privacidade - Terms of Use: https://maislouvor.com/termos - Support: https://maislouvor.com/suporte. New accounts must accept the Terms and Privacy Policy at sign-up.
+Real users separately authorize team participation on "Sua participação, sua escolha" > checkbox > "Autorizar e continuar". "Continuar sem autorizar" preserves access to privacy choices, support and deletion. Demo participation records are marked as fictitious, not real people's consent. Inspect withdrawal at "Usuário" > "Perfil" > "Minhas escolhas de privacidade" > "Retirar minha autorização". "Rever a autorização" reopens the choice.
 
-ASAFE (OPTIONAL WHATSAPP ASSISTANT)
-"Asafe" is an optional assistant that a team leader can add to the team's WhatsApp group. It is suspended for this demo team: under "Usuário" > "Equipe" you will see "Assistente suspenso nesta equipe", and it does not answer in WhatsApp. No WhatsApp account is needed to review the app. On that screen, "Gerar código de ativação" shows how the assistant works: messages are processed by a third-party AI provider (OpenAI, USA), and the leader must give explicit consent ("Concordo e ativar") before any use. Because the assistant is suspended for this team, a generated code does not activate any WhatsApp group.
+FEATURES
+1. "Repertório" > "Repertório da Demonstração": six songs, lyrics, chords and keys. "Ensaio" > "Baby Bird (demo)" > "Mixer" plays five stems; "Loop" provides saved practice sections. Baby Bird is a credited CC BY 3.0 excerpt by Admiral Bob. Other songs and synthesized guides were created for this demo. To separate existing audio, open a song from the repertoire > "Ensaio" > "Gravação" > "Separar em faixas (IA)". Separation uses infrastructure operated by +Louvor and requires the appropriate permission.
+2. "Cultos" > "Culto de Domingo": service order and "Escala". "Início" > "Disponibilidade": availability calendar.
+3. "Chat" > "Geral": hold another member's message to "Denunciar" or block the sender. Leaders view reports at "Usuário" > "Membros" > "Denúncias do chat"; blocks are managed in "Usuário" > "Perfil" > "Usuários bloqueados".
+4. Leaders create new repertoires, register/edit songs and import audio only on the web at maislouvor.com. Native apps show "Continue pelo computador" for these actions and have no file or YouTube audio import. Adding existing songs to an existing repertoire remains available with the relevant permission.
 
-OTHER NOTES
-- No in-app purchases and no ads.
-- Push notifications are optional; the app works without them.
+SUBSCRIPTIONS
+"Usuário" > "Assinatura": Essencial is free for new teams with up to five members, including the owner. Paid plans expand capacity and can include track separation, Asafe or both. Only the owner manages billing. iOS purchases use Apple's In-App Purchase through RevenueCat, with monthly/annual options where offered. This tab includes "Restaurar compras" and "Atualizar"; "Gerenciar assinatura" appears for RevenueCat subscriptions. Deleting the account does not cancel a store subscription. No ads.
 
-Contact: {{CONTACT_EMAIL}}
+ASAFE — OPTIONAL WHATSAPP ASSISTANT
+"Usuário" > "Equipe" > "Assistente no WhatsApp" > "Gerar código de ativação" opens the OpenAI data-sharing notice. The leader authorizes activation with "Concordo e ativar". Each person separately allows use of their own data with "Permitir que o Asafe use meus dados" in "Usuário" > "Perfil". Both choices are revocable. The demo setup enables manual activation, with no connected WhatsApp group or automatic AI consent. End-to-end Asafe review requires a controlled WhatsApp test group and access under the team plan. Other in-app features do not require WhatsApp.
+
+DELETE ACCOUNT
+"Usuário" > "Perfil" > "Excluir minha conta". If asked to transfer ownership, select "Ana Exemplo" under "Novo dono(a)", tap "Transferir", then type EXCLUIR and confirm "Excluir conta". Deletion also remains accessible through privacy choices after withdrawing team consent.
+
+CURRENT VALIDATION LIMIT
+Internal TestFlight 1.0.0 (9) still reports ML-IOS-OFFERINGS-23-BRA. Apple product loading, purchase and restoration are not yet validated.
+
+Support: suporte@maislouvor.com — https://maislouvor.com/suporte
+Privacy: https://maislouvor.com/privacidade
+Terms: https://maislouvor.com/termos
+Deletion: https://maislouvor.com/excluir-conta
 ```
-
----
 
 ## Google Play Console — App access
 
-Em "Conteúdo do app → Acesso ao app": **Todas ou algumas funcionalidades estão
-restritas** → adicionar instrução. O texto abaixo fica abaixo de 500 caracteres
-para caber no campo de instruções: são 461 com o marcador, então cabe um e-mail de
-contato de até ~55 caracteres.
+Em "Conteúdo do app → Acesso ao app", informar funcionalidades restritas e a
+conta Google independente. O roteiro curto não confirma um AAB final nem valida
+as compras Google Play.
 
 - **Name:** `Demo leader account (Google Play)`
-- **Username / e-mail:** `revisao.google@maislouvor.com`
+- **Username / e-mail:** `{{GOOGLE_REVIEW_EMAIL}}`
 - **Password:** `{{GOOGLE_REVIEW_PASSWORD}}`
 - **Any other information required to access your app:**
 
 ```text
-Tap "Entrar" with e-mail/password (not Google), then "Aceitar e continuar". Fictitious team, data reset between reviews. Report/block: Chat > Geral > long-press Ana's message > "Denunciar" or "Bloquear Ana". Delete account: Usuário > Meu usuário > "Excluir minha conta"; this account owns the team, so pick "Ana Exemplo" as new owner, tap "Transferir", type EXCLUIR. The optional WhatsApp assistant (Asafe) is suspended for this team. Contact: {{CONTACT_EMAIL}}
+Use the supplied e-mail/password > "Entrar". Accept Terms if prompted. Demo data is fictitious. If shown, review "Sua participação, sua escolha" to authorize team access or continue without it. Privacy: Usuário > Perfil > Minhas escolhas de privacidade. Delete: Perfil > Excluir minha conta; transfer to Ana Exemplo if requested, type EXCLUIR. Billing: Usuário > Assinatura. Support: suporte@maislouvor.com
 ```
 
----
+## Conteúdo e privacidade — respostas a conferir
 
-## Checklist dos formulários (pt-BR)
+- **Interação e conteúdo de usuários:** sim; chat e conteúdos das equipes, com
+  denúncia e bloqueio. Conferir a classificação etária sugerida a partir do
+  conteúdo efetivamente acessível, sem presumir a faixa pela finalidade religiosa.
+- **Compras digitais:** sim, há assinaturas. No iOS, existe integração de compras
+  App Store; falha no carregamento não significa ausência da função. Android
+  exige conferência própria da cobrança no AAB; TestFlight não valida Google Play.
+- **Anúncios:** não há SDK de publicidade no escopo conferido. Conferir o inventário
+  final e as integrações ao declarar ausência de rastreamento publicitário.
+- **Dados e finalidades:** conta, conteúdo e comunicação da equipe, disponibilidade,
+  escalas, notificações e assinaturas. Nome, e-mail, telefone/foto opcionais,
+  mensagens/mídias, músicas/cifras/áudios e identificadores precisam constar da
+  avaliação. Não marcar "não coleta dados". O servidor +Louvor não recebe números
+  de cartão, mas trata histórico e estado de compras.
+- **Provedores:** RevenueCat para assinaturas; Apple/Google para compras nativas
+  e logins escolhidos; Stripe na web; Hostinger e provedores de comunicação
+  descritos na política. Asafe utiliza WhatsApp/Meta e OpenAI conforme escolhas
+  específicas. Mapear operadores e compartilhamento às definições de cada loja.
+- **Participação religiosa:** a fonte publicada declara consentimento específico
+  e destacado de cada pessoa antes das funções de equipe. O líder não autoriza
+  em nome dos integrantes. Versão e data da escolha são registradas; revogar
+  bloqueia funções de equipe, preservando conta, suporte e exclusão. Avaliar os
+  dados que podem revelar convicção religiosa nas categorias de dados sensíveis.
+  Essa implementação não equivale a parecer jurídico ou aprovação das lojas.
+- **Asafe e separação:** autorizações de participação e IA são separadas. Ativação
+  administrativa pelo líder não substitui escolha individual. Asafe e separação
+  de faixas permanecem; a separação usa infraestrutura operada pelo +Louvor e
+  não depende do aceite do Asafe. Sugestão de músicas com IA e importação do Moises
+  foram removidas. Consentimentos e documentos já fazem parte da versão integrada.
+- **Proteção e exclusão:** HTTPS; exclusão no app e instruções em
+  `https://maislouvor.com/excluir-conta`. A política descreve retenção e backups;
+  não prometer eliminação instantânea de todas as cópias ou cancelamento de
+  assinatura pela exclusão da conta.
+- **Contatos:** suporte em `suporte@maislouvor.com`; privacidade na página pública.
+  SMTP configurado e autenticado; entrega na caixa de entrada ainda não testada
+  segundo o registro da implantação. O prazo publicado para análise de denúncias
+  é de 24 horas; a operação de atendimento deve acompanhar a fila.
 
-### Classificação etária
+### App Privacy: complementos da integração RevenueCat
 
-- **Apple (questionário de idade):** conteúdo gerado por usuários / mensagens entre
-  usuários: **sim** (chat da equipe, com denunciar e bloquear). Acesso irrestrito à
-  web: não. Compras/jogos de azar/violência/conteúdo adulto: não. Conferir a faixa
-  sugerida no fim do questionário.
-- **Google Play (IARC):** usuários interagem/se comunicam: **sim**; compartilha
-  localização: não; compras digitais: não; conteúdo gerado por usuários: **sim**.
-- **Anúncios:** o app **não** contém anúncios (Play: "Não"; Apple: sem SDK de
-  publicidade).
+A declaração anterior de ausência de compras precisa ser substituída. A ficha
+atual do App Store Connect não foi revalidada integralmente nesta etapa; os itens
+abaixo são o material para conferência/preenchimento, não um registro de gravação.
 
-### Segurança dos dados (Play) e Privacidade do app (Apple) — pontos de partida
+| Categoria Apple | Preparação para este app | Evidência |
+| --- | --- | --- |
+| Purchases → Purchase History | Coletado; App Functionality e Analytics; vinculado à identidade | Validação/liberação da assinatura e painel RevenueCat; `src/lib/billing/revenuecat.ts`, tabela `revenuecat_customers` e guia oficial abaixo |
+| Identifiers → User ID | Coletado; vinculado; funcionalidade da assinatura e análise de compras | O SDK recebe `context.app_user_id`; o banco relaciona esse ID opaco à equipe e ao dono. Opacidade não é anonimização |
+| Tracking | A integração de compras examinada não usa dados para publicidade entre apps | Conferir a resposta final com os demais SDKs e integrações; não inferir tracking apenas do uso de um provedor externo |
+| Device ID, contatos enviados ao RevenueCat, Usage Data e Diagnostics | Não acrescentar automaticamente por causa do SDK de compras; conferir usos adicionais | O adaptador não chama coleta de IDFA nem atributos de contato; diagnósticos locais não foram acrescentados como telemetria |
 
-Conferir com a política em `/privacidade` antes de enviar.
+O [guia oficial RevenueCat de App Privacy](https://www.revenuecat.com/docs/platform-resources/apple-platform-resources/apple-app-privacy),
+consultado em 09/10/2026, pede histórico de compras para funcionalidade e análise,
+e User ID quando há identificador próprio. Quando o backend permite relacionar
+esse identificador à pessoa, o histórico deve ser declarado como vinculado.
+As [definições oficiais da Apple](https://developer.apple.com/app-store/app-privacy-details/)
+abrangem também os SDKs de terceiros e distinguem vínculo com identidade de
+rastreamento publicitário. A análise não substitui as demais categorias do app,
+inclusive seus próprios dados de contato, conteúdo e participação religiosa.
 
-- **Coletados:** nome, e-mail, telefone (opcional, no perfil), foto de perfil
-  (opcional), mensagens e mídias do chat (texto, áudio, imagens), conteúdo do app
-  (músicas, cifras, áudios enviados, escalas, disponibilidade), identificadores de
-  conta e token de push do aparelho.
-- **Finalidade:** funcionalidade do app e gestão da conta. Sem publicidade, sem
-  rastreamento entre apps/sites (Apple: "Data Not Used to Track You").
-- **Compartilhamento com terceiros:** OpenAI (EUA) para o Asafe, somente com
-  o aceite atual do líder e a permissão atual de cada pessoa para seus dados.
-  A versão candidata exige esse aceite também de quem já usava o assistente.
-  WhatsApp (Meta) para o Asafe; Google e Apple quando a pessoa escolhe esses logins.
-  A separação de faixas usa infraestrutura operada pelo +Louvor; a transposição
-  das cifras ocorre no aparelho. Sugestões de IA e importação do Moises foram
-  removidas. A atualização do consentimento do Asafe ainda precisa ser publicada
-  junto com a interface e os documentos definitivos.
-- **Dados sensíveis (Apple: "Sensitive Info"; Play: "Crenças religiosas ou
-  filosóficas"):** participar de uma equipe de louvor e as escalas de culto podem
-  revelar convicção religiosa (LGPD, art. 5º, II). **Decisão pendente com o
-  jurídico**, junto com `SENSITIVE_DATA_LEGAL_BASIS` em `src/lib/legal.ts`: a leitura
-  conservadora é declarar "Sensitive Info" (Apple) e "Crenças religiosas" (Play),
-  ligados à conta, para funcionalidade do app, sem rastreamento. O que for escolhido
-  precisa bater com a seção "Dados pessoais sensíveis" da Política.
-- **Criptografia em trânsito:** sim (HTTPS).
-- **Exclusão:** sim — no app ("Excluir minha conta") e na web
-  (`https://maislouvor.com/excluir-conta`), que é o link pedido pelo Play.
-- **Política de privacidade:** `https://maislouvor.com/privacidade`.
+Conferência local adicional: o manifest `RevenueCat_RevenueCat.bundle/PrivacyInfo.xcprivacy`
+do archive **1.0.0 (9)** contém `PurchaseHistory`, finalidade `AppFunctionality`,
+`Linked=false` e `Tracking=false`. Esse manifest genérico **não basta para copiar
+`Linked=false` para o +Louvor**: a implementação configura um ID próprio que o
+servidor relaciona à conta/equipe (`20261006220000_revenuecat_billing.sql`). O
+questionário deve refletir esse uso concreto, além do manifest do fornecedor.
 
-### Riscos a decidir antes do envio
+## Limites para a preparação final
 
-- **Importação do YouTube (Apple 5.2.3; política do Play sobre propriedade
-  intelectual) — resolvido na compilação.** O AAB do Play e o app iOS saem de
-  `npm run build:store` (`VITE_STORE_BUILD=1`, `src/lib/storeBuild.ts`): o revisor vê
-  "Cole o link da gravação…" e o player oficial em "Conferir versão", mas nenhum botão,
-  dica, aba ou "Tentar novamente" que peça ao servidor para baixar do YouTube; o áudio
-  entra por arquivo da própria pessoa. O site e o APK de `/baixar`
-  (`npm run build`) continuam com a importação. Nunca por plataforma em tempo de
-  execução nem por chave remota (`Capacitor.isNativePlatform()` também tiraria do APK
-  de `/baixar`; chave remota que esconde só do revisor viola a Apple 2.3.1). Áudio
-  importado no site aparece no app como "Importado". Nada sobre isso nos textos da
-  revisão: o build das lojas simplesmente não tem a função.
-- **Login com Google no iOS (Apple 4.8):** quem oferece login de terceiros precisa
-  oferecer também uma opção equivalente, como "Iniciar sessão com a Apple", no app
-  iOS.
-- **Asafe suspenso na equipe de revisão:** o revisor vê o aviso vermelho
-  "Assistente suspenso nesta equipe · Fale com o suporte do +Louvor". O número do
-  bot e "Gerar código de ativação" continuam na tela de propósito: gerar o código
-  mostra o aviso de IA e o consentimento ("Concordo e ativar"), que a Apple quer
-  ver (5.1.2(i)). Desde a integração, o código de uma equipe suspensa **não ativa
-  grupo nenhum** (`assistant_activate_group` responde `team_suspended` e o bot diz
-  que está suspenso), e a tela avisa isso embaixo do botão.
-- **Planos e cobrança (Apple 3.1.1):** o app não tem compra dentro dele; se o iOS
-  passar a mostrar planos pagos, a cobrança precisa seguir as regras da Apple.
+- Conferir a conta demo, plano/permissões, estado dos consentimentos e grupo
+  controlado do Asafe antes do envio. O seed cria consentimento de participação
+  só para personagens fictícios (`review_fixture`), não concede aceite de IA nem
+  comprova liberação de recursos pagos. Sua configuração atual permite ativação
+  manual do Asafe; não o suspende administrativamente.
+- Conferir a política de compras de teste para a conta usada pela revisão. A
+  exceção sandbox existente é limitada a uma equipe e prazo; não presumir que
+  cubra demos ou revisores. Compra, restauração e acesso seguem pendentes.
+- Preparar binário elegível para revisão pública e materiais dos produtos de
+  assinatura. O build 9 foi exportado somente para TestFlight interno. Screenshots
+  com preços fictícios não comprovam compra nem substituem a conferência final.
+- Gestão de músicas/repertórios na web não regulariza o acervo: o app continua
+  acessando o conteúdo disponibilizado pela equipe. Não afirmar que música
+  pública ou uso religioso implica licença. Documentar as permissões necessárias
+  para composição, gravação, faixas e fontes; não ocultar a relação web/app da revisão.
+
+## Fontes locais conferidas
+
+- `src/lib/storeBuild.ts`, `src/hooks/useMusicManagement.ts`,
+  `src/components/WebMusicManagementNotice.tsx` e
+  [gestão de músicas](gestao-musicas-web-20261008.md).
+- `src/components/billing/TeamBilling.tsx`, `PlanBuilder.tsx`,
+  `src/lib/billing/revenuecat.ts` e [escopo sandbox](revenuecat-sandbox-controlado-20261009.md).
+- `src/components/legal/TeamDataConsentGate.tsx`, `src/pages/PrivacyChoices.tsx`,
+  `src/components/AssistantSettings.tsx`, `src/lib/legal.ts` e
+  [implantação dos consentimentos](deploy-consentimento-coordenado-20261008.md).
+- `src/content/legal/privacy.ts`, `terms.ts`, `scripts/review-demo/README.md` e
+  [publicação da fonte 26013cc](publicacao-diagnostico-assinaturas-20261009.md).

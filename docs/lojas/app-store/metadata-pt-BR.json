@@ -6,14 +6,15 @@
   "teamId": "U9PP989T5D",
   "sku": "MAISLOUVOR-IOS-001",
   "marketingVersion": "1.0.0",
-  "buildNumber": "1",
+  "buildNumber": "9",
   "releaseMode": "MANUAL",
   "internalTestGroup": "Teste iPhone",
-  "description": "O +Louvor ajuda sua equipe de louvor a organizar cultos e se preparar para os ensaios em um só lugar.\n\n• Organize repertórios, músicas, letras e cifras.\n• Planeje cultos, escalas e a disponibilidade dos integrantes.\n• Ensaie com áudios, faixas separadas e trechos em repetição.\n• Converse com sua equipe e acompanhe os avisos pelo aplicativo.\n• Compartilhe repertórios e a programação dos cultos por link.\n\nCrie uma conta ou entre na equipe do seu ministério. Os recursos disponíveis para cada integrante dependem das permissões definidas pela liderança.\n\nEnvie somente músicas e arquivos que você tenha autorização para utilizar.\n\nTermos de Uso: https://maislouvor.com/termos\nPolítica de Privacidade: https://maislouvor.com/privacidade",
-  "promotionalText": "Organize os repertórios, as escalas e os ensaios da sua equipe de louvor. Letras, cifras, áudios e comunicação em um só lugar.",
+  "description": "O +Louvor ajuda sua equipe de louvor a acompanhar cultos, organizar escalas e se preparar para os ensaios.\n\n• Consulte repertórios, letras, cifras e tons.\n• Planeje cultos, escalas e a disponibilidade dos integrantes.\n• Ensaie com áudios, mixer de faixas e trechos em repetição.\n• Converse com sua equipe e acompanhe os avisos.\n• Compartilhe repertórios e a programação dos cultos por link.\n\nA liderança cria novos repertórios, cadastra e edita músicas e importa áudios pela versão web, em maislouvor.com. O app orienta essas ações pelo navegador do computador e permite consultar o acervo e adicionar músicas já cadastradas a repertórios existentes, conforme as permissões.\n\nO plano Essencial é gratuito para novas equipes com até 5 integrantes, incluindo o responsável. Planos pagos ampliam a capacidade e podem incluir separação de faixas com IA, o Asafe no WhatsApp ou ambos. A separação usa infraestrutura operada pelo +Louvor. Os recursos disponíveis dependem do plano e das permissões de cada integrante.\n\nAs assinaturas no iOS são gerenciadas pelo responsável da equipe em Usuário > Assinatura, com cobrança pela App Store. As opções mensais ou anuais disponíveis apresentam preço e capacidade antes da confirmação. A renovação é automática, salvo cancelamento na Apple. Excluir a conta ou desinstalar o app não cancela a assinatura.\n\nA participação nas equipes depende de uma escolha individual de privacidade. O Asafe é opcional e exige autorização separada para o uso de dados pela IA da OpenAI.\n\nUse somente músicas e arquivos que você tenha autorização para utilizar.\n\nTermos de Uso: https://maislouvor.com/termos\nPolítica de Privacidade: https://maislouvor.com/privacidade\nSuporte: https://maislouvor.com/suporte",
+  "promotionalText": "Acompanhe cultos e escalas, consulte cifras e prepare os ensaios. Comece com o Essencial gratuito para sua equipe de até 5 integrantes.",
   "keywords": "louvor,igreja,repertório,escala,cifras,ensaio,música,ministério,culto",
   "marketingUrl": "https://maislouvor.com",
   "plannedPrivacyUrl": "https://maislouvor.com/privacidade",
   "plannedTermsUrl": "https://maislouvor.com/termos",
-  "plannedSupportUrl": "https://maislouvor.com/suporte"
+  "plannedSupportUrl": "https://maislouvor.com/suporte",
+  "supportEmail": "suporte@maislouvor.com"
 }

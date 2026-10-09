@@ -15,6 +15,24 @@ Reproduzir a prévia: `npx vite --config scripts/store-screens/vite.config.mjs`,
 
 As imagens menores `aviso-computador.jpg` e `consentimento-privacidade.jpg` são evidências de QA, não screenshots propostos para a ficha da loja. As cópias `01-biblioteca.jpg` e `02-repertorio-previa.jpg` servem para visualização rápida.
 
-## Diferença apontada pelo titular
+## Diferença apontada pelo titular — registro histórico de 08/10
 
 A consulta direta a `https://maislouvor.com/login` confirmou o layout anterior, com “Bem-vindo de volta” (`login-site-publicado.jpg`). O login com carrossel aprovado foi distribuído somente no TestFlight 1.0.0 (6), conforme o registro de 06/10; não houve publicação dele no site naquela entrega. `login-beta-previa.jpg` mostra o componente atual preparado para o próximo beta, incluindo o rodapé jurídico novo. A captura antiga do site não é proposta como screenshot do próximo app. Não reverter o visual aprovado para igualar o site antigo.
+
+## Conferência de 09/10/2026
+
+A situação acima foi superada: a página pública `/login` renderiza o carrossel
+aprovado e carrega o bundle da fonte `26013cc`, também usada no build **1.0.0 (9)**.
+Google aparece na web; Apple depende do contexto iOS. A captura antiga do site
+continua apenas como evidência histórica.
+
+Os quatro JPEGs foram conferidos: RGB/sRGB, sem transparência, **1320 × 2868**.
+Ainda são prévias de componentes, não capturas verificadas do binário 9. Antes
+do envio, recapturar 02/03 sem a barra de rolagem de navegador; na 03, carregar o
+áudio para evitar duração `0:00` e enquadrar o mixer inteiro. Não há dados reais
+de usuários aparentes nas quatro imagens.
+
+O projeto mantém suporte a iPhone e iPad (`TARGETED_DEVICE_FAMILY = 1,2`). Faltam
+capturas para iPad de 13″, além da conferência dos slots exigidos na ficha Apple.
+Nenhuma imagem foi enviada nesta etapa. Ver o
+[registro de preparação](../../preparacao-revisao-20261009.md).

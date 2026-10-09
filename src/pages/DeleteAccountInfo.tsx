@@ -121,8 +121,10 @@ export default function DeleteAccountInfo() {
 
           <Card icon={Clock} title="Prazo">
             <p>
-              A exclusão é imediata. Cópias de segurança que ainda contenham seus dados são substituídas em até{" "}
-              <LegalValue text={BACKUP_RETENTION} />.
+              A exclusão é imediata. Cópias de segurança ainda podem conter seus dados até serem substituídas.
+            </p>
+            <p>
+              <LegalValue text={BACKUP_RETENTION} />
             </p>
           </Card>
 

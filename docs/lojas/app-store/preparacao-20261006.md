@@ -262,3 +262,15 @@ Feedback do TestFlight às 22:37 BRT confirmou **ML-IOS-OFFERINGS-23-BRA** no bu
 Novo feedback às 23:07 BRT manteve o erro. Captura USB do app e dos serviços de compras encontrou consultas ao catálogo sandbox `/us/`, embora o SDK informe BRA. É hipótese, não causa confirmada: o RevenueCat documenta divergências de moeda/metadados no TestFlight que podem coexistir com compras válidas. Conta Sandbox Brasil criada pelo responsável e confirmada na interface Apple; solicitada configuração no iPhone, ainda sem confirmação. Não é necessário sair do +Louvor. Catálogo, compra e restauração continuam sem sucesso confirmado; não houve novo build ou publicação. Limites da captura e próximo teste no [diagnóstico nativo](../diagnostico-nativo-assinaturas-20261009.md).
 
 **09/10 — preferência atual:** preservar a conta pessoal conectada no iPhone; não pedir saída de Mídia e Compras. Preparada e validada versão de desenvolvimento do mesmo build 9 no NVMe, conforme alternativa oficial Apple que usa Sandbox sem sair da conta pessoal. Ainda não instalada: falta conexão por cabo/desbloqueio e atualização do perfil para esse aparelho. Modo de Desenvolvedor confirmado habilitado. Detalhes, limites e preservação dos builds antigos no diagnóstico nativo acima.
+
+**09/10 — etapas adiantadas sem o iPhone:** metadados e notas de revisão preparados
+localmente, incluindo assinaturas/App Privacy. Cinco páginas públicas auditadas;
+web confirmada com carrossel atual. Corrigida localmente a composição dos textos
+de backup, ainda sem deploy. Capturas preliminares revisadas: recapturar 02/03 e
+incluir iPad. Migração pendente do catálogo aplicada ao banco com backup, ensaio
+e preservação das músicas/faixas existentes. Conta Apple de revisão criada com
+dados fictícios; login, permissões e acesso aos onze áudios validados pela API.
+Nenhum plano pago concedido, novo TestFlight ou envio à revisão pública. A ficha
+Apple não carregou de forma confiável para salvar os materiais. Compra/restauração,
+navegação nativa da demo e revisão dos conteúdos permanecem pendentes.
+[Registro completo desta preparação](../preparacao-revisao-20261009.md).

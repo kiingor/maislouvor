@@ -165,7 +165,8 @@ export const privacyPolicy: LegalDocumentContent = {
           "**Tokens de notificação:** até você sair da conta, desinstalar o app ou o token expirar.",
           "**Convites pendentes:** até serem aceitos, cancelados ou expirarem.",
         ],
-        `Cópias de segurança (backups) podem conter dados já excluídos por ${value(BACKUP_RETENTION)}, até serem substituídas.`,
+        "Cópias de segurança (backups) podem conter dados já excluídos até serem substituídas.",
+        value(BACKUP_RETENTION),
       ],
     },
     {
