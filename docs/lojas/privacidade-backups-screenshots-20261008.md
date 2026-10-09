@@ -79,4 +79,4 @@ O teste da compra e restauração RevenueCat no iPhone continua com o titular. S
 
 App Store Connect: `1.0.0 (7)`, ID de compilação `2c49b659-8865-489b-bedb-99cf90c517d9`, status **Em testes**, grupo **Teste iPhone**, um tester. Não foram reenviados convites nem submetida revisão pública. Evidência visual local privada: `tmp/testflight-build7-em-testes.png`. O monitor antigo já estava pausado.
 
-A web foi conferida no navegador após a instalação automática do service worker: carrossel aprovado e login sem scroll em 440 × 956 e 1440 × 900. Uma aba que permaneça com a versão antiga pode precisar ser fechada/reaberta ou recarregada após a atualização; nenhum dado do usuário foi limpo. [Capturas reais](screenshots/web-release-20261009/README.md).
+A web foi conferida no navegador após a instalação automática do service worker: carrossel aprovado e login sem scroll em 440 × 956 e 1440 × 900. Uma aba que permaneça com a versão antiga pode precisar ser fechada/reaberta ou recarregada após a atualização; nenhum dado do usuário foi limpo. [Capturas reais](screenshots/web-release-20261009/login-desktop-publicado.jpg).
