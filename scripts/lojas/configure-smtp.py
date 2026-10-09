@@ -25,7 +25,7 @@ if not p['apply']:
     print(json.dumps({'authenticated':True,'applied':False,'messages_sent':0}));raise SystemExit(0)
 lock=open('/var/lock/maislouvor-deploy.lock','a');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
 root=pathlib.Path('/opt/supabase');envfile=root/'.env'
-before=envfile.read_text();previous_mode=envfile.stat().st_mode & 0o777
+before=envfile.read_text()
 settings={'SMTP_HOST':'smtpout.secureserver.net','SMTP_PORT':'465','SMTP_USER':'suporte@maislouvor.com',
           'SMTP_PASS':p['password'],'SMTP_ADMIN_EMAIL':'suporte@maislouvor.com','SMTP_SENDER_NAME':'+Louvor'}
 result=before
@@ -39,7 +39,7 @@ release=pathlib.Path('/var/lib/maislouvor-deploy')/('smtp-'+datetime.datetime.no
 release.mkdir(mode=0o700);shutil.copy2(envfile,release/'env.before');(release/'env.before').chmod(0o600)
 temporary=root/'.env.smtp-pending'
 def install(contents):
-    temporary.write_text(contents);temporary.chmod(previous_mode);os.replace(temporary,envfile)
+    temporary.write_text(contents);temporary.chmod(0o600);os.replace(temporary,envfile)
 def run(args):
     r=subprocess.run(args,cwd=root,capture_output=True,text=True)
     if r.returncode: raise RuntimeError('Docker validation/recreation failed')

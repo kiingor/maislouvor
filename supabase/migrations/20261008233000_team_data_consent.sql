@@ -53,7 +53,9 @@ begin
   else
     update public.team_data_consents set revoked_at=now() where profile_id=v_profile and revoked_at is null;
     -- Voltar a participar não reativa automaticamente o Asafe.
-    update public.assistant_ai_consents set revoked_at=now() where profile_id=v_profile and revoked_at is null;
+    -- A escolha é pessoal: não desativa a autorização administrativa da equipe.
+    update public.assistant_ai_consents set revoked_at=now()
+      where profile_id=v_profile and scope='member_link' and revoked_at is null;
     insert into public.assistant_ai_opt_outs(profile_id) values(v_profile) on conflict do nothing;
   end if;
   return public.my_team_data_consent();

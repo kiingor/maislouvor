@@ -6,7 +6,7 @@ Instalado na VPS em 08/10/2026. Não usa dados dos outros produtos hospedados ne
 - Restic 0.18.1 do repositório apt do servidor; cópias criptografadas e deduplicadas.
 - Repositório: `/var/backups/maislouvor-managed/restic`; janela `--keep-within 30d` e prune após cada backup bem-sucedido.
 - Inclui dump PostgreSQL do banco do +Louvor, Storage, funções e configuração de implantação (`docker-compose.yml`, `.env` e `.env.*`). Arquivos temporários com segredos são removidos no encerramento, inclusive em erro.
-- Exclusão automática aplica-se SOMENTE ao repositório gerenciado. Dumps antigos de implantação e backups do provedor ainda precisam da auditoria de retenção.
+- Retenção independente diária às 07h UTC: snapshots e cópias legadas de implantação com 30 dias; ver detalhes e exceções no documento de retenção.
 - Senha fora do repositório Git, restrita a root no servidor, com cópia privada no Mac do titular. Nunca imprimir ou anexar a relatórios.
 - `flock` impede sobreposição. O uso de memória do Restic foi limitado com `GOMEMLIMIT=512MiB`.
 
@@ -18,10 +18,10 @@ A segunda execução, já incluindo `.env.*` e limpeza em falhas, também termin
 
 `verify-restore.py` documenta a verificação em contêiner isolado; executar no servidor por SSH. Ele não restaura sobre o banco de produção. Logs privados e resultado da restauração ficam em `/var/lib/maislouvor-backup`.
 
-## Pendente: cópia externa e retenção completa
+## Cópias independentes e retenção
 
-O repositório acima está **na mesma VPS**. A perda da VPS ainda pode levar esta cópia junto. Falta verificar/habilitar a cópia independente da Hostinger na conta do titular (login solicitado) ou configurar outro destino aprovado. Não foi contratada infraestrutura paga.
+A Hostinger mantém **duas cópias semanais fora da VPS, no Brasil**, confirmadas na conta em 08/10: 27/09 e 04/10. Não foi contratado backup diário pago. O restic local é diário. A cópia semanal também pode conter backups locais; o ciclo de recuperação é de aproximadamente 45 dias com as rotinas funcionando, com exceção explícita durante falhas para preservar a última recuperação.
 
-Não foi copiado o repositório inteiro para o Mac: o espaço livre chegou a cerca de 3 GB, menor que a cópia. A chave de recuperação foi preservada fora da VPS, mas **uma chave não substitui um backup dos dados**.
+A cópia temporária de validação no NVMe foi conferida novamente após configurar SMTP (**286 arquivos / 4.837.176.006 bytes**, SHA-256 idênticos à origem) e removida em 08/10, mantendo o relatório de conferência e todos os arquivos de compilação. Não existe rotina de backup externo no NVMe.
 
-Não publicar a política dizendo que TODAS as cópias expiram em 30 dias até conferir os backups do provedor e os dumps de implantação preexistentes.
+[Política, controles, operação e 18 testes da retenção](../../docs/lojas/retencao-backups-20261008.md). O job independente executou com sucesso, sem exclusões: 3 snapshots e 42 cópias dentro do prazo. Falhas ficam visíveis no systemd; alertas automáticos de e-mail não foram configurados.

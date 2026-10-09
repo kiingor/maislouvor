@@ -43,7 +43,7 @@ export const PRIVACY_CONTACT_NAME = LEGAL_ENTITY_NAME;
 export const INFRA_PROVIDER = "Hostinger, com servidor no Brasil";
 export const EMAIL_PROVIDER = "GoDaddy — E-mail Profissional";
 /** Quanto tempo uma cópia de segurança pode guardar dados já excluídos. */
-export const BACKUP_RETENTION = "PREENCHER: confirmar retenção efetiva das cópias (política proposta: até 30 dias)";
+export const BACKUP_RETENTION = "Backups diários e cópias de implantação são mantidos por 30 dias. A Hostinger mantém também duas cópias semanais rotativas, separadas do servidor, que podem incluir esses backups. O ciclo de eliminação das cópias de recuperação é de aproximadamente 45 dias com as rotinas funcionando. Falhas podem prolongar esse prazo: a última cópia recuperável é preservada até corrigir o problema e validar uma nova cópia. Dados excluídos não devem voltar ao uso normal em uma restauração.";
 /**
  * Dados pessoais sensíveis (LGPD, art. 5º, II): participar de uma equipe de louvor
  * pode revelar convicção religiosa. Base legal do art. 11 para esse tratamento —

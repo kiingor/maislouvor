@@ -2,7 +2,7 @@
 
 ## Estado da entrega
 
-O aviso para computador e a implementação de privacidade estão no checkout `MaisLouvor-lojas`, branch `codex/integracao-lojas-revenuecat`. **Não houve novo deploy do aplicativo, aplicação definitiva das migrações abaixo ou upload ao TestFlight.** A alteração real no servidor foi a instalação/configuração dos backups.
+O aviso para computador e a implementação de privacidade estão no checkout `MaisLouvor-lojas`, branch `codex/integracao-lojas-revenuecat`. **Não houve novo deploy do aplicativo, aplicação definitiva das migrações abaixo ou upload ao TestFlight.** As alterações reais no servidor até esta etapa são backups, retenção e SMTP; a publicação coordenada do aplicativo está em preparação.
 
 Filipe confirmou nesta sessão que Google, Apple e Face ID funcionaram no iPhone. RevenueCat permanece aguardando teste no próximo beta. Não usar o script antigo `ios-internal-testflight.mjs` para esse beta: ele usa uma base anterior que não contém esta integração.
 
@@ -11,7 +11,7 @@ Filipe confirmou nesta sessão que Google, Apple e Face ID funcionaram no iPhone
 - Commit `aa393bc`: líderes recebem orientação “Continue pelo computador” ao criar repertório/nova música. Dentro do repertório, adicionar preserva a busca no acervo e explica como cadastrar pela web.
 - Consentimento individual específico, caixa desmarcada, antes de montar os componentes de equipe. Erro de rede bloqueia esses componentes e permite tentar novamente. OAuth/Face ID/termos/líder não concedem o consentimento em nome da pessoa.
 - Escolha com versão e data do servidor, tabela privada com histórico, RPC autenticada sem parâmetro para escolher outra pessoa. Consulta ao estado de terceiros usada nas políticas fica em schema privado.
-- Retirada em `/minha-privacidade`: limpa caches de equipe, impede novo uso operacional, escalas e avisos, revoga o Asafe; não apaga a conta automaticamente. Suporte, exclusão e preparação da transferência de liderança permanecem acessíveis. Não reativa o Asafe ao autorizar equipes novamente.
+- Retirada em `/minha-privacidade`: limpa caches de equipe, impede novo uso operacional, escalas e avisos, revoga o uso pessoal pelo Asafe (preserva a ativação administrativa da equipe); não apaga a conta automaticamente. Suporte, exclusão e preparação da transferência de liderança permanecem acessíveis. Não reativa o Asafe ao autorizar equipes novamente.
 - Convites passam a gerar links ligados ao e-mail: cada integrante entra/cria a própria conta e escolhe. O limite de integrantes e a opção de contratar vagas do RevenueCat foram preservados. Nenhum convite é enviado automaticamente.
 - Escala nominal retirada dos links públicos de culto: o consentimento cobre o compartilhamento dentro da equipe, não a publicação irrestrita dos nomes.
 - Asafe e separação local preservados. A autorização adicional do Asafe continua separada.
@@ -20,7 +20,7 @@ Filipe confirmou nesta sessão que Google, Apple e Face ID funcionaram no iPhone
 ### Validação
 
 - TypeScript aprovado; **55 arquivos / 462 testes do frontend aprovados**.
-- **25 verificações PostgreSQL** de consentimento; **159 verificações integradas** e hardening de exclusão/moderação/Asafe, inclusive reaplicação idempotente e preservação dos guardas de liderança/propriedade.
+- **27 verificações PostgreSQL** de consentimento; **159 verificações integradas** e hardening de exclusão/moderação/Asafe, inclusive reaplicação idempotente e preservação dos guardas de liderança/propriedade.
 - Prévia visual em 440 × 956: orientação e consentimento legíveis, sem seleção prévia da caixa.
 - Bundle de loja compilado apenas para QA em `tmp/privacy-qa-dist`. Esse comando não substitui o gate de publicação.
 - Migrações ensaiadas contra o schema real dentro de transação com **ROLLBACK**, sem erro e sem concessão de consentimento a usuários reais.
@@ -39,15 +39,17 @@ O seed das contas fictícias de revisão foi atualizado para criar registros sin
 
 Backup diário criptografado ativo na VPS, retenção de 30 dias **no novo repositório gerenciado**, verificação completa de integridade e restauração em contêiner isolado aprovadas. [Procedimentos e limites](../../scripts/backup/README.md).
 
-Ainda faltam confirmar a retenção dos backups da Hostinger e dos dumps antigos de implantação. O login foi solicitado; Safari também foi aberto no login da Hostinger. Nenhum plano pago foi contratado. Após autorização do titular para usar o NVMe, uma cópia criptografada independente foi iniciada em `/Volumes/MaisLouvorBuild/Backups/maislouvor-restic`; conferir o resultado antes de declará-la concluída. É uma cópia pontual, não agendamento externo diário.
+Hostinger confirmada na conta: duas cópias semanais fora da VPS, no Brasil, de 27/09 e 04/10. Retenção diária independente instalada e executada: 3 snapshots e 42 cópias legadas dentro de 30 dias, zero exclusões. Considerando cópias semanais que incluem backups locais, o ciclo operacional é de aproximadamente 45 dias; falhas e preservação da última recuperação são descritas explicitamente. [Evidência e procedimentos](retencao-backups-20261008.md).
+
+A cópia temporária no NVMe foi comparada integralmente por SHA-256 após o SMTP (286 arquivos, 4.837.176.006 bytes) e removida após a validação. Relatório e arquivos de compilação preservados. Nenhum plano pago foi contratado.
 
 ## 3. Páginas públicas e e-mail
 
 Titular confirmou **E-mail Profissional GoDaddy** e a criação de `suporte@maislouvor.com`. Contato de suporte atualizado no código; o contato de privacidade permanece no Outlook até a segunda caixa funcionar. Sugestão: `privacidade@maislouvor.com`.
 
-DNS MX aponta para GoDaddy. SMTP documentado: `smtpout.secureserver.net:465` com TLS. `scripts/lojas/configure-smtp.py` preparado: valida autenticação sem enviar mensagem; `--apply` altera somente o SMTP, com backup e reversão, preservando a confirmação de cadastro. Senha solicitada em arquivo privado fora do Git, nunca pelo chat. SMTP real ainda não aplicado; servidor continua com remetente/host fictícios até autenticação bem-sucedida.
+DNS MX aponta para GoDaddy. SMTP `smtpout.secureserver.net:465`, TLS verificado, autenticação validada e configuração aplicada por `scripts/lojas/configure-smtp.py --apply`. Apenas auth foi recriado e ficou saudável; OAuth e confirmação automática existentes preservados. Ambiente remoto protegido com permissão 600, backup privado antes da alteração. Nenhum e-mail foi enviado; entrega na caixa de entrada ainda não testada.
 
-O gate jurídico continua recusando publicação pela retenção completa dos backups ainda não confirmada. O provedor de e-mail já foi identificado, mas sua configuração operacional continua pendente. Não preencher valores apenas para fazer o comando passar.
+O último marcador de retenção foi substituído pelos critérios realmente instalados e verificados. Gate de placeholders aprovado; isso não equivale a revisão jurídica profissional ou autorização de músicas.
 
 ## Screenshots e autorização musical
 

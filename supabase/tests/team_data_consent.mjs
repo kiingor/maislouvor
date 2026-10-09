@@ -41,10 +41,13 @@ try {
  await call(ub,'set_my_team_data_consent',[true,'2026-10-08']);
  await db.query('insert into culto_lineup(culto_id,team_member_id,instrument)values($1,$2,$3)',[culto,mb,'Voz']);count++;
  await db.query("insert into assistant_ai_consents(profile_id,scope,text_version)values($1,'member_link',public.assistant_ai_consent_version())",[pa]);
+ await db.query("insert into assistant_ai_consents(profile_id,team_id,scope,text_version)values($1,$2,'team_activation',public.assistant_ai_consent_version())",[pa,team]);
  check((await db.query('select assistant_member_ai_allowed($1,$2) r',[team,pa])).rows[0].r,true);
  check((await call(ua,'set_my_team_data_consent',[false,'2026-10-08'])).allowed,false);
  check(await call(ua,'is_team_member',[ua,team]),false);
  check((await db.query('select assistant_member_ai_allowed($1,$2) r',[team,pa])).rows[0].r,false);
+ check((await db.query('select assistant_team_consent_valid($1) r',[team])).rows[0].r,true,'personal withdrawal does not suspend Asafe for everyone');
+ check((await db.query("select revoked_at is not null r from assistant_ai_consents where profile_id=$1 and scope='member_link'",[pa])).rows[0].r,true,'personal Asafe authorization revoked');
  const blocked=await withRole(db,'authenticated',ua,tx=>tx.query('select id from team_members'));
  check(blocked.rows.length,0,'revocation blocks client regardless of cached UI');
  await call(ua,'account_deletion_promote_leader',[team,pb]);count++;
