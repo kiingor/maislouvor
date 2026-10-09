@@ -147,7 +147,7 @@ describe("legal documents content", () => {
     expect(privacy).toMatch(/Não vendemos/);
     expect(privacy).toContain("Firebase Cloud Messaging (app Android)");
     expect(privacy).not.toContain("app Android/iOS");
-    expect(privacy).toContain("No app nativo, o vídeo abre no YouTube ou no navegador externo");
+    expect(privacy).toContain("Nas versões atualizadas do app nativo, o vídeo abre no YouTube ou no navegador externo");
     expect(privacy).toContain("player do YouTube incorporado na web");
     expect(privacy).toContain("coletar dados ao carregar e ao reproduzir");
     expect(privacy).not.toMatch(/não exibimos anúncios|não rastreamos/);
