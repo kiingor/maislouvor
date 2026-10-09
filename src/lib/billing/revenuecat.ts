@@ -29,8 +29,11 @@ function serialized<T>(operation: () => Promise<T>): Promise<T> {
 
 async function sdk(context: BillingContext) {
   const key = apiKey();
-  if (!key || !context.app_user_id) throw new Error('As assinaturas ainda não estão disponíveis nesta plataforma.');
   const platform = billingPlatform();
+  if (!key || !context.app_user_id) {
+    if (platform !== 'web') throw new NativeBillingError('configure', platform, undefined);
+    throw new Error('As assinaturas ainda não estão disponíveis nesta plataforma.');
+  }
   if (platform !== 'web') {
     const { Purchases } = await import('@revenuecat/purchases-capacitor').catch((error: unknown) => {
       throw new NativeBillingError('sdk', platform, error);
@@ -98,7 +101,12 @@ async function load(context: BillingContext): Promise<{ active: boolean; activeP
 }
 
 export const getBillingOffers = (teamId: string): Promise<{ active: boolean; offers: BillingOffer[] }> => serialized(async () => {
-  const result = await load(await requireBillingOwner(teamId));
+  const platform = billingPlatform();
+  const context = await requireBillingOwner(teamId).catch((error: unknown) => {
+    if (platform === 'web') throw error;
+    throw new NativeBillingError('context', platform, undefined);
+  });
+  const result = await load(context);
   return { active: result.active, offers: result.offers.map(({ buy: _buy, ...offer }) => offer) };
 });
 

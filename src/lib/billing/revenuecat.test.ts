@@ -71,6 +71,33 @@ describe('RevenueCat SDK integration', () => {
     expect(native.purchasePackage).not.toHaveBeenCalled();
     expect(syncBilling).not.toHaveBeenCalled();
   });
+  it('reports native context failures before calling the SDK without exposing RPC details', async () => {
+    vi.mocked(Capacitor.getPlatform).mockReturnValue('ios');
+    vi.mocked(requireBillingOwner).mockRejectedValueOnce({ code: '23', message: 'private RPC customer-id', details: 'private-token' });
+    const error = await getBillingOffers('team').catch((value) => value);
+    expect(error).toBeInstanceOf(NativeBillingError);
+    expect(error).toMatchObject({ supportCode: 'ML-IOS-CONTEXT-NA', message: 'Não foi possível conferir os dados da assinatura. Tente novamente.' });
+    expect(JSON.stringify(error)).not.toMatch(/private|customer-id/);
+    expect(native.isConfigured).not.toHaveBeenCalled();
+    expect(native.configure).not.toHaveBeenCalled();
+    expect(native.getOfferings).not.toHaveBeenCalled();
+    expect(native.getStorefront).not.toHaveBeenCalled();
+  });
+  it('preserves web context errors without wrapping them as native failures', async () => {
+    const error = new Error('Somente o responsável pela equipe pode gerenciar a assinatura.');
+    vi.mocked(requireBillingOwner).mockRejectedValueOnce(error);
+    await expect(getBillingOffers('team')).rejects.toBe(error);
+    expect(native.isConfigured).not.toHaveBeenCalled();
+  });
+  it.each(['app_user_id', 'apiKey'])('reports missing native %s safely before configuring the SDK', async (field) => {
+    vi.mocked(Capacitor.getPlatform).mockReturnValue('ios');
+    if (field === 'app_user_id') context.app_user_id = null;
+    else vi.stubEnv('VITE_REVENUECAT_IOS_API_KEY', '');
+    await expect(getBillingOffers('team')).rejects.toMatchObject({ supportCode: 'ML-IOS-CONFIGURE-NA', message: 'Não foi possível conectar à loja. Tente novamente.' });
+    expect(native.isConfigured).not.toHaveBeenCalled();
+    expect(native.configure).not.toHaveBeenCalled();
+    expect(native.getStorefront).not.toHaveBeenCalled();
+  });
   it('reports native offerings error 23 with only the stage, code and storefront country', async () => {
     vi.mocked(Capacitor.getPlatform).mockReturnValue('ios');
     native.getOfferings.mockRejectedValueOnce({ code: '23', message: 'secret-api-key customer-123', userInfo: { appUserID: 'customer-123' } });

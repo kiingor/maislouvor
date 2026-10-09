@@ -1,4 +1,4 @@
-export type NativeBillingStage = 'sdk' | 'configure' | 'offerings' | 'customer-info';
+export type NativeBillingStage = 'context' | 'sdk' | 'configure' | 'offerings' | 'customer-info';
 export type NativeBillingPlatform = 'ios' | 'android';
 
 // Public error codes from purchases-capacitor 13.7.0. Never include arbitrary
@@ -9,6 +9,7 @@ const sdkCodes = new Set([
   '28', '29', '30', '31', '32', '33', '34', '35', '42',
 ]);
 const messages: Record<NativeBillingStage, string> = {
+  context: 'Não foi possível conferir os dados da assinatura. Tente novamente.',
   sdk: 'Não foi possível conectar à loja. Tente novamente.',
   configure: 'Não foi possível conectar à loja. Tente novamente.',
   offerings: 'Não foi possível consultar os planos na loja. Tente novamente em instantes.',
@@ -21,7 +22,7 @@ export class NativeBillingError extends Error {
   constructor(stage: NativeBillingStage, platform: NativeBillingPlatform, error: unknown, storefront?: unknown) {
     super(messages[stage]);
     this.name = 'NativeBillingError';
-    const rawCode = error !== null && typeof error === 'object' ? (error as { code?: unknown }).code : undefined;
+    const rawCode = stage !== 'context' && error !== null && typeof error === 'object' ? (error as { code?: unknown }).code : undefined;
     const code = (typeof rawCode === 'string' || typeof rawCode === 'number') && sdkCodes.has(String(rawCode)) ? String(rawCode) : 'NA';
     const country = typeof storefront === 'string' && /^[A-Z]{3}$/.test(storefront) ? storefront : undefined;
     this.supportCode = ['ML', platform.toUpperCase(), stage.toUpperCase(), code, country].filter(Boolean).join('-');

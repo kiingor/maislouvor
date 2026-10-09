@@ -4,6 +4,9 @@ import { diagnosticStorefront, NativeBillingError } from './errors';
 afterEach(() => vi.useRealTimers());
 
 describe('safe native billing diagnostics', () => {
+  it('never interprets a context RPC code as a native SDK code', () => {
+    expect(new NativeBillingError('context', 'ios', { code: 23, message: 'private RPC text' }).supportCode).toBe('ML-IOS-CONTEXT-NA');
+  });
   it.each([
     { code: 'private-customer', country: 'private-key' },
     { code: 99999, country: 'BRA?token=private' },
