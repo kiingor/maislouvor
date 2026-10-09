@@ -3,7 +3,7 @@ const landingEntry = (href) => {
   const url = new URL(href);
   return url.origin === self.location.origin &&
     ['maislouvor.com', 'www.maislouvor.com'].includes(url.hostname) &&
-    (url.pathname === '/' || /^\/conheca(?:\/|$)/.test(url.pathname));
+    (url.pathname === '/' || /^\/conheca(?:\/|$)/.test(url.pathname) || /^\/baixar(?:\/|$)/.test(url.pathname));
 };
 const initialLandingClients = self.clients.matchAll({ type: 'window', includeUncontrolled: true })
   .then((windows) => new Map(windows.filter((client) => landingEntry(client.url))

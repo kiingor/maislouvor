@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => ({
       workbox: {
         // Não intercepta o download do APK (senão o SW devolve a SPA → 404 interno).
         directoryIndex: null,
-        navigateFallbackDenylist: [/^\/(?:\?|$)/, /^\/conheca(?:\/|$)/, /^\/~oauth/, /\.apk$/],
+        navigateFallbackDenylist: [/^\/(?:\?|$)/, /^\/conheca(?:\/|$)/, /^\/baixar(?:\/|\?|$)/, /^\/~oauth/, /\.apk$/],
         // essentia.js (key detection) is a large, lazy-loaded chunk — fetch on demand, don't precache
         globIgnores: ["**/essentia*"],
         // O bundle principal passou de 2 MiB (limite padrão do Workbox) — eleva p/ precachear.
