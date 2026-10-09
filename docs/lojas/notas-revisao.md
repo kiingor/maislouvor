@@ -2,8 +2,10 @@
 
 Material de preparação atualizado em **09/10/2026**, conferido contra a fonte
 **`26013cc`**, usada no iOS **1.0.0 (9)**. O build está no TestFlight interno;
-não foi submetido à revisão pública. Esta atualização é somente local: não
-confirma que os textos ou as respostas tenham sido salvos nas lojas.
+não foi submetido à revisão pública. O
+[registro de preenchimento](preenchimento-app-store-20261009.md) distingue o que
+foi salvo na Apple do formulário de revisão ainda pendente de telefone e do
+questionário de privacidade incompleto.
 
 **Pendência de envio:** o build 9 ainda apresentou `ML-IOS-OFFERINGS-23-BRA` no
 iPhone. Carregamento dos produtos Apple, compra, restauração e liberação do plano
@@ -67,7 +69,7 @@ FEATURES
 4. Leaders create new repertoires, register/edit songs and import audio only on the web at maislouvor.com. Native apps show "Continue pelo computador" for these actions and have no file or YouTube audio import. Adding existing songs to an existing repertoire remains available with the relevant permission.
 
 SUBSCRIPTIONS
-"Usuário" > "Assinatura": Essencial is free for new teams with up to five members, including the owner. Paid plans expand capacity and can include track separation, Asafe or both. Only the owner manages billing. iOS purchases use Apple's In-App Purchase through RevenueCat, with monthly/annual options where offered. This tab includes "Restaurar compras" and "Atualizar"; "Gerenciar assinatura" appears for RevenueCat subscriptions. Deleting the account does not cancel a store subscription. No ads.
+"Usuário" > "Assinatura": Essencial is free for new teams with up to five members, including the owner. Paid plans expand capacity and can include track separation, Asafe or both. Only the owner manages billing. iOS purchases use Apple's In-App Purchase through RevenueCat, with monthly/annual options where offered. This tab includes "Restaurar compras" and "Atualizar"; "Gerenciar assinatura" appears for RevenueCat subscriptions. Deleting the account does not cancel a store subscription. No advertising SDK or ads are added by +Louvor. Embedded YouTube players may display advertising controlled by YouTube.
 
 ASAFE — OPTIONAL WHATSAPP ASSISTANT
 "Usuário" > "Equipe" > "Assistente no WhatsApp" > "Gerar código de ativação" opens the OpenAI data-sharing notice. The leader authorizes activation with "Concordo e ativar". Each person separately allows use of their own data with "Permitir que o Asafe use meus dados" in "Usuário" > "Perfil". Both choices are revocable. The demo setup enables manual activation, with no connected WhatsApp group or automatic AI consent. End-to-end Asafe review requires a controlled WhatsApp test group and access under the team plan. Other in-app features do not require WhatsApp.

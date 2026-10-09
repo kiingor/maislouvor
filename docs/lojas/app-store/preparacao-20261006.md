@@ -274,3 +274,11 @@ Nenhum plano pago concedido, novo TestFlight ou envio à revisão pública. A fi
 Apple não carregou de forma confiável para salvar os materiais. Compra/restauração,
 navegação nativa da demo e revisão dos conteúdos permanecem pendentes.
 [Registro completo desta preparação](../preparacao-revisao-20261009.md).
+
+**09/10 — preenchimento autorizado no App Store Connect:** descrição, texto
+promocional, suporte, copyright e versão 1.0.0 salvos e confirmados após reload;
+lançamento manual mantido. URL de privacidade e rascunho de onze categorias também
+salvos. Login da demo/notas/contato estão preenchidos, mas **ainda não salvos**:
+falta o telefone de contato solicitado ao titular. Questionário de privacidade
+incompleto, incluindo análise dos embeds YouTube; nada submetido/publicado e
+nenhum novo TestFlight. [Registro e retomada](../preenchimento-app-store-20261009.md).
