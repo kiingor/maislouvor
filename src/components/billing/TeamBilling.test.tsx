@@ -56,12 +56,16 @@ describe('Team subscription UI', () => {
     expect(screen.queryByText(/private|Código de suporte:/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Recarregar planos' })).toBeEnabled();
   });
-  it('does not expose raw checkout SDK errors in the toast', async () => {
-    vi.mocked(purchaseSubscription).mockRejectedValueOnce(new Error('private receipt and customer-id'));
+  it('preserves actionable business errors in checkout while keeping typed native errors safe', async () => {
+    vi.mocked(purchaseSubscription).mockRejectedValueOnce(new Error('O preço foi atualizado. Confira o novo valor antes de assinar.'));
     mount();
     fireEvent.click(await screen.findByRole('button', { name: /Continuar com este plano: Completo/ }));
-    await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ description: 'Confira sua conexão e tente novamente.' })));
-    expect(JSON.stringify(toast.mock.calls)).not.toMatch(/private|customer-id/);
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ description: 'O preço foi atualizado. Confira o novo valor antes de assinar.' })));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Continuar com este plano: Completo/ })).toBeEnabled());
+    vi.mocked(purchaseSubscription).mockRejectedValueOnce(new NativeBillingError('customer-info', 'ios', { code: 29, message: 'private receipt' }));
+    fireEvent.click(screen.getByRole('button', { name: /Continuar com este plano: Completo/ }));
+    await waitFor(() => expect(toast).toHaveBeenLastCalledWith(expect.objectContaining({ description: 'Não foi possível conferir suas compras na loja. Tente novamente. Código de suporte: ML-IOS-CUSTOMER-INFO-29' })));
+    expect(JSON.stringify(toast.mock.calls)).not.toContain('private receipt');
   });
   it('opens a web capacity confirmation without treating the portal session as a purchase', async () => {
     vi.mocked(billingPlatform).mockReturnValue('web');

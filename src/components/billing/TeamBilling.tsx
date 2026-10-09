@@ -82,7 +82,7 @@ export default function TeamBilling({ initialSeats }: { initialSeats?: number })
         description: stillPending ? 'A confirmação está em processamento. Use Atualizar em alguns instantes.' : undefined });
     } catch (error) {
       if (!isPurchaseCancelled(error)) toast({ title: purchased ? 'Compra recebida; confirmação pendente' : 'Não foi possível concluir',
-        description: purchased ? 'Não compre novamente. Use Atualizar para confirmar a assinatura.' : error instanceof NativeBillingError ? `${error.message} Código de suporte: ${error.supportCode}` : 'Confira sua conexão e tente novamente.',
+        description: purchased ? 'Não compre novamente. Use Atualizar para confirmar a assinatura.' : error instanceof NativeBillingError ? `${error.message} Código de suporte: ${error.supportCode}` : error instanceof Error ? error.message : 'Confira sua conexão e tente novamente.',
         variant: purchased ? 'default' : 'destructive' });
       // A checkout error may still leave a pending store purchase. Reload SDK state.
       void refresh();
