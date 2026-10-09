@@ -26,4 +26,19 @@ Isso localiza a falha observada no simulador na obtenção dos produtos Apple. *
 
 A ativação comercial é recente, mas propagação ainda é uma hipótese. A [Apple TN3186](https://developer.apple.com/documentation/technotes/tn3186-troubleshooting-in-app-purchases-availability-in-the-sandbox) informa que sandbox não exige submissão à revisão e que alterações de metadados podem demorar até uma hora. Essa referência não comprova um prazo específico para a ativação do contrato nem garante correção automática.
 
-Preparando o build 9 com mensagem segura por etapa e código de suporte para obter o erro no aparelho brasileiro, preservando preços e catálogo. Disponibilidade, validações finais e resultado no aparelho ainda pendentes neste registro inicial.
+## Implementação e validação do build 9
+
+Fonte final **26013cc63ee49b786843f863270864d9768615db**, com os commits 07fc1a3 e dd0ac62. Falhas nativas agora distinguem contexto da equipe, carregamento/configuração do SDK, ofertas e consulta de compras. A tela mantém Recarregar planos e mostra somente mensagem fixa e código de suporte com etapa, plataforma, código permitido e, quando disponível, país da loja. Sem mensagens brutas, identidades, credenciais ou telemetria nova. A consulta diagnóstica do país só ocorre após falha nas ofertas e tem limite de 1,2 segundo; não altera disponibilidade territorial nem permite compra.
+
+Assinatura ativa retornada pelo SDK também bloqueia uma segunda compra quando ainda não há entitlement correspondente. As mensagens de negócio (por exemplo, preço alterado) e o fluxo web foram preservados. Não houve mudança de preço, catálogo ou autorização de acesso.
+
+- 54 testes direcionados e typecheck aprovados. Suíte final: **61 arquivos, 525 testes aprovados**. Um teste de Presentation excedeu o tempo sob builds concorrentes; o arquivo passou isoladamente (12 testes), depois toda a suíte passou sem concorrência de compilação. Não alteramos testes ou limites de tempo para contornar isso.
+- Build para lojas e trava legal aprovados. Archive final assinado **1.0.0 (9)** no NVMe; assinatura validada, 222 arquivos web conferidos por hash no aplicativo, Purchases presente, logs da bridge desativados, sem URL remota. A chave pública corresponde à versão anterior e a identidade privada do diagnóstico não está no binário.
+- Nova execução do diagnóstico isolado, usando o mesmo módulo de erros da fonte final, exibiu **ML-IOS-OFFERINGS-23-USA** a partir da falha real do SDK. Evidência: `tmp/revenuecat-simulador-codigo-suporte.png`. É uma tela de diagnóstico, não a tela autenticada do aplicativo nem uma compra.
+- Web publicada às **22:20:27 BRT de 08/10**, release `20261009-billing-diagnostics-v2`; [validação e recuperação](publicacao-diagnostico-assinaturas-20261009.md). Marketing, downloads e demais serviços preservados.
+
+Archive: `/Volumes/MaisLouvorBuild/Archives/MaisLouvor-1.0.0-9.xcarchive`. Fonte, logs, resultado dos testes e `validation.json`: `/Volumes/MaisLouvorBuild/Release-1.0.0-9`. Archive preliminar não enviado preservado como `MaisLouvor-1.0.0-9-preflight.xcarchive`.
+
+Upload interno concluído às **22:24:12 BRT de 08/10**, `EXPORT SUCCEEDED`. **1.0.0 (9) disponível às 22:28 BRT**, status **Em testes**, grupo **Teste iPhone** com um tester existente. Instruções de teste gravadas e grupo associado, sem novos convites. Compilação Apple `e0e7c4a1-80e3-49d1-8d03-5885a89c67f6`. Confirmação local: `tmp/testflight-build9-em-testes.png`.
+
+Solicitado ao responsável atualizar para o build 9, abrir Assinatura → Recarregar planos e informar o código de suporte caso continue falhando. Ainda falta o resultado da consulta no iPhone brasileiro e a compra/restauração. Esta melhoria torna a falha diagnosticável; **não é evidência de que a oferta ou a compra já funciona no aparelho**.
