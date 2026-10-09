@@ -2,7 +2,11 @@
 
 ## Estado da entrega
 
-O aviso para computador e a implementação de privacidade estão no checkout `MaisLouvor-lojas`, branch `codex/integracao-lojas-revenuecat`. **Não houve novo deploy do aplicativo, aplicação definitiva das migrações abaixo ou upload ao TestFlight.** As alterações reais no servidor até esta etapa são backups, retenção e SMTP; a publicação coordenada do aplicativo está em preparação.
+A atualização integrada foi publicada na web em **08/10/2026, 21h17 de Brasília**, com o login em carrossel aprovado, orientações para líderes e consentimento individual. Fonte frontend `d9346dd`, pacote congelado `20261009-web-integrada`: 223 arquivos, 140 assets HTTPS e sete rotas conferidos; marketing, APKs, Caddy, landing-sw e assets antigos preservados. Índice publicado SHA-256 `9ae4dd994d87c79a76e1b2ef0c469ed6d06528852a3d742183e27389e097cad6`.
+
+Backend publicado coordenadamente antes da web: sete migrações em uma transação e oito arquivos edge; 11 dependências preservadas, somente o contêiner edge reiniciado, cinco verificações sem gravação aprovadas. Contagem de consentimentos antes, após migrações e após saúde: zero. Nenhuma autorização foi concedida a usuários reais. [Registro técnico](deploy-consentimento-coordenado-20261008.md).
+
+**iOS 1.0.0 (7)** compilado, archive assinado validado e upload para TestFlight interno concluído às 21h15 de Brasília. Receita/plugin RevenueCat e todos os arquivos do bundle conferidos no archive. A disponibilidade no grupo depende do processamento na Apple e é registrada abaixo após confirmação. Não houve envio para revisão pública da App Store.
 
 Filipe confirmou nesta sessão que Google, Apple e Face ID funcionaram no iPhone. RevenueCat permanece aguardando teste no próximo beta. Não usar o script antigo `ios-internal-testflight.mjs` para esse beta: ele usa uma base anterior que não contém esta integração.
 
@@ -19,19 +23,19 @@ Filipe confirmou nesta sessão que Google, Apple e Face ID funcionaram no iPhone
 
 ### Validação
 
-- TypeScript aprovado; **55 arquivos / 462 testes do frontend aprovados**.
-- **27 verificações PostgreSQL** de consentimento; **159 verificações integradas** e hardening de exclusão/moderação/Asafe, inclusive reaplicação idempotente e preservação dos guardas de liderança/propriedade.
+- TypeScript aprovado; **59 arquivos / 492 testes do frontend aprovados**.
+- **27 verificações PostgreSQL** de consentimento; **163 verificações integradas** e hardening de exclusão/moderação/Asafe, inclusive reaplicação idempotente e preservação dos guardas de liderança/propriedade.
 - Prévia visual em 440 × 956: orientação e consentimento legíveis, sem seleção prévia da caixa.
 - Bundle de loja compilado apenas para QA em `tmp/privacy-qa-dist`. Esse comando não substitui o gate de publicação.
 - Migrações ensaiadas contra o schema real dentro de transação com **ROLLBACK**, sem erro e sem concessão de consentimento a usuários reais.
 - Seed de revisão: **22 testes unitários e 93 verificações no schema PostgreSQL** aprovados. Versão corrente e origem `review_fixture` explícitas apenas para os personagens recém-criados; não conceder consentimento a pessoas reais.
 - Contato de suporte atualizado após o titular confirmar a criação da caixa GoDaddy; **19 testes das páginas/textos legais** reexecutados com sucesso.
 
-### Implantação conjunta pendente
+### Implantação conjunta concluída
 
-Migrações: `20261003131000_terms_acceptance.sql`, `20261003133000_assistant_ai_consent.sql`, `20261007120000_strict_assistant_consent.sql`, `20261007124000_legal_versions.sql`, `20261008233000_team_data_consent.sql`, `20261008234000_privacy_version.sql`.
+Migrações: `20261003131000_terms_acceptance.sql`, `20261003133000_assistant_ai_consent.sql`, `20261007120000_strict_assistant_consent.sql`, `20261007124000_legal_versions.sql`, `20261008233000_team_data_consent.sql`, `20261008234000_privacy_version.sql`, `20261008235000_assistant_team_data_guard.sql`.
 
-Atualizar também `whatsapp-assistant`, `send-push`, `public-culto`, `create-invite` (incluindo `legacy.ts`) e `accept-invite`. Preservar as variáveis e demais funções de produção, o catálogo de cobrança e os guardas de equipe já existentes. Publicar o cliente web coordenadamente: versões antigas não contêm a nova tela de consentimento e podem ter de autorizar primeiro pela web. Não ativar as restrições e deixar somente o cliente antigo disponível.
+Atualizados também `whatsapp-assistant`, `send-push`, `public-culto`, `create-invite` (incluindo `legacy.ts`) e `accept-invite`. Variáveis, demais funções, catálogo de cobrança e guardas existentes preservados. O cliente web foi publicado logo após o backend. Clientes nativos antigos não contêm a nova escolha de privacidade: atualizar para o build 7 ou autorizar primeiro pela web.
 
 O seed das contas fictícias de revisão foi atualizado para criar registros sintéticos somente para suas próprias identidades recém-criadas antes dos vínculos. Não foi executado contra produção. Nunca fazer concessão em lote para usuários reais. Revisão jurídica do texto/base e tratamento de menores continua sendo uma avaliação profissional, não uma certificação produzida pelos testes.
 
@@ -62,3 +66,10 @@ O último marcador de retenção foi substituído pelos critérios realmente ins
 O Mac ficou com aproximadamente 3 GB livres. Caches `DerivedData` gerados por este trabalho foram removidos; archives de versões enviadas foram preservados. Titular autorizou usar o NVMe **Extreme SSD**. Como ele usa ExFAT, foi criado um arquivo de disco expansível APFS (máximo 80 GB, sem formatar o SSD) em `/Volumes/Extreme SSD/MaisLouvor-builds/MaisLouvorBuild-20261008.sparsebundle`, montado em `/Volumes/MaisLouvorBuild`.
 
 Compilação nativa **Debug para dispositivo, sem assinatura, aprovada** no NVMe, incluindo RevenueCat. Fontes/pacote de QA em `Validation-20261008`, caches em `DerivedData` e `SwiftPackages`, temporários em `Temp`. Log `Validation-20261008/native-build.log`. Isso valida a compilação, não é archive distribuído. O bundle de QA precede a atualização final do endereço de suporte. O último TestFlight confirmado no histórico continua sendo 1.0.0 (6); não afirmar disponibilidade de outro build sem consultar o App Store Connect.
+
+
+## Archive interno definitivo
+
+Archive `/Volumes/MaisLouvorBuild/Archives/MaisLouvor-1.0.0-7.xcarchive`; fonte congelada em `/Volumes/MaisLouvorBuild/Release-1.0.0-7` com versão sobrescrita para 7 no Xcode. Logs de bundle, sync, archive e upload nesse diretório. `ARCHIVE SUCCEEDED`, assinatura verificada, versão/bundle/plugin corretos, conteúdo público comparado por hash e `EXPORT SUCCEEDED`. Opção `testFlightInternalTestingOnly=true`. O projeto foi atualizado para manter `CURRENT_PROJECT_VERSION=7` nos próximos builds.
+
+O teste da compra e restauração RevenueCat no iPhone continua com o titular. SMTP autenticou e foi aplicado, sem envio de e-mail de teste. O contato público de suporte é `suporte@maislouvor.com`; privacidade continua no Outlook até a segunda caixa estar disponível. Licenças musicais e avaliação profissional das questões legais continuam independentes da publicação técnica.
