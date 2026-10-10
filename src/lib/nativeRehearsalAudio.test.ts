@@ -97,4 +97,15 @@ describe("native rehearsal transport", () => {
     controller.dispose(); await flush();
     expect(api.reset).toHaveBeenLastCalledWith({ session: "", onlyIfSession: controller.session });
   });
+
+  it("does not report cancelled downloads after closing the rehearsal", async () => {
+    vi.useFakeTimers();
+    const { api, controller } = setup(); await flush();
+    let reject!: (error: Error) => void;
+    vi.mocked(api.loadTrack).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+    const track = controller.create(false); track.src = "https://example.test/pending.mp3";
+    const error = vi.fn(); track.addEventListener("error", error); track.load(); await flush();
+    controller.dispose(); reject(new Error("Audio loading cancelled")); await flush();
+    expect(error).not.toHaveBeenCalled();
+  });
 });

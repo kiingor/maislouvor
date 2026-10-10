@@ -129,6 +129,9 @@ export class NativeRehearsalController {
   dispose() {
     this.disposed = true;
     clearInterval(this.timer);
+    // Invalidate each in-flight load before resetting the bridge; its cancelled
+    // promise must not emit a stale canplay/error on a screen already closed.
+    for (const element of this.elements) element.src = "";
     this.elements.clear();
     if (this.initialized) void this.pending.finally(() => this.api.reset({ session: "", onlyIfSession: this.session })).catch(() => {});
   }

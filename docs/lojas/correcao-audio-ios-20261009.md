@@ -41,7 +41,7 @@ substitui o caminho de reprodução do WebKit que apresentava o problema.
 
 ## Verificação
 
-- Suíte completa: 571 testes / 67 arquivos; typecheck e build de loja aprovados.
+- Suíte completa: 572 testes / 67 arquivos; typecheck e build de loja aprovados.
 - Compilação Swift Debug aprovada no simulador iOS 27 (iPhone 17e).
 - UI real da demo: original, troca de música, mixer de cinco faixas, volume de
   100% para 60%, mute total (nível de saída zero), solo (um ganho não nulo),
