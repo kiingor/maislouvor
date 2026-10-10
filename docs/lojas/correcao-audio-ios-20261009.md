@@ -32,6 +32,9 @@ substitui o caminho de reprodução do WebKit que apresentava o problema.
 - Controles existentes de tom, velocidade, seek e loops permanecem. O adaptador
   agrupa comandos em uma operação de transporte, ignora respostas antigas e
   descarta carregamentos de músicas já abandonadas.
+- Manifesto de privacidade declara `SystemBootTime / 35F9.1`: relógio monotônico
+  usado apenas para sincronização e tempo decorrido da reprodução. Não há envio
+  de horário de boot. [Razão documentada pela Apple](https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacyaccessedapitypes/nsprivacyaccessedapitype).
 - Erros de reprodução deixam de manter um estado visual de Play em andamento.
 - Nenhuma alteração no banco, storage, fila Demucs ou músicas da igreja.
   O player web/Android permanece HTML/Web Audio; não foi necessário deploy web.
