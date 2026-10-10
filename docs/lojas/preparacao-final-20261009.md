@@ -1,5 +1,7 @@
 # Preparação final da Apple — 09/10/2026
 
+> Atualização posterior: a biblioteca privada foi publicada e o TestFlight recebeu **1.0.0 (12)**; veja [publicação e QA](publicacao-biblioteca-privada-20261009.md). O registro abaixo descreve a preparação anterior da build 11; a ficha de distribuição ainda seleciona essa build.
+
 ## Estado confirmado
 
 O **+Louvor 1.0.0 (11)** está **Em testes** no grupo interno **Teste iPhone**,

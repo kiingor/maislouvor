@@ -1,6 +1,6 @@
 # Biblioteca privada e reaproveitamento de áudio
 
-Estado: implementado e validado localmente na branch `codex/integracao-lojas-revenuecat`. **Não implantado em produção, não enviado ao TestFlight e não submetido à revisão nesta etapa.**
+Estado: implementado na branch `codex/integracao-lojas-revenuecat` e **implantado no servidor e na web em 09/10/2026**. Build iOS 1.0.0 (12) enviada. Consulte o [registro de publicação e QA](publicacao-biblioteca-privada-20261009.md) para o estado confirmado do TestFlight. Não submetido à revisão pública.
 
 ## Decisão e proteção do catálogo existente
 
@@ -58,9 +58,9 @@ O seed passa a montar um repertório curto com:
 
 As demais músicas fictícias continuam nos cultos. Não há comportamento especial no binário para revisores; a demo usa as mesmas regras de autorização.
 
-Para a conta de revisão já existente, foi preparado `scripts/review-demo/curate-apple-repertoire.sql`: transação idempotente que valida e-mail de revisão, marca administrativa `review_demo`, propriedade e nome da equipe. Altera somente entradas do repertório de demonstração. Não recria contas, músicas, arquivos ou o vínculo do Asafe. **Ainda não executado no servidor.**
+Para a conta de revisão já existente, foi preparado `scripts/review-demo/curate-apple-repertoire.sql`: transação idempotente que valida e-mail de revisão, marca administrativa `review_demo`, propriedade e nome da equipe. Altera somente entradas do repertório de demonstração. Não recria contas, músicas, arquivos ou o vínculo do Asafe. **Executado no servidor em 09/10/2026, preservando músicas, faixas, arquivos e Asafe; ver registro de publicação.**
 
-## Validação realizada
+## Validação local anterior à implantação
 
 - `npm run typecheck`: aprovado.
 - `npm test -- --run`: 565 testes / 66 arquivos aprovados.
@@ -76,7 +76,9 @@ Para a conta de revisão já existente, foi preparado `scripts/review-demo/curat
 
 Esses testes usam dados fictícios e integrações simuladas quando indicado. Não equivalem a QA de iPhone físico, serviço Storage real, concorrência PostgreSQL com conexões independentes ou execução Demucs após implantação.
 
-## Ordem para publicar
+## Plano original de publicação
+
+Os itens executados e a validação em produção estão no [registro da publicação](publicacao-biblioteca-privada-20261009.md); esta lista preserva a sequência planejada.
 
 1. Backup e preflight do servidor; revisar o diff. Implantar em transação **somente** a nova migração `20261010020000_private_audio_assets.sql`, sem reexecutar a migração antiga de drenagem dos workers. Atualizar ambos os workers e os handlers `public-playlist`, `public-culto`, `import-youtube`; a consolidação deve permanecer desligada durante o rollout. Publicar o frontend correspondente. Preservar configurações privadas dos workers.
 2. Aplicar a curadoria somente na equipe fictícia; testar reprodução, ensaio, mixer, nova separação e acesso isolado entre duas equipes fictícias. Testar também leitura/reprodução de uma música antiga com autorização, sem reimportar, separar, renomear ou excluir músicas da Metodista. Verificar versão/hash dos arquivos existentes antes/depois. Só então experimentar a consolidação num lote pequeno de músicas novas fictícias, sem limpeza.
