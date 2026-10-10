@@ -262,7 +262,7 @@ export default function RepertorioDetail() {
       }
       const url = `${window.location.origin}/playlist/${publicToken}`;
       await navigator.clipboard.writeText(url);
-      toast({ title: "Link copiado!", description: "Compartilhe com quem quiser." });
+      toast({ title: "Link copiado!", description: "Compartilhe a lista. Os áudios ficam restritos à equipe." });
     } catch {
       toast({ title: "Erro ao compartilhar", variant: "destructive" });
     } finally {

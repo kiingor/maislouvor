@@ -97,13 +97,17 @@ await db.exec(`
   CREATE SCHEMA storage;
   GRANT USAGE ON SCHEMA storage TO anon, authenticated, service_role;
   CREATE TABLE storage.objects (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), bucket_id text NOT NULL,
-    name text NOT NULL, owner uuid, UNIQUE (bucket_id, name));
+    name text NOT NULL, owner uuid, metadata jsonb, version text DEFAULT 'v1', UNIQUE (bucket_id, name));
+  CREATE TABLE storage.buckets(id text PRIMARY KEY, public boolean DEFAULT false);
+  INSERT INTO storage.buckets VALUES ('audio',false);
   ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 `);
 // Migrações reais: código da equipe + handle_new_user, notas dos loops, avisos/missões do
 // Asafe (triggers em cultos/escala/repertório) e o catálogo com os seis campos obrigatórios.
 await db.exec(await migration('20260627020000_team_join_codes.sql'));
 await db.exec('CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();');
+await db.exec(await migration('20260627000000_yt_audio_cache.sql'));
+await db.exec(await migration('20260926120000_song_audio_attachments.sql'));
 await db.exec(await migration('20260927120000_song_loop_notes.sql'));
 await db.exec(await migration('20260929120000_assistant_notifications.sql'));
 await db.exec(await migration('20260930010000_platform_admin_and_support.sql'));
@@ -240,6 +244,18 @@ try {
   eq(teamRow, { name: DEMO_TEAM_NAME, code: true, email: LEADER.email });
 
   // Asafe: disponível para ativação manual, sem grupo, avisos desligados e nada na fila.
+  // Curating Apple review never changes existing recordings, even in a real team
+  // with exactly the same name. Repeating it is safe and leaves Asafe untouched.
+  const songsBefore = await sql('select * from songs order by id');
+  const tracksBefore = await sql('select * from song_tracks order by id');
+  const assistantBefore = await sql('select * from assistant_groups order by id');
+  const curate = await readFile(new URL('../../scripts/review-demo/curate-apple-repertoire.sql',import.meta.url),'utf8');
+  await db.exec(curate); await db.exec(curate);
+  eq(await sql('select * from songs order by id'),songsBefore,'curation preserves every song');
+  eq(await sql('select * from song_tracks order by id'),tracksBefore,'curation preserves every track');
+  eq(await sql('select * from assistant_groups order by id'),assistantBefore,'curation preserves Asafe');
+  eq((await sql('select count(*)::int n from repertorio_songs rs join repertorios r on r.id=rs.repertorio_id where r.team_id=$1',[team]))[0].n,3);
+
   const [leaderUser] = await sql('SELECT id::text FROM auth.users WHERE email = $1', [LEADER.email]);
   const [anaUser] = await sql('SELECT id::text FROM auth.users WHERE email = $1', [MEMBERS[0].email]);
   const overview = await withRole(db, 'authenticated', leaderUser.id, async (tx) =>

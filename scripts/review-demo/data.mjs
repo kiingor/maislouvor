@@ -303,6 +303,9 @@ export const BABY_BIRD = Object.freeze({
   ),
 });
 
+// Roteiro curto de revisão; as demais músicas fictícias continuam nos cultos.
+export const REVIEW_SONG_KEYS = Object.freeze(['manha-de-graca', 'rio-de-paz', BABY_BIRD.key]);
+
 export const ALL_SONG_KEYS = Object.freeze([...ORIGINAL_SONGS.map((song) => song.key), BABY_BIRD.key]);
 
 // ---------------------------------------------------------------------------
@@ -542,7 +545,7 @@ export function buildContent({ now, uuid, refs }) {
   const repertorioId = uuid();
   const repertorios = [{ id: repertorioId, team_id: teamId, name: 'Repertório da Demonstração',
     created_by: profile.leader, is_public: false }];
-  const repertorio_songs = ALL_SONG_KEYS.map((key, index) => ({
+  const repertorio_songs = REVIEW_SONG_KEYS.map((key, index) => ({
     id: uuid(), repertorio_id: repertorioId, song_id: songIds[key], sort_order: index,
   }));
 

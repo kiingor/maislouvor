@@ -90,7 +90,8 @@ export function TrackUpload({ songId, teamId, tracks, onTracksChange, onTracksAd
   const handleDelete = async (track: Track) => {
     if (readOnly) return;
     try {
-      await supabase.storage.from("audio").remove([track.audio_path]);
+      // Shared physical files are reclaimed by the server, never by a team.
+      if (!track.audio_path.startsWith("_audio/")) await supabase.storage.from("audio").remove([track.audio_path]);
       await supabase.from("song_tracks" as any).delete().eq("id", track.id);
       toast({ title: `Track "${track.track_name}" removida` });
       onTracksChange();
@@ -102,7 +103,7 @@ export function TrackUpload({ songId, teamId, tracks, onTracksChange, onTracksAd
   const handleDeleteAll = async () => {
     if (readOnly) return;
     try {
-      const paths = tracks.map((t) => t.audio_path);
+      const paths = tracks.map((t) => t.audio_path).filter((path) => !path.startsWith("_audio/"));
       if (paths.length) await supabase.storage.from("audio").remove(paths);
       for (const track of tracks) {
         await supabase.from("song_tracks" as any).delete().eq("id", track.id);

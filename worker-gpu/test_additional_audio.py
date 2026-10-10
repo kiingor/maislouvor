@@ -89,7 +89,15 @@ class AdditionalAudioTests(unittest.TestCase):
     def test_original_queue_still_updates_main_audio_and_cover(self):
         del self.job["attachment_id"]
         worker.process_yt(self.job)
-        self.mocks["patch"].assert_any_call("songs", {"id": "eq.song"}, {"audio_path": "team/song.mp3"})
+        audio_updates = [c.args[2]["audio_path"] for c in self.mocks["patch"].call_args_list
+                         if c.args[0] == "songs" and "audio_path" in c.args[2]]
+        self.assertEqual(len(audio_updates), 1)
+        self.assertRegex(audio_updates[0], r"^team/song/recordings/[a-f0-9]{32}\.mp3$")
+        worker.process_yt(self.job)
+        new_paths = [c.args[2]["audio_path"] for c in self.mocks["patch"].call_args_list
+                     if c.args[0] == "songs" and "audio_path" in c.args[2]]
+        self.assertEqual(len(set(new_paths)), 2, "reimport never overwrites an existing recording")
+        self.mocks["storage_remove"].assert_not_called()
         self.mocks["patch"].assert_any_call("songs", {"id": "eq.song"}, {"cover_path": "team/song.jpg"})
         self.mocks["patch"].assert_any_call("yt_import_jobs", {"id": "eq.job"}, {"status": "done"})
         self.mocks["rpc"].assert_not_called()

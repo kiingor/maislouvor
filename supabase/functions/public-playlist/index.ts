@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
     // Fetch repertorio
     const { data: repertorio, error: repError } = await supabase
       .from("repertorios")
-      .select("id, name")
+      .select("id, name, team_id")
       .eq("public_token", token)
       .eq("is_public", true)
       .single();
@@ -49,17 +49,16 @@ Deno.serve(async (req) => {
     // Fetch songs via repertorio_songs
     const { data: repSongs } = await supabase
       .from("repertorio_songs")
-      .select("sort_order, song_id, songs(id, title, artist, cover_path, audio_path, media_url, lyrics_text, key_current, moderation_blocked)")
+      .select("sort_order, song_id, songs(id, team_id, title, artist, cover_path, media_url, lyrics_text, key_current, moderation_blocked)")
       .eq("repertorio_id", repertorio.id)
       .order("sort_order", { ascending: true });
 
-    const songs = (repSongs || []).map((rs: any) => rs.songs).filter((song: any) => song && song.moderation_blocked === false);
+    const songs = (repSongs || []).map((rs: any) => rs.songs).filter((song: any) => song && song.team_id === repertorio.team_id && song.moderation_blocked === false);
 
-    // Generate signed URLs for cover and audio
+    // A public list never grants access to the team’s stored recordings.
     const enrichedSongs = await Promise.all(
       songs.map(async (song: any) => {
         let cover_url: string | null = null;
-        let audio_url: string | null = null;
 
         if (song.cover_path) {
           const { data } = await supabase.storage
@@ -68,19 +67,12 @@ Deno.serve(async (req) => {
           cover_url = data?.signedUrl ? data.signedUrl.replace(supabaseUrl, publicBase) : null;
         }
 
-        if (song.audio_path) {
-          const { data } = await supabase.storage
-            .from("audio")
-            .createSignedUrl(song.audio_path, 3600);
-          audio_url = data?.signedUrl ? data.signedUrl.replace(supabaseUrl, publicBase) : null;
-        }
-
         return {
           id: song.id,
           title: song.title,
           artist: song.artist,
           cover_url,
-          audio_url,
+          audio_url: null,
           media_url: song.media_url,
           lyrics_text: song.lyrics_text,
           key_current: song.key_current,
@@ -91,6 +83,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         name: repertorio.name,
+        audio_access: "team_only",
         songs: enrichedSongs,
       }),
       {

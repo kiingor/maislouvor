@@ -32,6 +32,8 @@ const STORE_MIGRATIONS = [
   '20261008233000_team_data_consent.sql',
   '20261008234000_privacy_version.sql',
   '20261008235000_assistant_team_data_guard.sql',
+  '20261010010000_stem_job_fencing.sql',
+  '20261010020000_private_audio_assets.sql',
 ];
 
 let checks = 0;
@@ -83,7 +85,9 @@ try {
     CREATE SCHEMA storage;
     GRANT USAGE ON SCHEMA storage TO anon, authenticated, service_role;
     CREATE TABLE storage.objects (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), bucket_id text NOT NULL,
-      name text NOT NULL, owner uuid, owner_id text, UNIQUE (bucket_id, name));
+      name text NOT NULL, owner uuid, owner_id text, metadata jsonb, version text DEFAULT 'v1', UNIQUE (bucket_id, name));
+    CREATE TABLE storage.buckets(id text PRIMARY KEY, public boolean DEFAULT false);
+    INSERT INTO storage.buckets VALUES ('audio',false);
     ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
     GRANT SELECT, INSERT, DELETE ON storage.objects TO authenticated;
     GRANT ALL ON storage.objects TO service_role;
@@ -134,7 +138,7 @@ try {
       status text NOT NULL DEFAULT 'pending', decided_by uuid REFERENCES public.profiles(id), UNIQUE (team_id, profile_id));
   `);
   // 20260928 (assistente) já veio do helper; as outras publicadas depois do recorte, em ordem.
-  for (const name of ['20260927120000_song_loop_notes.sql', '20260929120000_assistant_notifications.sql',
+  for (const name of ['20260627000000_yt_audio_cache.sql', '20260926120000_song_audio_attachments.sql', '20260927120000_song_loop_notes.sql', '20260929120000_assistant_notifications.sql',
     '20260930010000_platform_admin_and_support.sql', '20260930120000_assistant_missions.sql',
     '20260930200000_song_registration_catalog.sql']) {
     await db.exec(await migration(name));

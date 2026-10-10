@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
 
     const { data: culto, error: cErr } = await supabase
       .from("cultos")
-      .select("id, name, date, description")
+      .select("id, name, team_id, date, description")
       .eq("public_token", token)
       .eq("is_public", true)
       .single();
@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
     const [{ data: cSongs }, { data: blocks }] = await Promise.all([
       supabase
         .from("culto_songs")
-        .select("sort_order, notes, key_override, songs(id, title, artist, key_current, key_original, cifra_text, lyrics_text, moderation_blocked)")
+        .select("sort_order, notes, key_override, songs(id, team_id, title, artist, key_current, key_original, cifra_text, lyrics_text, moderation_blocked)")
         .eq("culto_id", culto.id)
         .order("sort_order", { ascending: true }),
       supabase
@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
         .order("sort_order", { ascending: true }),
     ]);
 
-    const songItems = (cSongs || []).filter((cs: any) => cs.songs?.moderation_blocked === false).map((cs: any) => ({
+    const songItems = (cSongs || []).filter((cs: any) => cs.songs?.team_id === culto.team_id && cs.songs?.moderation_blocked === false).map((cs: any) => ({
       type: "song" as const,
       sort_order: cs.sort_order,
       title: cs.songs?.title ?? "—",

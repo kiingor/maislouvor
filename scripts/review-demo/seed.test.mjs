@@ -145,6 +145,13 @@ describe('dados fictícios', () => {
     assert.equal(upcomingSunday('2026-10-09'), '2026-10-18');
   });
 
+  test('roteiro da revisão tem três músicas e inclui o mixer com licença', () => {
+    const { tables } = plan();
+    assert.deepEqual(tables.repertorio_songs.map(r => tables.songs.find(s => s.id === r.song_id).title),
+      ['Manhã de Graça', 'Rio de Paz', BABY_BIRD.title]);
+    assert.equal(tables.song_tracks.length, BABY_BIRD.stems.length);
+  });
+
   test('referências e restrições únicas coerentes dentro do plano', () => {
     const { tables, refs } = plan();
     const ids = (rows) => new Set(rows.map((row) => row.id));

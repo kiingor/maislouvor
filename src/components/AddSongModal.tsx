@@ -344,7 +344,7 @@ export function AddSongModal({ open, onOpenChange, repertorioId }: Props) {
                   ? "Identifique a versão, prepare a gravação e organize o ensaio."
                   : mode === "search"
                   ? "Encontre a versão certa e adicione ao repertório."
-                  : canAuthorSongs ? "Encontre uma música pronta ou cadastre a sua." : "Escolha músicas da biblioteca para este repertório."}
+                  : canAuthorSongs ? "Busque na biblioteca da sua equipe ou cadastre uma música." : "Escolha músicas da biblioteca para este repertório."}
               </DialogDescription>
             </div>
             <button

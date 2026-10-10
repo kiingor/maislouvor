@@ -100,12 +100,12 @@ Deno.serve(async (req) => {
         .eq("youtube_id", ytId)
         .maybeSingle();
       if (cached?.storage_path) {
-        const destKey = `${song.team_id}/${song.id}.mp3`;
-        // copy() falha se o destino existir → remove antes (ignora erro).
-        await admin.storage.from("audio").remove([destKey]);
+        const destKey = `${song.team_id}/${song.id}/recordings/${crypto.randomUUID()}.mp3`;
+        // Each import has a new destination, so existing playback stays intact.
         const { error: copyErr } = await admin.storage.from("audio").copy(cached.storage_path, destKey);
         if (!copyErr) {
-          await admin.from("songs").update({ audio_path: destKey }).eq("id", song.id);
+          const { error: updateError } = await admin.from("songs").update({ audio_path: destKey }).eq("id", song.id);
+          if (updateError) throw new Error("Não foi possível salvar a gravação importada.");
           // Capa do acervo → define como capa da música, se ela ainda não tiver.
           if ((cached as any).cover_path) {
             const { data: songRow } = await admin.from("songs").select("cover_path").eq("id", song.id).single();

@@ -343,7 +343,7 @@ def process_yt(job):
         mp3s = glob.glob(str(work / "*.mp3"))
         if not mp3s:
             raise RuntimeError("yt-dlp não gerou mp3")
-        path = f"{team}/{song}.mp3"
+        path = f"{team}/{song}/recordings/{uuid.uuid4().hex}.mp3"
         with open(mp3s[0], "rb") as f:
             data = f.read()
         storage_upload(path, data)

@@ -15,16 +15,28 @@ afterEach(() => {
   delete (window as any).onYouTubeIframeAPIReady;
 });
 
-async function mount(native: boolean, audio: boolean) {
+async function mount(native: boolean, audio: boolean, video = true) {
   vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(native);
   vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, json: async () => ({
-    name: "Playlist QA", songs: [{ id: "song", title: "Canção QA", media_url: "https://youtu.be/abcdefghijk", audio_url: audio ? "https://audio.example/recording.mp3" : null }],
+    name: "Playlist QA", audio_access: "team_only", songs: [{ id: "song", title: "Canção QA", media_url: video ? "https://youtu.be/abcdefghijk" : null, audio_url: audio ? "https://audio.example/recording.mp3" : null }],
   }) } as Response);
   render(<MemoryRouter initialEntries={["/playlist/test-token"]}><Routes><Route path="/playlist/:token" element={<PublicPlaylist />} /></Routes></MemoryRouter>);
   await screen.findByText("Canção QA");
 }
 
 describe("public playlist YouTube", () => {
+  it("explains private audio and disables playback without a public video", async () => {
+    await mount(false, false, false);
+    expect(screen.getByText(/Áudios restritos aos integrantes da equipe/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Acessar o +Louvor" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("button", { name: "Reproduzir" })).toBeDisabled();
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+  });
+  it("keeps the web reference video accessible when team audio is private", async () => {
+    await mount(false, false);
+    fireEvent.click(screen.getByRole("button", { name: "Ver vídeo" }));
+    expect(document.querySelector("#yt-player")).not.toBeNull();
+  });
   it.each([true, false])("never loads the YouTube API natively; audio available: %s", async (audio) => {
     const open = vi.spyOn(window, "open").mockReturnValue(null);
     await mount(true, audio);

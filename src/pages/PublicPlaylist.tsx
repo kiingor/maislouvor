@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,7 @@ interface PlaylistSong {
 
 interface PlaylistData {
   name: string;
+  audio_access?: "team_only";
   songs: PlaylistSong[];
 }
 
@@ -106,7 +107,6 @@ export default function PublicPlaylist() {
     : null;
   const hasVideoOption = !!videoId;
   const hasAudioOption = !!currentSong?.audio_url;
-  const hasBothOptions = hasVideoOption && hasAudioOption;
   const isVideoMode = !externalVideo && showVideo && hasVideoOption;
   const hasLyrics = !!currentSong?.lyrics_text;
 
@@ -304,6 +304,11 @@ export default function PublicPlaylist() {
       openYouTubeExternally(videoId);
       return;
     }
+    if (videoId && !currentSong?.audio_url && !isVideoMode) {
+      setShowVideo(true);
+      return;
+    }
+    if (!isVideoMode && !currentSong?.audio_url) return;
     if (isVideoMode) {
       const p = ytPlayerRef.current;
       if (!p) return;
@@ -505,12 +510,20 @@ export default function PublicPlaylist() {
             </span>
           </div>
 
+          {data.audio_access === "team_only" && (
+            <p className="mt-3 text-footnote text-muted-foreground">
+              Áudios restritos aos integrantes da equipe.{' '}
+              <Link to="/" className="underline underline-offset-2">Acessar o +Louvor</Link>
+            </p>
+          )}
+
           {/* Progress bar — cápsula fina que engrossa ao arrastar */}
           <SliderPrimitive.Root
             value={[progress]}
             onValueChange={seek}
             max={duration || 1}
             step={0.5}
+            disabled={!hasAudioOption && !isVideoMode}
             aria-label="Posição da música"
             className="group relative -mb-2.5 mt-2.5 flex h-11 w-full touch-none select-none items-center"
           >
@@ -542,6 +555,7 @@ export default function PublicPlaylist() {
               type="button"
               className="grid h-[68px] w-[68px] place-items-center rounded-full bg-prominent text-prominent-foreground shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_8px_20px_-8px_var(--lg-shadow)] transition-transform duration-200 active:scale-95 motion-reduce:transition-none"
               onClick={togglePlay}
+              disabled={!hasAudioOption && !hasVideoOption}
               aria-label={externalVideo && videoId && !hasAudioOption ? "Abrir no YouTube" : isPlaying ? "Pausar" : "Reproduzir"}
             >
               {isPlaying ? (
@@ -603,7 +617,7 @@ export default function PublicPlaylist() {
               <MessageSquareQuote className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden="true" />
             </button>
 
-            {(hasBothOptions || (externalVideo && hasVideoOption)) && (
+            {hasVideoOption && (
               <button
                 type="button"
                 className={toolButton}

@@ -336,7 +336,7 @@ def process_yt(job):
     work = pathlib.Path(tempfile.mkdtemp(prefix="louvor_yt_"))
     try:
         path = (f"{team}/{song}/additional/{attachment_id}.mp3" if attachment_id
-                else f"{team}/{song}.mp3")
+                else f"{team}/{song}/recordings/{uuid.uuid4().hex}.mp3")
         if attachment_id:
             # Separate queue, destination and completion: never touch songs or stems.
             if not select("song_audio_attachments", {"id": f"eq.{attachment_id}",
