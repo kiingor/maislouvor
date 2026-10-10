@@ -127,6 +127,13 @@ afterEach(() => vi.useRealTimers());
 afterAll(() => vi.unstubAllGlobals());
 
 describe("áudios adicionais e sequência de loops", () => {
+  it("shows Play after the operating system pauses rehearsal audio", async () => {
+    const main = (await setup({ tracks: false }))!;
+    fireEvent.click(screen.getByRole("button", { name: "Reproduzir música" }));
+    expect(screen.getByRole("button", { name: "Pausar música" })).toBeInTheDocument();
+    act(() => main.pause());
+    expect(screen.getByRole("button", { name: "Reproduzir música" })).toBeInTheDocument();
+  });
   it.each([true, false])("opens YouTube externally only on native (%s)", async (native) => {
     const platform = vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(native);
     const open = vi.spyOn(window, "open").mockReturnValue(null);

@@ -5,5 +5,6 @@ class AppViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(AppleSignInPlugin())
         bridge?.registerPluginInstance(BiometricSessionPlugin())
+        bridge?.registerPluginInstance(RehearsalAudioPlugin())
     }
 }

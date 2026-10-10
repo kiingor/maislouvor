@@ -7,6 +7,7 @@ import { KaraokeSegment } from "@/components/KaraokeSegment";
 import { TrackMixer } from "@/components/TrackMixer";
 import { SongAudioAttachmentsDialog } from "@/components/SongAudioAttachmentsDialog";
 import * as Tone from "tone";
+import { NativeRehearsalController, usesNativeRehearsalAudio, isNativeRehearsalAudio } from "@/lib/nativeRehearsalAudio";
 import { detectKeyFromUrl, parseKeyName, DetectedKey } from "@/lib/detectKey";
 import { LoopPanel } from "@/components/LoopPanel";
 import { LoopDrawer } from "@/components/LoopDrawer";
@@ -888,6 +889,9 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
     enabled: !!currentSongId,
   });
 
+  const [nativeAudio] = useState(() => usesNativeRehearsalAudio() ? new NativeRehearsalController() : null);
+  useEffect(() => () => nativeAudio?.dispose(), [nativeAudio]);
+
   // Track mixer state
   const [trackStates, setTrackStates] = useState<{ id: string; track_name: string; volume: number; muted: boolean; solo: boolean }[]>([]);
   const trackAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());
@@ -969,7 +973,13 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
     for (const [id, url] of Object.entries(trackUrls)) {
       if (!url) continue;
       if (!map.has(id)) {
-        const audio = new Audio();
+        const audio = nativeAudio?.create(false) ?? new Audio();
+        if (nativeAudio) audio.addEventListener("error", () => {
+          setShowMixer(false);
+          setStemsWanted(false);
+          setBuffering(false);
+          toast({ title: "Não foi possível carregar uma faixa", description: "Verifique a conexão e abra o mixer novamente." });
+        });
         audio.crossOrigin = "anonymous";
         audio.preload = "auto";
         audio.src = url;
@@ -980,6 +990,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
         // Route element -> per-track gain -> shared pitch-shift -> speakers.
         // At transpose 0, wet=0 (dry, no latency).
         try {
+          if (isNativeRehearsalAudio(audio)) continue;
           if (!pitchRef.current) {
             const ps = new Tone.PitchShift({ pitch: transposeRef.current, windowSize: 0.1 });
             ps.wet.value = transposeRef.current === 0 ? 0 : 1;
@@ -1087,6 +1098,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
   // Apply pitch-shift (tom). wet=0 keeps the original tom latency-free and in sync.
   useEffect(() => {
     transposeRef.current = transpose;
+    nativeAudio?.setPitch(transpose);
     if (pitchRef.current) {
       pitchRef.current.pitch = transpose;
       pitchRef.current.wet.value = transpose === 0 ? 0 : 1;
@@ -1216,7 +1228,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
   // cache) e deixa o navegador bufferizar — o skip vira quase instantâneo.
   const nextSongAudioPath: string | null = songs[songIdx + 1]?.audio_path || null;
   useEffect(() => {
-    if (!nextSongAudioPath) return;
+    if (!nextSongAudioPath || nativeAudio) return;
     let cancelled = false;
     let el: HTMLAudioElement | null = null;
     getSignedAudioUrl(nextSongAudioPath).then((url) => {
@@ -1243,7 +1255,9 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
   // loops da música anterior. Mudança tardia de baseTranspose preserva os stems.
   useEffect(() => {
     setStemsWanted(false);
-  }, [currentSongId]);
+    // Also reset songs that have only separated stems and no master file.
+    nativeAudio?.setTime(0);
+  }, [currentSongId, nativeAudio]);
 
   // Mixer aberto = usuário quer os stems desta música. `!stemsWanted` nas deps
   // garante o rearme mesmo quando stemsWanted cai sem a música mudar (ex.:
@@ -1383,7 +1397,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
       return;
     }
 
-    const audio = new Audio();
+    const audio = nativeAudio?.create(true) ?? new Audio();
     audio.preload = "auto";
     // CORS liberado para rotear pelo Web Audio (pitch). Sem isso o grafo emudece.
     audio.crossOrigin = "anonymous";
@@ -1394,34 +1408,44 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
     // ignores `.volume` (read-only there) but honors `.muted` — without muting, the
     // original plays audibly on top of the stems on iPhone (the "double audio" bug).
     audio.muted = stemsLoadedRef.current;
-    audio.volume = 1;
+    audio.volume = nativeAudio ? audioVolumeRef.current : 1;
     audioRef.current = audio;
     // Roteia o master pelo mesmo grafo dos stems (gain -> PitchShift) para o Tom
     // funcionar também sem stems. Volume do master é via GainNode (iOS ignora
     // `.volume` de elemento roteado).
     try {
-      if (!pitchRef.current) {
-        // Usa o transpose VIGENTE (ex.: key_override do culto já aplicado) — criar
-        // com pitch 0 fixo deixava a cifra transposta e o áudio no tom original.
-        const ps = new Tone.PitchShift({ pitch: transposeRef.current, windowSize: 0.1 });
-        ps.wet.value = transposeRef.current === 0 ? 0 : 1;
-        ps.toDestination();
-        pitchRef.current = ps;
+      if (!isNativeRehearsalAudio(audio)) {
+        if (!pitchRef.current) {
+          // Usa o transpose VIGENTE (ex.: key_override do culto já aplicado) — criar
+          // com pitch 0 fixo deixava a cifra transposta e o áudio no tom original.
+          const ps = new Tone.PitchShift({ pitch: transposeRef.current, windowSize: 0.1 });
+          ps.wet.value = transposeRef.current === 0 ? 0 : 1;
+          ps.toDestination();
+          pitchRef.current = ps;
+        }
+        const rawCtx = Tone.getContext().rawContext as unknown as AudioContext;
+        const src = rawCtx.createMediaElementSource(audio);
+        const gain = rawCtx.createGain();
+        gain.gain.value = audioVolumeRef.current;
+        src.connect(gain);
+        Tone.connect(gain as any, pitchRef.current as any);
+        masterSourceRef.current = src;
+        masterGainRef.current = gain;
       }
-      const rawCtx = Tone.getContext().rawContext as unknown as AudioContext;
-      const src = rawCtx.createMediaElementSource(audio);
-      const gain = rawCtx.createGain();
-      gain.gain.value = audioVolumeRef.current;
-      src.connect(gain);
-      Tone.connect(gain as any, pitchRef.current as any);
-      masterSourceRef.current = src;
-      masterGainRef.current = gain;
     } catch { /* fall back to the element's own output */ }
     // Se o usuário apertou play enquanto a música carregava (ou avançou com música
     // tocando), mantém o spinner até o canplay disparar o play de verdade.
     setBuffering(playIntentRef.current);
 
     const handleLoadedMetadata = () => setAudioDuration(audio.duration);
+    const handleAudioError = () => {
+      playIntentRef.current = false;
+      setAudioPlaying(false);
+      setIsPlaying(false);
+      setBuffering(false);
+      syncTrackAudios("pause");
+      toast({ title: "Não foi possível reproduzir o áudio", description: audio.error?.message || "Verifique sua conexão e abra o ensaio novamente." });
+    };
     const handleWaiting = () => setBuffering(true);
     const handlePlaying = () => setBuffering(false);
     const handleCanPlay = () => {
@@ -1441,7 +1465,11 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
       // usuário parando: derruba a intenção, senão um seek posterior (canplay)
       // ressuscitava o áudio e o skip dava autoplay contra a vontade dele.
       if (suppressPauseIntentRef.current) suppressPauseIntentRef.current = false;
-      else playIntentRef.current = false;
+      else {
+        playIntentRef.current = false;
+        setIsPlaying(false);
+        setBuffering(false);
+      }
     };
     const advanceLoopPlayback = () => {
       const nextTime = advanceLoop(audio.currentTime);
@@ -1496,7 +1524,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
       // faixas que saíram do clock-mestre além de ~0,2s (raro → sem glitch contínuo).
       const tmap = trackAudiosRef.current;
       for (const [, trk] of tmap) {
-        if (!trk.seeking && Number.isFinite(trk.currentTime) && Math.abs(trk.currentTime - t) > 0.2) {
+        if (!nativeAudio && !trk.seeking && Number.isFinite(trk.currentTime) && Math.abs(trk.currentTime - t) > 0.2) {
           trk.currentTime = t;
         }
       }
@@ -1510,6 +1538,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
     };
 
     audio.addEventListener("loadedmetadata", handleLoadedMetadata);
+    audio.addEventListener("error", handleAudioError);
     audio.addEventListener("ended", handleEnded);
     audio.addEventListener("timeupdate", handleTimeUpdate);
     audio.addEventListener("seeked", handleSeeked);
@@ -1521,6 +1550,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
 
     return () => {
       audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      audio.removeEventListener("error", handleAudioError);
       audio.removeEventListener("ended", handleEnded);
       audio.removeEventListener("timeupdate", handleTimeUpdate);
       audio.removeEventListener("seeked", handleSeeked);
@@ -1604,7 +1634,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
       }
       return;
     }
-    Tone.start().catch(() => {});
+    if (!nativeAudio) Tone.start().catch(() => {});
     setCountdown(null);
     playIntentRef.current = true;
     handleSelectLoop(null);
@@ -1924,7 +1954,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
       return;
     }
     // Resume the Web Audio context (needed for pitched output) — this is a user gesture
-    Tone.start().catch(() => {});
+    if (!nativeAudio) Tone.start().catch(() => {});
 
     const audio = audioRef.current;
     // Intenção pendente conta como "tocando": o clique durante o spinner CANCELA o

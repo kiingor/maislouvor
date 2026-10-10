@@ -20,6 +20,7 @@
 		A9B001000000000000000001 /* AppViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9B002000000000000000001 /* AppViewController.swift */; };
 		A9B001000000000000000002 /* BiometricSessionPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9B002000000000000000002 /* BiometricSessionPlugin.swift */; };
 		A9B001000000000000000003 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A9B002000000000000000003 /* PrivacyInfo.xcprivacy */; };
+		A9B001000000000000000004 /* RehearsalAudioPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9B002000000000000000004 /* RehearsalAudioPlugin.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,6 +39,7 @@
 		A9B002000000000000000001 /* AppViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewController.swift; sourceTree = "<group>"; };
 		A9B002000000000000000002 /* BiometricSessionPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricSessionPlugin.swift; sourceTree = "<group>"; };
 		A9B002000000000000000003 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A9B002000000000000000004 /* RehearsalAudioPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RehearsalAudioPlugin.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -84,6 +86,7 @@
 				A9B002000000000000000000 /* AppleSignInPlugin.swift */,
 				A9B002000000000000000001 /* AppViewController.swift */,
 				A9B002000000000000000002 /* BiometricSessionPlugin.swift */,
+				A9B002000000000000000004 /* RehearsalAudioPlugin.swift */,
 				F6DE5EF6C9A44CB0B5640EFC /* SceneDelegate.swift */,
 			);
 			path = App;
@@ -175,6 +178,7 @@
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				A9B001000000000000000000 /* AppleSignInPlugin.swift in Sources */,
 				A9B001000000000000000001 /* AppViewController.swift in Sources */,
+				A9B001000000000000000004 /* RehearsalAudioPlugin.swift in Sources */,
 				A9B001000000000000000002 /* BiometricSessionPlugin.swift in Sources */,
 				E2C0933A4D4C4C5798391F74 /* SceneDelegate.swift in Sources */,
 			);
@@ -318,7 +322,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = U9PP989T5D;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -342,7 +346,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = U9PP989T5D;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
