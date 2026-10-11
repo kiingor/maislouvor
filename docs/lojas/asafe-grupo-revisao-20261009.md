@@ -1,5 +1,11 @@
 # Asafe — grupo controlado para a revisão Apple
 
+**Atualização de 11/10/2026:** o responsável confirmou no chat que o Asafe foi
+testado. O teste funcional deixa de ser pendência do checklist. Esta confirmação
+é do titular; não foi feita uma nova conversa pelo agente nem foram fornecidos
+detalhes adicionais sobre o roteiro executado. A configuração e as instruções
+de revisão abaixo continuam como referência.
+
 Em 09/10/2026 o responsável forneceu um convite do WhatsApp e pediu adicionar
 o Asafe. A consulta ao convite e aos metadados da instância confirmou o grupo
 **Teste a safe**, dois participantes, bot já presente e sessão conectada.
@@ -46,8 +52,9 @@ ou na ficha pública. O salvamento de 3960 caracteres foi conferido por leitura.
    “qual é o próximo culto?” e “qual é o repertório?”.
 5. Conferir que a resposta contém somente dados da equipe fictícia.
 
-A ativação não equivale ao QA de conversa completa. Nenhuma pergunta real
-desse grupo foi encaminhada por esta execução à OpenAI. Quem apenas pedir
+Na preparação de 09/10, a ativação não equivalia ao QA de conversa completa.
+Nenhuma pergunta real desse grupo foi encaminhada por aquela execução à OpenAI.
+O teste foi posteriormente confirmado pelo titular em 11/10. Quem apenas pedir
 “ajuda” pode receber orientações sem concluir o vínculo pessoal; isso também
 não comprova consulta aos dados da demonstração.
 

@@ -76,7 +76,7 @@ dos workers **25**, handlers Deno **6**. A suíte anterior ao ajuste web passou
 557 testes; uma falha por timeout durante a compilação Xcode foi reexecutada
 isoladamente e depois na suíte completa com dois workers, ambas aprovadas.
 
-## O que ainda impede declarar pronto para revisão
+## Pendências técnicas para concluir o envio
 
 1. **Compras Apple:** catálogo, compra, restauração e liberação do plano ainda
    não validados. O erro anterior brasileiro é `ML-IOS-OFFERINGS-23-BRA`.
@@ -84,20 +84,31 @@ isoladamente e depois na suíte completa com dois workers, ambas aprovadas.
    (SK1 marcou os 66 inválidos), sem erro nativo SK2. Isso não prova a causa no
    iPhone brasileiro. Não há correção confirmada nem solicitação de logout da
    conta pessoal. Materiais de revisão dos produtos dependem desse fluxo real.
-2. **Direitos do conteúdo:** a base de autorização dos conteúdos e fontes
-   continua sem comprovação geral. Isso não significa uma obrigação universal
-   de anexar uma carta para cada upload antes de submeter um app com conteúdo
-   dos usuários. A apresentação deve explicar o modelo real, a moderação e
-   os usos; a Apple pode exigir comprovantes pelas regras 5.2.2/5.2.3. Não foi
-   marcada declaração de direitos sem suporte. Importação somente na web não
-   autoriza extração do YouTube ou reprodução no app. A demo licenciada não
-   comprova direitos sobre os arquivos de terceiros.
-3. **Acesso de revisão ao Asafe:** grupo de teste conectado à demo a pedido
-   expresso do responsável em 09/10. Avisos desligados, somente ativação
-   administrativa da fixture registrada, sem consentimentos pessoais. O
-   revisor/testador ainda deve vincular seu WhatsApp e validar uma conversa
-   real; as instruções e o convite foram salvos nas notas privadas da Apple.
-   Ver [registro do grupo](asafe-grupo-revisao-20261009.md).
+2. **Áudio no iPhone:** confirmar reprodução e mixer na build 13 após a
+   atualização pelo TestFlight. Os testes locais e as autorizações do backend
+   foram verificados; falta o retorno auditivo do aparelho físico.
+3. **Ficha final:** selecionar a build validada, completar os materiais de
+   revisão das assinaturas e conferir as notas de acesso antes da submissão.
+
+**Asafe testado:** confirmado pelo responsável em 11/10. O grupo de demonstração
+e as instruções privadas de revisão já estão preparados. Não voltar a listar
+o teste funcional como pendente sem uma nova falha. Ver
+[registro do grupo](asafe-grupo-revisao-20261009.md).
+
+**Importação no app concluída:** o responsável reafirmou em 11/10 que a
+importação do YouTube foi retirada do aplicativo e permanece somente na web,
+iniciada pelo usuário. Não há nova remoção do app a executar neste checklist.
+Descrever esse funcionamento fielmente nas notas; não desativar a web sem pedido.
+
+## Ponto de atenção sobre conteúdo, separado das pendências técnicas
+
+A limitação à web não comprova os direitos dos áudios reproduzidos pelo app.
+Não há obrigação universal de anexar uma carta por música para todo app com
+conteúdo dos usuários. A Apple pode solicitar comprovação pelos usos previstos
+nas regras 5.2.2/5.2.3. Não declarar licenças ou conformidade comprovada sem base.
+A demo licenciada e o isolamento por equipe não comprovam direitos gerais
+sobre arquivos de terceiros. Referência conferida em 11/10:
+[Apple — propriedade intelectual](https://developer.apple.com/app-store/review/guidelines/#intellectual-property).
 
 Pendências operacionais registradas, sem alegar resolução: prova da retenção/
 rotação de logs conforme a política, atualização da segunda GPU e reconciliação
