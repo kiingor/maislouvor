@@ -81,4 +81,5 @@ Compilação **1.0.0 (13)**, fonte `a1a9650fd525c902ddb61012b73275f63a4a8fba`.
   pelo titular antes dessa confirmação.
 
 Não há submissão para a loja pública nesta correção. RevenueCat permanece uma
-validação separada. A confirmação auditiva no iPhone físico ainda é necessária.
+validação separada. Filipe confirmou o mixer no iPhone em 11/10. A validação da melhoria de
+carregamento da compilação 14 permanece separada.

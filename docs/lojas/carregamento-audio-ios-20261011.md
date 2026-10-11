@@ -55,10 +55,27 @@ há promessa de reprodução instantânea em qualquer conexão.
 - Promoção de pré-carga em curso sem duplicação; troca rápida/cancelamento;
   rejeição de origem não permitida; limpeza de sessão antiga sem afetar a nova;
   cache e downloads zerados após reset.
+- UI real da demo: três originais carregados com dois acertos de cache; Baby
+  Bird com cinco stems e master sincronizados; volume 1 → 0,95 com sinal de
+  saída e sem seek; pausa (zero players ativos) e retomada (seis ativos).
+  Sem erros de JavaScript. Diretórios de ensaio zerados após fechar a tela.
 - Harness privado: `/Volumes/MaisLouvorBuild/Audio-Incident-20261009`.
   As contagens de diagnóstico existem somente no binário Debug.
 
 ## Entrega
 
-Fonte e testes preparados. Registrar o resultado de archive/upload e a liberação
-no grupo Teste iPhone após confirmação; ainda não afirmar disponibilidade.
+Fonte: `6d9d7d9be88b507200b46484e09a8e0c4911b250`.
+
+- Snapshot: `/Volumes/MaisLouvorBuild/Release-1.0.0-14`.
+- Archive: `/Volumes/MaisLouvorBuild/Archives/MaisLouvor-1.0.0-14.xcarchive`.
+- Archive Release aprovado; assinatura, ícone, versão e plugin conferidos;
+  225 arquivos web idênticos à fonte sincronizada; harness/contadores Debug
+  ausentes; configuração pública da API/RevenueCat preservada.
+- Upload aprovado em 11/10 às 19:53:21 (Fortaleza): `Upload succeeded` e
+  `EXPORT SUCCEEDED`. Processamento concluído.
+- Compilação 14 adicionada ao grupo **Teste iPhone** e confirmada **Em testes**,
+  com um tester e doze compilações. Evidência: `Release-1.0.0-14/delivery-20261011/group-state.json`.
+  Nenhum novo convite.
+
+Não foi enviada à revisão pública da loja. Validação física do carregamento
+na compilação 14 e compras/restauração RevenueCat continuam pendentes.
