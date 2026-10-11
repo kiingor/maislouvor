@@ -13,6 +13,13 @@ O usuário autorizou a biblioteca isolada por equipe e o reaproveitamento físic
 
 ## Implementação
 
+**Correção posterior, 11/10:** os vínculos antigos e explicitamente concedidos
+entre Coral IMJP e Ministério de Louvor precisaram de compatibilidade para
+preservar os cultos e repertórios já montados. A migração registra uma lista
+fechada de associações anteriores ao rollout, com acesso autenticado e
+revogável. Novas associações entre equipes continuam bloqueadas. Consulte
+[diagnóstico, implantação e testes](correcao-cultos-legados-20261011.md).
+
 `search_song_catalog` já filtrava pela equipe informada e validava `member_can`. A busca da própria equipe permanece; não há busca global adicionada. A nova política restritiva impede que uma política permissiva de compartilhamento exponha músicas de outra equipe. Gatilhos impedem associar músicas de outra equipe a cultos/repertórios ou trocar o proprietário de uma música pelo cliente.
 
 Os links públicos de repertório passam a oferecer a lista, informações e referências externas, sem assinar os MP3 privados. A tela informa que os áudios ficam restritos aos integrantes. Também são filtradas associações antigas com outra equipe nos links de repertórios e cultos. **Esta é uma mudança intencional do compartilhamento público:** membros continuam ouvindo dentro do aplicativo autenticado; links anônimos deixam de entregar o áudio armazenado. Letras/cifras/referências públicas não são alteradas por esta etapa.

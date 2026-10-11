@@ -34,6 +34,7 @@ const STORE_MIGRATIONS = [
   '20261008235000_assistant_team_data_guard.sql',
   '20261010010000_stem_job_fencing.sql',
   '20261010020000_private_audio_assets.sql',
+  '20261011010000_preserve_legacy_song_links.sql',
 ];
 
 let checks = 0;
