@@ -4,6 +4,7 @@ export interface NativeAudioState { time: number; playing: string[]; ended: bool
 export interface NativeAudioBridge {
   reset(options: { session: string; onlyIfSession?: string }): Promise<void>;
   loadTrack(options: { session: string; id: string; url: string; master: boolean }): Promise<{ duration: number }>;
+  prefetch(options: { session: string; url?: string }): Promise<void>;
   unloadTrack(options: { session: string; id: string }): Promise<void>;
   apply(options: { session: string; tracks: { id: string; playing: boolean; volume: number }[]; rate: number; pitch: number; time?: number }): Promise<NativeAudioState>;
   getState(options: { session: string }): Promise<NativeAudioState>;
@@ -61,6 +62,11 @@ export class NativeRehearsalController {
     const result = await this.api.loadTrack({ session: this.session, id: element.id, url, master: element.master });
     if (!this.timer && !this.disposed) this.timer = setInterval(() => void this.poll(), 150);
     return result;
+  }
+  async prefetch(url: string | null) {
+    await this.initialize();
+    if (this.disposed) return;
+    await this.api.prefetch({ session: this.session, ...(url ? { url } : {}) });
   }
   remove(element: NativeRehearsalAudio) {
     this.elements.delete(element);

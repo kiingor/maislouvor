@@ -1224,15 +1224,23 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
     return () => { cancelled = true; };
   }, [currentSong?.audio_path]);
 
-  // Pré-carrega o master da PRÓXIMA música do repertório: assina a URL (fica no
-  // cache) e deixa o navegador bufferizar — o skip vira quase instantâneo.
+  // Preload only the next original. iOS queues this behind current downloads,
+  // reuses the compressed file on selection, and never attaches a silent player
+  // that could change the current song's clock or duration.
   const nextSongAudioPath: string | null = songs[songIdx + 1]?.audio_path || null;
   useEffect(() => {
-    if (!nextSongAudioPath || nativeAudio) return;
+    if (!nextSongAudioPath) {
+      void nativeAudio?.prefetch(null).catch(() => {});
+      return;
+    }
     let cancelled = false;
     let el: HTMLAudioElement | null = null;
     getSignedAudioUrl(nextSongAudioPath).then((url) => {
       if (!url || cancelled) return;
+      if (nativeAudio) {
+        void nativeAudio.prefetch(url).catch(() => {});
+        return;
+      }
       el = new Audio();
       el.preload = "auto";
       el.crossOrigin = "anonymous";
@@ -1240,7 +1248,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
       el.load();
     });
     return () => { cancelled = true; if (el) { try { el.src = ""; } catch { /* noop */ } } };
-  }, [nextSongAudioPath]);
+  }, [nextSongAudioPath, nativeAudio]);
 
   // Reset tom + key resolution when the song changes. If this culto picked a
   // key_override, start with the pitch/cifra shifted from the written key to it.

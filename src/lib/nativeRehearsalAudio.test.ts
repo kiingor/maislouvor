@@ -7,6 +7,7 @@ function setup() {
   const api: NativeAudioBridge = {
     reset: vi.fn().mockResolvedValue(undefined),
     loadTrack: vi.fn().mockResolvedValue({ duration: 120 }),
+    prefetch: vi.fn().mockResolvedValue(undefined),
     unloadTrack: vi.fn().mockResolvedValue(undefined),
     apply: vi.fn(async options => state = { ...state, time: options.time ?? state.time, playing: options.tracks.filter(t => t.playing).map(t => t.id), ended: false }),
     getState: vi.fn(async () => state),
@@ -22,6 +23,24 @@ function setup() {
 
 afterEach(() => vi.useRealTimers());
 describe("native rehearsal transport", () => {
+  it("preloads without adding a player or changing the current transport", async () => {
+    vi.useFakeTimers();
+    const { api, controller, master, stem } = setup(); await flush();
+    await master.play(); await stem.play(); await flush();
+    vi.mocked(api.apply).mockClear();
+    await controller.prefetch("https://example.test/next.mp3");
+    expect(api.prefetch).toHaveBeenLastCalledWith({ session: controller.session, url: "https://example.test/next.mp3" });
+    expect(api.apply).not.toHaveBeenCalled();
+    expect(controller.elements.size).toBe(2);
+    expect(master.paused).toBe(false);
+    await controller.prefetch(null);
+    expect(api.prefetch).toHaveBeenLastCalledWith({ session: controller.session });
+    controller.dispose();
+    vi.mocked(api.prefetch).mockClear();
+    await controller.prefetch("https://example.test/stale.mp3");
+    expect(api.prefetch).not.toHaveBeenCalled();
+  });
+
   it("starts master and stems together and changes volume without seeking/restarting", async () => {
     vi.useFakeTimers();
     const { api, controller, master, stem } = setup();

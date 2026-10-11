@@ -3,7 +3,8 @@
 > Atualização em 11/10: **1.0.0 (13)** foi adicionada ao grupo **Teste iPhone**
 > e confirmada **Em testes**, com o tester já existente. Evidência salva em
 > `/Volumes/MaisLouvorBuild/Release-1.0.0-13/delivery-20261011/group-state.json`.
-> A verificação auditiva no iPhone continua pendente. O backend também recebeu
+> Filipe confirmou em 11/10 que o mixer funciona. A demora ao abrir/trocar
+> músicas está em [investigação e correção separadas](carregamento-audio-ios-20261011.md). O backend também recebeu
 > a [correção dos vínculos de músicas nos cultos antigos](correcao-cultos-legados-20261011.md).
 
 ## Incidente e diagnóstico
