@@ -1,6 +1,6 @@
 # Preparação final da Apple — 09/10/2026
 
-> Atualização posterior: a biblioteca privada foi publicada e **1.0.0 (12)** foi confirmada no TestFlight. A correção do áudio **1.0.0 (13)** foi enviada à Apple, mas ainda falta confirmar sua liberação no grupo. Veja [publicação da biblioteca](publicacao-biblioteca-privada-20261009.md) e [correção de áudio iOS](correcao-audio-ios-20261009.md). O registro abaixo descreve a preparação anterior da build 11; a ficha de distribuição ainda seleciona essa build.
+> Atualização em 11/10: **1.0.0 (13)**, com a correção do áudio, está confirmada **Em testes** no grupo Teste iPhone. A correção dos nomes e áudios dos [cultos antigos](correcao-cultos-legados-20261011.md) também está no servidor. Veja [publicação da biblioteca](publicacao-biblioteca-privada-20261009.md) e [correção de áudio iOS](correcao-audio-ios-20261009.md). O registro abaixo descreve a preparação anterior da build 11; a ficha de distribuição foi vista por último selecionando essa build. Não houve submissão pública.
 
 ## Estado confirmado
 

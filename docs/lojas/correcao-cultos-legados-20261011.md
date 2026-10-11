@@ -9,11 +9,13 @@ Não há mais referências ocultas nos cultos da equipe afetada.
 
 O ajuste é no servidor e vale para web, Android e iOS já instalados. Não precisa
 substituir as músicas nem gerar outro binário para corrigir os nomes.
-A compilação iOS **1.0.0 (13)**, com o player nativo, já foi enviada em 09/10;
-a disponibilização no grupo Teste iPhone ainda aguarda acesso ao App Store
-Connect. Em 11/10, a sessão do Safari expirou ao consultar as compilações e foi
-solicitado ao titular que entrasse novamente. Não afirmar que 13 está disponível
-antes de conferir o grupo. Ver [registro do áudio](correcao-audio-ios-20261009.md).
+A compilação iOS **1.0.0 (13)**, com o player nativo, foi enviada em 09/10 e
+**liberada no grupo Teste iPhone em 11/10**. Após o titular renovar a sessão,
+a build foi adicionada ao grupo existente e confirmada como **Em testes**.
+O grupo tem um tester e onze compilações; não foram criados novos convites.
+Evidência: `/Volumes/MaisLouvorBuild/Release-1.0.0-13/delivery-20261011/group-state.json`.
+No iPhone: TestFlight → +Louvor → Atualizar → conferir **1.0.0 (13)**.
+Ver [registro do áudio](correcao-audio-ios-20261009.md).
 
 ## Causa confirmada
 

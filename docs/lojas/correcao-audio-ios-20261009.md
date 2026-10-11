@@ -1,5 +1,11 @@
 # Correção de reprodução e mixer no iOS — 09/10/2026
 
+> Atualização em 11/10: **1.0.0 (13)** foi adicionada ao grupo **Teste iPhone**
+> e confirmada **Em testes**, com o tester já existente. Evidência salva em
+> `/Volumes/MaisLouvorBuild/Release-1.0.0-13/delivery-20261011/group-state.json`.
+> A verificação auditiva no iPhone continua pendente. O backend também recebeu
+> a [correção dos vínculos de músicas nos cultos antigos](correcao-cultos-legados-20261011.md).
+
 ## Incidente e diagnóstico
 
 Na compilação 1.0.0 (12), Filipe relatou áudio picotando ao reduzir uma faixa
@@ -68,12 +74,10 @@ Compilação **1.0.0 (13)**, fonte `a1a9650fd525c902ddb61012b73275f63a4a8fba`.
 - Configuração pública de API e RevenueCat idêntica à compilação 12.
 - Upload aprovado às 22:01:32 de 09/10 (Fortaleza): `Upload succeeded` e
   `EXPORT SUCCEEDED` em `Release-1.0.0-13/upload.log`; pacote em processamento.
-- Disponibilidade no grupo Teste iPhone ainda não confirmada: o Mac bloqueou a
-  tela e a árvore de acessibilidade do Safari ficou indisponível. Foi solicitado
-  ao titular apenas desbloquear o Mac. A última build vista no grupo é 12.
-- Após desbloqueio: consultar a build 13, completar dados de teste se necessário,
-  adicioná-la ao grupo existente e confirmar “Em testes” antes de anunciar a
-  disponibilidade. Não criar convites nem enviar para a loja pública.
+- Disponibilidade confirmada em 11/10: build 13 adicionada ao grupo Teste iPhone,
+  status **Em testes**, um tester e onze compilações. Sem novos convites.
+  O bloqueio da tela do Mac em 09/10 e a sessão expirada em 11/10 foram resolvidos
+  pelo titular antes dessa confirmação.
 
 Não há submissão para a loja pública nesta correção. RevenueCat permanece uma
 validação separada. A confirmação auditiva no iPhone físico ainda é necessária.
