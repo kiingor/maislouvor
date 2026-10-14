@@ -259,3 +259,17 @@ controle visual ficou bloqueado porque o Mac foi bloqueado; desbloqueio pedido.
 É necessário resolver a configuração local, refazer as capturas anuais e
 concluir o envio combinado. Diagnóstico e continuidade em
 [envio-app-review-20261014.md](envio-app-review-20261014.md).
+
+
+### Conclusão em 14/10 às 09:11 BRT
+
+A divergência do StoreKit Testing foi resolvida ajustando a região do próprio
+simulador, mantendo loja brasileira e textos pt-BR. Prints anuais refeitos e
+anexos dos 31 produtos anuais substituídos. Conferência final: 66 imagens COMPLETE
+com checksums corretos, preços Brasil preservados e disponibilidade BRA.
+
+**Envio concluído pelo Safari:** 1.0.0 (16), grupo e 66 assinaturas, 68 itens
+WAITING_FOR_REVIEW. A publicação permanece manual. Evidências e limitação de
+primeiro login observada no simulador estão no
+[registro do envio](envio-app-review-20261014.md). Não houve nova compilação nem
+publicação web nesta etapa.

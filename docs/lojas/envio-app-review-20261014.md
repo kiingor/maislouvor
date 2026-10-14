@@ -1,21 +1,18 @@
-# Preparação da primeira revisão — 14/10/2026
+# Envio da primeira revisão — 14/10/2026
 
 ## Estado confirmado
 
-**Ainda não concluído o envio combinado.** No App Store Connect, a versão
-**1.0.0 (16)**, o grupo de assinaturas e os **66 produtos oferecidos** estão em um
-único rascunho `READY_FOR_REVIEW`, totalizando **68 itens**. Compilação 16 válida,
-elegível para App Store; publicação configurada como **MANUAL**.
+**Envio confirmado em 14/10/2026 às 09:11:14 BRT.** No App Store Connect,
+**1.0.0 (16)**, o grupo e as **66 assinaturas** estão em `WAITING_FOR_REVIEW`,
+totalizando **68 itens** no mesmo envio. A confirmação foi vista no Safari e
+conferida novamente pela API: versão, grupo e os 66 produtos aguardando revisão.
+Publicação configurada como **MANUAL**; aprovação ainda pendente e app ainda não
+publicado na loja.
 
-Havia um envio aguardando revisão que continha somente o aplicativo, enviado às
-23:53 BRT de 13/10. Foi cancelado para incluir as primeiras assinaturas junto ao
-binário. O cancelamento está concluído. Não confundir esse envio anterior com o
-rascunho combinado atual, que ainda precisa ser enviado.
-
-O Mac bloqueou a tela durante a conferência final. O controle visual retornou
-erro de desbloqueio automático, e foi solicitado ao titular desbloquear o Mac.
-Não houve tentativa de contornar o bloqueio. Ações independentes pela API
-oficial continuaram para preparar e conferir os metadados.
+O envio anterior, feito às 23:53 BRT de 13/10, continha somente o aplicativo.
+Foi cancelado e substituído pelo envio combinado com as primeiras assinaturas.
+O bloqueio do Mac interrompeu a preparação; o titular desbloqueou a máquina e o
+controle visual foi retomado normalmente. O envio final ocorreu pelo Safari.
 
 ## Conteúdo, acesso e notas
 
@@ -58,9 +55,12 @@ conversões nem alterados os preços brasileiros.
 Conferência final dos **66/66** produtos: ponto de preço original do Brasil
 preservado, disponibilidade somente **BRA**. A tabela de preços em outros países
 não significa liberação de venda nesses países. O grupo e os 66 produtos foram
-incluídos no mesmo rascunho que a versão 16.
+enviados junto à versão 16. Os 31 produtos anuais receberam as imagens finais
+recapturadas. A Apple exigiu removê-los temporariamente do rascunho para substituir
+os anexos; todos foram recolocados antes do envio. A conferência final validou
+66/66 checksums de imagem e processamento COMPLETE.
 
-## Capturas e divergência no StoreKit Testing
+## Capturas e correção da configuração do StoreKit Testing
 
 Arquivos externos ao Git: `/Volumes/MaisLouvorBuild/AppReview-1.0.0-16/screenshots`.
 Oito PNGs originais de framebuffer e cópias JPEG RGB 2064×2752 para upload, sem
@@ -84,32 +84,53 @@ Diagnóstico nativo independente do React/RevenueCat confirmou a divergência em
 vírgula (`26,9`), enquanto `Product.price` resulta em 26. Controles de
 `JSONSerialization` com Decimal/Double 26.9 preservam os centavos. Mudar somente
 `SKTestSession.locale`, usar duas casas decimais no arquivo ou alterar idioma e
-região do processo de teste não resolveu. O simulador permanece com região
+região do processo de teste não resolveu. O simulador estava com região
 pt_BR. Valores com vírgula no arquivo .storekit também não são solução: alteram
 o preço exibido para 26,00.
 
-Não foi alterado código de produção por esse diagnóstico. Não concluir que a
-API Apple ou o RevenueCat cobram valor errado a partir desse teste local.
-Capturas anuais precisam ser refeitas após obter preços numéricos consistentes
-no ambiente de teste. Próxima tentativa: conferir a região do próprio simulador
-pela interface, mantendo loja BRA e metadados pt-BR. Ainda não validada; requer
-desbloqueio do Mac. Arquivo original .storekit usa ponto decimal e os preços
-brasileiros oficiais, e deve ser preservado.
+**Resolvido:** pela interface de Ajustes do simulador, foi alterada somente a
+região do próprio dispositivo para Estados Unidos (`pt_US`), conservando idioma
+Português, storefront **BRA** e locale de metadados **pt_BR** no StoreKit Testing.
+O teste independente passou a retornar preço numérico **26.9**, preço formatado
+**R$ 26,90** e `priceString` **26.9**. Alterar somente a região do processo de
+XCTest não bastava; o serviço do simulador usava a região do dispositivo.
 
-## Próximos passos exatos
+As quatro capturas anuais foram refeitas na interface original, sem edição de
+pixels. Conferidos os totais anuais e economias: Essencial R$ 33,80; Estúdio
+R$ 73,80; Asafe R$ 53,80; Completo R$ 83,80. Os PNGs anteriores ficam em
+`superseded-storekit-region` apenas para rastreabilidade. JPEGs finais sem alfa,
+2064×2752, manifesto de hashes atualizado. Teste hospedado final encerrado com
+sucesso e assertiva de nenhuma transação criada.
 
-1. Desbloquear o Mac e retomar Safari/Device Hub pelo controle de interface.
-2. Resolver a divergência local de preço do StoreKit Testing, recapturar as
-   imagens anuais e substituir os anexos correspondentes, verificando o estado
-   COMPLETE. Não retocar números na imagem nem representar um layout fictício.
-3. Conferir visualmente o rascunho com **68 itens**, notas, compilação 16 e
-   publicação manual. O titular já autorizou o envio; não pedir nova aprovação
-   rotineira. A Apple orienta enviar a primeira compra junto ao binário pelo site.
-4. Enviar o rascunho combinado no Safari e verificar `WAITING_FOR_REVIEW` tanto
-   para a versão quanto para os produtos. Não declarar envio antes de confirmar.
-5. Atualizar este registro e o BrainHub com o resultado real. Depois, acompanhar
-   eventual retorno da Apple e conferir o prazo de acesso Sandbox da demo se a
-   análise ultrapassar 27/10. Não configurar automação nova sem solicitação.
+Não houve mudança de código, preço ou região de distribuição por esse
+procedimento. A configuração é exclusivamente do simulador de captura.
+
+## Limite do teste de acesso
+
+Na sessão de captura, após digitar credenciais válidas da demo, o primeiro login
+ficou carregando; a sessão foi salva e o início carregou após reabrir o app.
+A abertura normal posterior também recuperou a conta e os dados fictícios. Uma
+tentativa de sair no simulador não mudou de tela durante a observação. Não foi
+estabelecida a causa nem reproduzido esse comportamento em dispositivo físico
+com a distribuição da compilação 16. Não afirmar que esse fluxo está corrigido.
+
+As notas privadas enviadas à Apple incluem a orientação de reabrir o app se o
+login inicial permanecer carregando. As validações físicas anteriores de
+Google/Apple/Face ID e compra/restauração são evidências separadas; não converter
+um teste de acesso por API em prova de UX de login sem falhas. Se o comportamento
+ocorrer na distribuição real, investigar autenticação/sessão em uma próxima
+correção, sem mascarar o problema com a captura.
+
+## Próximos passos
+
+1. Aguardar o resultado da revisão da Apple e tratar eventual solicitação real.
+2. Se a análise ultrapassar 27/10 às 23:34 BRT, conferir a vigência do acesso
+   Sandbox restrito da conta fictícia de revisão antes de ampliá-la.
+3. A publicação continua manual. Aprovação e liberação pública são etapas
+   distintas; esta sessão enviou para revisão, não publicou na loja.
+4. Revalidar a limitação de primeiro login acima no binário distribuído quando
+   houver oportunidade, registrando ambiente e resultado. Nenhuma correção desse
+   fluxo foi implementada nesta etapa.
 
 Referências oficiais:
 [primeiras compras e API](https://developer.apple.com/documentation/appstoreconnectapi/managing-in-app-purchases),
@@ -118,7 +139,8 @@ Referências oficiais:
 Evidências e scripts de continuidade ficam no diretório privado
 `/Volumes/MaisLouvorBuild/AppReview-1.0.0-16` e em `/tmp/ml-asc-api.mjs`.
 Os JSONs privados contêm dados de acesso e não devem ser impressos ou adicionados
-ao Git. `final-draft-state-private.json` registra os IDs e o último estado dos
-68 itens; `final-brazil-price-availability-verification.json` registra os 66
-preços/territórios conferidos. Nenhuma nova compilação, publicação web ou mudança
+ao Git. `final-review-verification-private.json` registra os 68 itens aguardando
+revisão e os 66 checksums finais; `brazil-verification-before-final-submit.json`
+registra os 66 preços/territórios conferidos. Confirmação visual em
+`submission-confirmed.png`. Nenhuma nova compilação, publicação web ou mudança
 nas equipes reais foi feita nesta etapa.

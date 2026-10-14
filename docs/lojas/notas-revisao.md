@@ -6,23 +6,25 @@ sincronização e restauração foram confirmadas em iPhone físico com desenvol
 + Sandbox Brasil; isso não revalida o cenário anterior de TestFlight com a conta
 Apple pessoal.
 
-**Notas abaixo salvas e conferidas na Apple.** A compilação 16, o grupo de
-assinaturas e os 66 produtos oferecidos estão reunidos no mesmo rascunho de
-revisão. O envio anterior, que continha apenas o app, foi cancelado para incluir
-os produtos na primeira submissão. O novo rascunho ainda não foi enviado.
+**Enviado à Apple em 14/10/2026 às 09:11 BRT.** A compilação 16, o grupo e
+as 66 assinaturas foram reunidos e enviados: 68 itens confirmados em
+`WAITING_FOR_REVIEW`, tanto no Safari quanto pela API. Publicação **manual**;
+ainda aguardando aprovação. Notas abaixo salvas e conferidas na Apple.
 
 O titular confirmou as autorizações de conteúdo e corrigiu a declaração para
 uso de conteúdo de terceiros; não se trata de auditoria independente de licenças.
-O novo contrato Apple foi aceito pelo titular. A conta fictícia recebeu autorização
-Sandbox restrita até **27/10/2026 às 23:34 BRT**; não recebeu plano pago manual.
-Oito capturas de assinatura foram anexadas aos 66 produtos. A conferência final
-encontrou uma divergência entre preço numérico e formatado no StoreKit Testing,
-ainda em diagnóstico para finalizar as capturas anuais. O controle visual do
-Safari/simulador ficou indisponível com o Mac bloqueado; desbloqueio solicitado.
+O contrato Apple atualizado foi aceito pelo titular. A conta fictícia tem acesso
+Sandbox restrito até **27/10/2026 às 23:34 BRT**, sem plano pago concedido manualmente.
 
-Capturas públicas, ícone e App Privacy preparados anteriormente permanecem
-conforme [preparação final](preparacao-final-20261009.md). O registro desta etapa
-está em [preparação do envio](envio-app-review-20261014.md).
+Oito capturas de assinatura anexadas aos 66 produtos e verificadas por checksum,
+processamento COMPLETE. A divergência decimal do StoreKit Testing foi resolvida
+na configuração regional do próprio simulador, e os prints anuais foram refeitos.
+Capturas públicas, ícone e App Privacy anteriores foram preservados.
+
+O primeiro login da demo no simulador precisou de reabertura do app. Essa
+limitação foi informada nas notas de acesso; não houve correção de código nem
+reprodução confirmada em dispositivo físico nesta etapa. Ver o
+[registro do envio](envio-app-review-20261014.md) para evidências e limites.
 
 ## Contas e campos privados
 
@@ -91,6 +93,8 @@ Usuário > Asafe separates personal and team setup. Under Seu WhatsApp pessoal, 
 
 VALIDATION LIMIT
 Catalog loading, purchase, paid access synchronization and restoration were validated on a physical iPhone with a development build and Apple Sandbox Brazil. The supplied demo team is authorized for Apple Sandbox purchases during review. Content is user-supplied; demo material is original/licensed. No blanket rights over user uploads are claimed.
+
+If initial sign-in stays loading, close and reopen the app to restore the saved session.
 
 Support: https://maislouvor.com/suporte
 Privacy: https://maislouvor.com/privacidade
