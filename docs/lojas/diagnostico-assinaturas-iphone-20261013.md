@@ -238,3 +238,24 @@ de compra desta sessão abrange somente a equipe pessoal de teste autorizada,
 não libera automaticamente a demo da Apple. Aviso de novo contrato Apple deve
 ser conferido com o titular. Asafe e mixer já testados não voltam à lista sem
 nova falha. Não exigir nova saída da conta pessoal do iPhone.
+
+
+## Continuidade em 14/10: rascunho combinado de App Review
+
+Metadados preparados e conferidos para 66 produtos oferecidos; demais quatro
+registros preservados. Oito capturas nativas anexadas, tabela de equalizações
+exigida pela Apple completada e preços Brasil/disponibilidade BRA conferidos em
+66/66 produtos. Não houve nova compilação nem publicação web nesta etapa.
+
+O envio anterior continha somente o app e foi cancelado. O rascunho atual reúne
+versão 1.0.0 (16), grupo e 66 assinaturas: 68 itens READY_FOR_REVIEW, publicação
+manual. Ainda não enviado. Notas salvas, direitos de terceiros confirmados pelo
+titular e acesso Sandbox restrito da conta fictícia preparado até 27/10 às
+23:34 BRT.
+
+A QA dos prints anuais detectou perda de centavos no campo numérico retornado
+pelo próprio StoreKit Testing do simulador, com preço formatado correto. O
+controle visual ficou bloqueado porque o Mac foi bloqueado; desbloqueio pedido.
+É necessário resolver a configuração local, refazer as capturas anuais e
+concluir o envio combinado. Diagnóstico e continuidade em
+[envio-app-review-20261014.md](envio-app-review-20261014.md).

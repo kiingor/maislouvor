@@ -1,25 +1,28 @@
 # Notas para a revisão das lojas
 
-Atualização de preparação em **13/10/2026**: iOS **1.0.0 (16)**, fonte
-`3dee928`, processado pela Apple e confirmado **Em testes** no grupo interno
-Teste iPhone. Compra, sincronização e restauração foram confirmadas em iPhone
-físico com desenvolvimento + Sandbox Brasil. Asafe e mixer foram confirmados
-pelo responsável. Não extrapolar esse resultado para o cenário anterior de
-TestFlight com a conta Apple pessoal.
+Atualização de preparação em **14/10/2026**: iOS **1.0.0 (16)**, fonte
+`3dee928`, confirmado em testes no grupo interno Teste iPhone. Compra,
+sincronização e restauração foram confirmadas em iPhone físico com desenvolvimento
++ Sandbox Brasil; isso não revalida o cenário anterior de TestFlight com a conta
+Apple pessoal.
 
-**Este roteiro é um rascunho local atualizado, ainda não salvo na Apple.**
-Na conferência desta etapa, a distribuição permanece em Preparar para envio,
-com build 11 selecionado e notas antigas. Tentativas de editar por acessibilidade
-não produziram alteração confirmada; não houve envio público. Capturas nativas,
-ícone e App Privacy já preparados anteriormente permanecem conforme o registro
-de [preparação final](preparacao-final-20261009.md).
+**Notas abaixo salvas e conferidas na Apple.** A compilação 16, o grupo de
+assinaturas e os 66 produtos oferecidos estão reunidos no mesmo rascunho de
+revisão. O envio anterior, que continha apenas o app, foi cancelado para incluir
+os produtos na primeira submissão. O novo rascunho ainda não foi enviado.
 
-Pendências confirmadas: selecionar a build final e salvar as notas abaixo;
-completar os materiais dos produtos de assinatura (Asafe 10 mensal conferido sem
-captura de revisão); conferir a autorização Sandbox restrita da conta de revisão
-e incluir grupo/produtos na primeira submissão. Há aviso anterior de novo acordo
-Apple a conferir com o titular. Não foi presumida licença geral para o conteúdo
-enviado pelos usuários. Ver [diagnóstico e publicação 16](diagnostico-assinaturas-iphone-20261013.md).
+O titular confirmou as autorizações de conteúdo e corrigiu a declaração para
+uso de conteúdo de terceiros; não se trata de auditoria independente de licenças.
+O novo contrato Apple foi aceito pelo titular. A conta fictícia recebeu autorização
+Sandbox restrita até **27/10/2026 às 23:34 BRT**; não recebeu plano pago manual.
+Oito capturas de assinatura foram anexadas aos 66 produtos. A conferência final
+encontrou uma divergência entre preço numérico e formatado no StoreKit Testing,
+ainda em diagnóstico para finalizar as capturas anuais. O controle visual do
+Safari/simulador ficou indisponível com o Mac bloqueado; desbloqueio solicitado.
+
+Capturas públicas, ícone e App Privacy preparados anteriormente permanecem
+conforme [preparação final](preparacao-final-20261009.md). O registro desta etapa
+está em [preparação do envio](envio-app-review-20261014.md).
 
 ## Contas e campos privados
 
@@ -60,7 +63,7 @@ exigidos pela loja devem ser preenchidos diretamente no formulário privado.
 
 **Password:** `{{APPLE_REVIEW_PASSWORD}}`
 
-Texto em inglês revisado localmente; pendente salvar e conferir no App Store Connect.
+Texto em inglês salvo e conferido no App Store Connect em 14/10/2026.
 Preservar o convite já existente apenas no formulário privado da Apple ao salvar.
 Não publicar o link do grupo no Git ou na ficha pública.
 
@@ -71,7 +74,7 @@ ACCESS
 Use the supplied demo email/password and tap Entrar. Google, Apple and Face ID are optional. Accept Terms/Privacy if prompted. The account owns Igreja Demonstração (App Review) with four fictitious members. Demo participation records are explicitly marked as fictitious; no real person's consent was inferred.
 
 FEATURES
-1. Repertório > Repertório da Demonstração: six songs with lyrics/chords. Ensaio > Baby Bird (demo) > Mixer opens five stems. Loop provides saved practice sections. The five original songs and synthesized guides were created for this demo. Baby Bird is a credited CC BY 3.0 excerpt by Admiral Bob, with source/license and modifications described in the song.
+1. Repertório > Repertório da Demonstração: three selected songs with lyrics/chords. Ensaio > Baby Bird (demo) > Mixer opens five stems. Loop provides saved practice sections. The original songs and synthesized guides were created for this demo. Baby Bird is a credited CC BY 3.0 excerpt by Admiral Bob, with source/license and modifications described in the song.
 2. Cultos > Culto de Domingo shows the service order and Escala. Início > Disponibilidade opens the availability calendar.
 3. Chat > Geral: hold a member's message to Denunciar or block the sender. Leaders review reports at Usuário > Membros > Denúncias do chat. Manage blocks at Usuário > Perfil > Usuários bloqueados.
 4. Creating repertoires, registering/editing songs and importing audio are web management actions. The native app explains Continue pelo computador. Existing songs can be added to an existing repertoire with permission. Native YouTube video actions open the YouTube app or external browser; no YouTube embed runs inside this iOS build. Uploaded audio, mixer and track separation remain in the app.
@@ -87,7 +90,7 @@ ASAFE (OPTIONAL WHATSAPP ASSISTANT)
 Usuário > Asafe separates personal and team setup. Under Seu WhatsApp pessoal, authorize optional OpenAI data sharing and tap Conectar meu WhatsApp; send the code privately to Asafe from your own WhatsApp. Activating a team group does not identify the leader personally. Ativar um grupo da equipe is for leaders; each member separately permits use of their own data. Both permissions are revocable. Group Teste a safe is connected only to this fictitious team, with automatic notices off. Join: {{PRIVATE_WHATSAPP_REVIEW_INVITE}} . After personal linking, mention Asafe in the group. The owner confirmed the Asafe functional test; no real member identity or consent was assigned.
 
 VALIDATION LIMIT
-Catalog loading, purchase, paid access synchronization and restoration were validated on a physical iPhone with a development build and Apple Sandbox Brazil. The earlier TestFlight personal-account error ML-IOS-OFFERINGS-23-BRA has not been revalidated in that separate scenario. Content is user-supplied; demo material is original/licensed. No blanket rights over user uploads are claimed.
+Catalog loading, purchase, paid access synchronization and restoration were validated on a physical iPhone with a development build and Apple Sandbox Brazil. The supplied demo team is authorized for Apple Sandbox purchases during review. Content is user-supplied; demo material is original/licensed. No blanket rights over user uploads are claimed.
 
 Support: https://maislouvor.com/suporte
 Privacy: https://maislouvor.com/privacidade
