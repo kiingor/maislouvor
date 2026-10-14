@@ -64,7 +64,7 @@ export default function PlanBuilder({ context, offers, loading, busy, platform, 
   }
 
   const checkout = <div ref={dock} className="billing-design billing-checkout" data-placement={placement} data-testid="billing-checkout">
-    <div className="billing-checkout-panel" aria-label="Resumo do plano">
+    <div className="billing-checkout-panel" aria-label={subscription.is_active ? 'Resumo da alteração' : 'Resumo do plano'}>
       <div className="billing-checkout-summary" aria-live="polite" aria-atomic="true">
         <div className="billing-checkout-choice"><strong>{PLAN_DETAILS[plan].name}</strong><span>{selectedLimit ? `Até ${selectedLimit} integrantes` : `${seats} integrantes`}</span></div>
         <div className="billing-checkout-price"><strong>{isFree ? 'Grátis' : loading ? '…' : selected?.price ?? '—'}</strong><span>{!isFree && (period === 'annual' ? 'por ano, em uma cobrança' : 'por mês, para toda a equipe')}</span></div>
@@ -73,15 +73,15 @@ export default function PlanBuilder({ context, offers, loading, busy, platform, 
         onClick={purchase} aria-label={hasCurrentSelection ? 'Plano atual' : `${action}: ${PLAN_DETAILS[plan].name} para até ${selectedLimit ?? seats} integrantes`}>
         <span>{action}</span>{busy ? <LoaderCircle className="billing-spinner" aria-hidden /> : !isFree && !hasCurrentSelection && !unavailable && <ArrowRight aria-hidden />}
       </button>
-      <p className="billing-checkout-caption">{isFree ? 'Sem assinatura paga para até 5 integrantes.' : 'Renovação automática · Cancele a renovação quando quiser.'}</p>
+      <p className="billing-checkout-caption">{isFree ? 'Sem assinatura paga para até 5 integrantes.' : subscription.is_active ? hasCurrentSelection ? 'Seu plano permanece como está.' : canExpand ? 'Confira o ajuste de valor antes de confirmar na loja.' : 'A alteração será concluída no gerenciamento da assinatura.' : 'Renovação automática · Cancele a renovação quando quiser.'}</p>
     </div>
   </div>;
 
-  return <section ref={container} aria-labelledby={`${id}-title`} className="billing-design billing-builder">
+  return <section ref={container} aria-labelledby={`${id}-title`} className="billing-design billing-builder" data-editing={subscription.is_active}>
     <header className="billing-heading">
-      <p className="billing-eyebrow">PLANOS +LOUVOR</p>
-      <h3 id={`${id}-title`}>Um plano para<br />a equipe toda.</h3>
-      <p>Mais organização. Mais tempo para o louvor.</p>
+      <p className="billing-eyebrow">{subscription.is_active ? 'SUA ASSINATURA' : 'PLANOS +LOUVOR'}</p>
+      <h3 id={`${id}-title`}>{subscription.is_active ? 'Ajuste seu plano' : <>Um plano para<br />a equipe toda.</>}</h3>
+      <p>{subscription.is_active ? 'Compare planos, vagas e pagamento.' : 'Mais organização. Mais tempo para o louvor.'}</p>
     </header>
 
     <div className="billing-customize">
@@ -110,7 +110,7 @@ export default function PlanBuilder({ context, offers, loading, busy, platform, 
     </div>
 
     <fieldset disabled={busy} className="billing-plans">
-      <legend>Escolha o seu plano</legend>
+      <legend>{subscription.is_active ? 'Compare com seu plano atual' : 'Escolha o seu plano'}</legend>
       <div className="billing-plan-list">
         {planOrder.map((key) => {
           const detail = PLAN_DETAILS[key];
@@ -121,7 +121,7 @@ export default function PlanBuilder({ context, offers, loading, busy, platform, 
             <input type="radio" name={`${id}-plan`} value={key} checked={plan === key} onChange={() => setPlan(key)} className="sr-only"
               aria-labelledby={`${id}-${key}-name`} aria-describedby={`${id}-${key}-description ${id}-${key}-price`} />
             <span className="billing-plan-icon"><Icon aria-hidden /></span>
-            <span className="billing-plan-copy"><span className="billing-plan-name" id={`${id}-${key}-name`}>{detail.name}{key === 'completo' && <span className="billing-bundle">Tudo incluído</span>}</span><span className="billing-plan-description" id={`${id}-${key}-description`}>{captions[key]}</span></span>
+            <span className="billing-plan-copy"><span className="billing-plan-name" id={`${id}-${key}-name`}>{detail.name}{subscription.is_active && key === subscription.plan ? <span className="billing-bundle">Atual</span> : key === 'completo' && <span className="billing-bundle">Tudo incluído</span>}</span><span className="billing-plan-description" id={`${id}-${key}-description`}>{captions[key]}</span></span>
             <span className="billing-plan-price" id={`${id}-${key}-price`}><strong>{free ? 'Grátis' : loading ? '…' : offer?.price ?? 'Indisponível'}</strong>{!free && offer && <small>/{interval}</small>}</span>
             <span className="billing-plan-check" aria-hidden>{plan === key && <Check />}</span>
           </label>;

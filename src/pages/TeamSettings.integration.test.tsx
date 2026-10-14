@@ -35,7 +35,7 @@ vi.mock('@/components/UserStatsCard', () => ({ UserStatsCard: () => null }));
 vi.mock('@/components/TeamAvailabilitySettings', () => ({ TeamAvailabilitySettings: () => null }));
 vi.mock('@/components/AppearanceControl', () => ({ AppearanceSegmented: () => null }));
 vi.mock('@/components/FaceIdSettings', () => ({ FaceIdSettings: () => <p>Face ID</p> }));
-vi.mock('@/components/AssistantSettings', () => ({ MyAssistantSettings: () => <p>Permissão do Asafe</p>, TeamAssistantSettings: () => null }));
+vi.mock('@/components/AssistantSettings', () => ({ MyAssistantSettings: () => <p>Permissão do Asafe</p>, TeamAssistantSettings: () => <p>Grupos do Asafe</p> }));
 vi.mock('@/components/legal/SettingsAboutGroup', () => ({ SettingsAboutGroup: () => null }));
 vi.mock('@/components/account/DeleteAccountSection', () => ({ DeleteAccountSection: () => <p>Excluir minha conta</p> }));
 vi.mock('@/components/BlockedUsersSettings', () => ({ BlockedUsersSettings: () => null }));
@@ -56,6 +56,7 @@ afterEach(cleanup);
 beforeEach(() => {
   vi.clearAllMocks();
   team.currentTeam = { id: 'team-a', name: 'Equipe A', role: 'admin' };
+  team.isAdmin = true;
   profileApi.error = null;
 });
 
@@ -114,8 +115,29 @@ describe('junção de assinaturas, moderação e ajustes de conta', () => {
     expect(await screen.findByText('Plano para 5 pessoas')).toBeVisible();
     fireEvent.click(screen.getByRole('link', { name: 'Ir para exclusão' }));
     expect(await screen.findByText('Excluir minha conta')).toBeVisible();
-    expect(screen.getByText('Permissão do Asafe')).toBeVisible();
+    expect(screen.queryByText('Permissão do Asafe')).not.toBeInTheDocument();
     expect(screen.getByText('Face ID')).toBeVisible();
+  });
+
+  it('separa o Asafe de Perfil e Equipe, mantendo os controles do líder na nova aba', async () => {
+    mount();
+    expect(await screen.findByText('Excluir minha conta')).toBeVisible();
+    expect(screen.queryByText('Permissão do Asafe')).not.toBeInTheDocument();
+    selectTab('Equipe');
+    expect(screen.queryByText('Grupos do Asafe')).not.toBeInTheDocument();
+    selectTab('Asafe');
+    expect(screen.getByText('Permissão do Asafe')).toBeVisible();
+    expect(screen.getByText('Grupos do Asafe')).toBeVisible();
+    expect(screen.queryByText('Face ID')).not.toBeInTheDocument();
+  });
+
+  it('abre o link do Asafe para um integrante sem expor os controles do líder', async () => {
+    team.isAdmin = false;
+    mount('/app/settings?aba=asafe');
+    expect(await screen.findByText('Permissão do Asafe')).toBeVisible();
+    expect(screen.getByRole('tab', { name: 'Asafe' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByText('Grupos do Asafe')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Equipe' })).not.toBeInTheDocument();
   });
 
   it('o convite acima do limite abre a assinatura da equipe escolhida e volta a Membros', async () => {

@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Capacitor } from "@capacitor/core";
 import { format, parseISO } from "date-fns";
-import { BookOpen, Bot, Check, ChevronRight, Copy, FileText, KeyRound, Link2, Loader2, MessageCircle, PowerOff, ShieldCheck, TriangleAlert, Unlink, Users } from "lucide-react";
+import { BookOpen, Bot, Check, Clock3, ChevronRight, Copy, FileText, KeyRound, Link2, Loader2, MessageCircle, PowerOff, ShieldCheck, TriangleAlert, Unlink, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -26,7 +26,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import { MY_SETTINGS_IN_APP } from "@/lib/legal";
+import { ASAFE_SETTINGS_IN_APP } from "@/lib/legal";
 import {
   ASSISTANT_CAPABILITIES,
   NOTIFICATION_OPTIONS,
@@ -93,6 +93,26 @@ function Row({ leading, children, className }: { leading: ReactNode; children: R
   );
 }
 
+/** Mostra só o resumo; os controles e a ajuda continuam acessíveis por toque ou teclado. */
+function AssistantSection({ title, subtitle, icon, initiallyOpen = false, children }: {
+  title: string; subtitle: string; icon: LucideIcon; initiallyOpen?: boolean; children: ReactNode;
+}) {
+  const [open, setOpen] = useState(initiallyOpen);
+  return (
+    <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className={cn(GROUP, "group/asafe-section")}>
+      <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        <IconTile icon={icon} />
+        <span className="min-w-0 flex-1">
+          <span className="block text-body font-medium">{title}</span>
+          <span className="block text-footnote text-muted-foreground">{subtitle}</span>
+        </span>
+        <ChevronRight className="h-[18px] w-[18px] shrink-0 text-label-tertiary transition-transform motion-reduce:transition-none group-open/asafe-section:rotate-90" aria-hidden="true" />
+      </summary>
+      <div className="space-y-4 border-t border-separator py-4">{children}</div>
+    </details>
+  );
+}
+
 function CopyButton({ value, label }: { value: string; label: string }) {
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
@@ -132,7 +152,7 @@ const fullDate = (iso: string) => format(parseISO(iso), "dd/MM/yyyy");
 const firstName = (fullName: string) => fullName.trim().split(/\s+/)[0];
 
 /** Guia junto da ativação, com exemplos copiáveis e os mesmos comandos do assistente. */
-function AssistantUsageGuide({ name, initiallyOpen }: { name: string; initiallyOpen: boolean }) {
+function AssistantUsageGuide({ name }: { name: string }) {
   const weeklyMission = "toda sexta às 17h avisa que tem ensaio às 19h";
   const missionExamples = [
     { title: "Aviso diário", example: "todos os dias às 9h avisa que o repertório está no app" },
@@ -159,32 +179,15 @@ function AssistantUsageGuide({ name, initiallyOpen }: { name: string; initiallyO
   };
 
   return (
-    <section aria-labelledby="assistant-guide-title">
-      <h3 id="assistant-guide-title" className={GROUP_LABEL}>3. Como usar no grupo</h3>
-      <details open={initiallyOpen} className={cn(GROUP, "group/assistant-guide")}>
-        <summary className="flex min-h-[64px] cursor-pointer list-none items-center gap-3 px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-          <IconTile icon={BookOpen} />
-          <span className="min-w-0 flex-1">
-            <span className="block text-body">Guia do {name}</span>
-            <span className="block text-footnote text-muted-foreground">Como funciona e exemplos para copiar</span>
-          </span>
-          <ChevronRight className="h-[18px] w-[18px] shrink-0 text-label-tertiary transition-transform group-open/assistant-guide:rotate-90" aria-hidden="true" />
-        </summary>
-        <div className="space-y-6 border-t border-separator px-4 py-4">
+    <AssistantSection title={`Como usar o ${name}`} subtitle="Perguntas, avisos e missões" icon={BookOpen}>
+        <div className="space-y-5 px-4">
           <section aria-labelledby="assistant-guide-chat">
             <h4 id="assistant-guide-chat" className="text-callout font-semibold">Converse com o {name}</h4>
             <p className="mt-2 text-subhead leading-relaxed text-muted-foreground">
-              Depois de ativar, marque o contato @{name} no grupo ou responda a uma mensagem dele.
-              Ele consulta os dados desta equipe no +Louvor: cultos, escalas, músicas, tons e disponibilidade.
-              Cada integrante também pode confirmar ou recusar a própria escala.
-            </p>
-            <p className="mt-2 text-subhead leading-relaxed text-muted-foreground">
-              Também vale chamar para uma piada gospel, um trocadilho ou um desafio bíblico para a equipe.
-              Para continuar a brincadeira, responda à mensagem dele ou marque o contato de novo.
+              Marque @{name} no grupo para consultar cultos, escalas, músicas e tons. Você também pode confirmar sua escala.
             </p>
             <p className="mt-2 text-footnote leading-relaxed text-muted-foreground">
-              Para reconhecer cada pessoa, ele usa o telefone do cadastro ou o vínculo do WhatsApp em {MY_SETTINGS_IN_APP}.
-              Ali mesmo, cada pessoa escolhe se ele pode usar os dados dela; quem não permitir não é reconhecido.
+              Cada pessoa autoriza o uso dos próprios dados e vincula seu WhatsApp nesta aba.
             </p>
             <details className="group/assistant-examples mt-3 overflow-hidden rounded-xl border border-separator">
               <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-subhead font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
@@ -200,12 +203,10 @@ function AssistantUsageGuide({ name, initiallyOpen }: { name: string; initiallyO
           <section aria-labelledby="assistant-guide-notices">
             <h4 id="assistant-guide-notices" className="text-callout font-semibold">Receba os avisos do app</h4>
             <p className="mt-2 text-subhead leading-relaxed text-muted-foreground">
-              Nos grupos conectados, o {name} avisa sobre novos cultos, mudanças de data e escala, atualizações do repertório
-              e avisos enviados pelo líder no app. Quem foi escalado pode receber uma menção, conforme o WhatsApp vinculado ao cadastro.
+              Cultos, escalas e repertórios chegam aos grupos conectados, mesmo com o app fechado.
             </p>
             <p className="mt-2 text-subhead leading-relaxed text-muted-foreground">
               O lembrete da véspera sai a partir das 18h, no horário de Brasília, para os cultos do dia seguinte.
-              Os avisos chegam mesmo com o app fechado.
             </p>
             <blockquote className="mt-3 rounded-xl bg-fill-quaternary px-3 py-2.5 text-subhead leading-relaxed">
               <span className="mb-1 block text-caption1 font-medium text-muted-foreground">Exemplo de aviso de escala</span>
@@ -247,13 +248,12 @@ function AssistantUsageGuide({ name, initiallyOpen }: { name: string; initiallyO
             </p>
           </section>
         </div>
-      </details>
-    </section>
+    </AssistantSection>
   );
 }
 
 /**
- * Ajustes > Equipe: liga o assistente aos grupos do ministério, mostra o uso do
+ * Usuário > Asafe: liga o assistente aos grupos do ministério, mostra o uso do
  * dia e guarda as instruções que o líder passa para ele. Só líderes veem.
  * Se o backend ainda não tiver a migração, a seção simplesmente não aparece.
  */
@@ -374,21 +374,16 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
   const teamLimit = usage?.team_limit ?? null;
 
   return (
-    <section data-testid="team-assistant-settings" aria-labelledby="team-assistant-title" className="space-y-7">
-      <div className="mx-1">
+    <section data-testid="team-assistant-settings" aria-labelledby="team-assistant-title" className="space-y-3">
+      <div className="mx-1 pb-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <h2 id="team-assistant-title" className="text-title3 text-foreground">
-            Assistente no WhatsApp
+            Na equipe
           </h2>
           <span className="inline-flex items-center gap-1 rounded-full bg-fill-tertiary px-2 py-0.5 text-caption1 font-semibold text-muted-foreground">
             <ShieldCheck className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" /> Somente líderes
           </span>
         </div>
-        <p className="mt-1 max-w-xl text-subhead text-muted-foreground">
-          O {name} entra no grupo do ministério e responde quando alguém marca @{name}: escalas, repertório, tons,
-          disponibilidade e os combinados do ministério.
-          Também leva os avisos do app ao grupo e cumpre as missões agendadas pelo líder.
-        </p>
       </div>
 
       {isLoading || !data ? (
@@ -447,65 +442,6 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
             </div>
           )}
 
-          {/* 1. Número */}
-          <section aria-labelledby="assistant-number-title">
-            <h3 id="assistant-number-title" className={GROUP_LABEL}>1. Adicione este número ao grupo</h3>
-            <div className={GROUP}>
-              <Row leading={<IconTile icon={Bot} />} className="gap-2 pr-2">
-                <span className="min-w-0 flex-1">
-                  <span className="block text-body">{name}</span>
-                  <span className="block truncate text-subhead tabular-nums text-muted-foreground">
-                    {formatWhatsAppNumber(data.bot_phone) || "Número não configurado"}
-                  </span>
-                </span>
-                {data.bot_phone && <CopyButton value={formatWhatsAppNumber(data.bot_phone)} label="Copiar número" />}
-              </Row>
-            </div>
-            <p className={GROUP_FOOTER}>Salve o contato como “{name}” e adicione-o ao grupo do ministério.</p>
-          </section>
-
-          {/* 2. Código de ativação */}
-          <section aria-labelledby="assistant-code-title">
-            <h3 id="assistant-code-title" className={GROUP_LABEL}>2. Ative no grupo</h3>
-            <div className={GROUP}>
-              {pendingCode ? (
-                <Row leading={<IconTile icon={Link2} />} className="gap-2 py-2.5 pr-2">
-                  <span className="min-w-0 flex-1">
-                    <span className="block break-words font-mono text-body">
-                      {activationMessage(name, pendingCode.code)}
-                    </span>
-                    <span className="block text-footnote text-muted-foreground">
-                      Vale uma vez, até {dateTime(pendingCode.expires_at)}.
-                    </span>
-                  </span>
-                  <CopyButton value={activationMessage(name, pendingCode.code)} label="Copiar mensagem" />
-                </Row>
-              ) : null}
-              <button
-                type="button"
-                onClick={handleGenerateCode}
-                disabled={generating}
-                className="group/row flex w-full items-center gap-3 pl-4 text-left transition-colors active:bg-fill-quaternary disabled:opacity-60"
-              >
-                <IconTile icon={generating ? Loader2 : KeyRound} className={generating ? "[&>svg]:animate-spin" : undefined} />
-                <span className={ROW_BODY}>
-                  <span className="min-w-0 flex-1 text-body text-primary">
-                    {pendingCode ? "Gerar outro código" : "Gerar código de ativação"}
-                  </span>
-                  <ChevronRight className="h-[18px] w-[18px] text-label-tertiary" strokeWidth={2.5} aria-hidden="true" />
-                </span>
-              </button>
-            </div>
-            <p className={GROUP_FOOTER}>
-              {data.team_enabled
-                ? `Mande a mensagem no grupo marcando o @${name}. Ele se apresenta e lista tudo o que sabe fazer.`
-                : `Com o ${name} suspenso nesta equipe, o código não ativa nenhum grupo.`}
-              {consent && consent.state !== "granted" && ` Antes do primeiro código, você lê e aceita o aviso sobre o uso de IA da ${ASSISTANT_AI_PROVIDER}.`}
-            </p>
-          </section>
-
-          <AssistantUsageGuide name={name} initiallyOpen={data.groups.length === 0 || Boolean(pendingCode)} />
-
           {/* Grupos conectados */}
           <section aria-labelledby="assistant-groups-title">
             <h3 id="assistant-groups-title" className={GROUP_LABEL}>Grupos conectados</h3>
@@ -552,9 +488,70 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
             </div>
           </section>
 
+          <AssistantSection title="Conectar um grupo" subtitle="Adicione o Asafe e ative com um código" icon={Link2} initiallyOpen={data.groups.length === 0 || Boolean(pendingCode)}>
+            {/* 1. Número */}
+            <section aria-labelledby="assistant-number-title">
+              <h3 id="assistant-number-title" className={GROUP_LABEL}>1. Adicione este número ao grupo</h3>
+              <div className={GROUP}>
+                <Row leading={<IconTile icon={Bot} />} className="gap-2 pr-2">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-body">{name}</span>
+                    <span className="block truncate text-subhead tabular-nums text-muted-foreground">
+                      {formatWhatsAppNumber(data.bot_phone) || "Número não configurado"}
+                    </span>
+                  </span>
+                  {data.bot_phone && <CopyButton value={formatWhatsAppNumber(data.bot_phone)} label="Copiar número" />}
+                </Row>
+              </div>
+              <p className={GROUP_FOOTER}>Salve o contato como “{name}” e adicione-o ao grupo do ministério.</p>
+            </section>
+
+            {/* 2. Código de ativação */}
+            <section aria-labelledby="assistant-code-title">
+              <h3 id="assistant-code-title" className={GROUP_LABEL}>2. Ative no grupo</h3>
+              <div className={GROUP}>
+                {pendingCode ? (
+                  <Row leading={<IconTile icon={Link2} />} className="gap-2 py-2.5 pr-2">
+                    <span className="min-w-0 flex-1">
+                      <span className="block break-words font-mono text-body">
+                        {activationMessage(name, pendingCode.code)}
+                      </span>
+                      <span className="block text-footnote text-muted-foreground">
+                        Vale uma vez, até {dateTime(pendingCode.expires_at)}.
+                      </span>
+                    </span>
+                    <CopyButton value={activationMessage(name, pendingCode.code)} label="Copiar mensagem" />
+                  </Row>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleGenerateCode}
+                  disabled={generating}
+                  className="group/row flex w-full items-center gap-3 pl-4 text-left transition-colors active:bg-fill-quaternary disabled:opacity-60"
+                >
+                  <IconTile icon={generating ? Loader2 : KeyRound} className={generating ? "[&>svg]:animate-spin" : undefined} />
+                  <span className={ROW_BODY}>
+                    <span className="min-w-0 flex-1 text-body text-primary">
+                      {pendingCode ? "Gerar outro código" : "Gerar código de ativação"}
+                    </span>
+                    <ChevronRight className="h-[18px] w-[18px] text-label-tertiary" strokeWidth={2.5} aria-hidden="true" />
+                  </span>
+                </button>
+              </div>
+              <p className={GROUP_FOOTER}>
+                {data.team_enabled
+                  ? `Mande a mensagem no grupo marcando o @${name}. Ele se apresenta e lista tudo o que sabe fazer.`
+                  : `Com o ${name} suspenso nesta equipe, o código não ativa nenhum grupo.`}
+                {consent && consent.state !== "granted" && ` Antes do primeiro código, você lê e aceita o aviso sobre o uso de IA da ${ASSISTANT_AI_PROVIDER}.`}
+              </p>
+            </section>
+
+          </AssistantSection>
+
+          <AssistantUsageGuide name={name} />
+
           {/* Uso do dia */}
-          <section aria-labelledby="assistant-usage-title">
-            <h3 id="assistant-usage-title" className={GROUP_LABEL}>Uso de hoje</h3>
+          <AssistantSection title="Uso de hoje" subtitle={teamLimit === null ? `${usage?.today ?? 0} perguntas · sem limite` : `${usage?.today ?? 0} de ${teamLimit} perguntas`} icon={MessageCircle}>
             <div className={cn(GROUP, "px-4 py-3")}>
               <div className="flex items-baseline justify-between gap-3">
                 <span className="text-body">Perguntas da equipe</span>
@@ -574,12 +571,11 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
               {usage?.member_limit != null ? `Cada pessoa pode fazer até ${usage.member_limit} perguntas por dia. ` : ""}
               A contagem recomeça à meia-noite. Ajuda e ativação não contam.
             </p>
-          </section>
+          </AssistantSection>
 
           {/* Privacidade e IA: aceite do líder e revogação */}
           {consent?.state === "granted" && (
-            <section aria-labelledby="assistant-privacy-title">
-              <h3 id="assistant-privacy-title" className={GROUP_LABEL}>Privacidade e IA</h3>
+            <AssistantSection title="Privacidade da equipe" subtitle={`IA da ${ASSISTANT_AI_PROVIDER} · autorizada`} icon={ShieldCheck}>
               <div className={GROUP}>
                 <Row leading={<IconTile icon={ShieldCheck} />}>
                   <span className="min-w-0 flex-1">
@@ -606,18 +602,17 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
                 </button>
               </div>
               <p className={GROUP_FOOTER}>
-                Cada pessoa escolhe em {MY_SETTINGS_IN_APP} se o {name} pode usar os dados dela. Revogar desliga o {name} em
+                Cada pessoa escolhe em {ASAFE_SETTINGS_IN_APP} se o {name} pode usar os dados dela. Revogar desliga o {name} em
                 todos os grupos desta equipe; para voltar, aceite o aviso de novo e gere outro código.
               </p>
-            </section>
+            </AssistantSection>
           )}
         </>
       )}
 
       {/* Instruções do ministério */}
       {data && (
-        <section aria-labelledby="assistant-instructions-title">
-          <h3 id="assistant-instructions-title" className={GROUP_LABEL}>Instruções do ministério</h3>
+        <AssistantSection title="Instruções do ministério" subtitle="Ensaios e combinados da equipe" icon={FileText}>
           <div className={cn(GROUP, "p-3")}>
             <label htmlFor="assistant-instructions" className="sr-only">
               Instruções do ministério para o {name}
@@ -627,8 +622,8 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
               value={instructions}
               onChange={(e) => setDraft(e.target.value.slice(0, maxChars))}
               placeholder={INSTRUCTIONS_PLACEHOLDER}
-              rows={6}
-              className="min-h-[148px]"
+              rows={4}
+              className="min-h-[112px]"
             />
             <div className="mt-2.5 flex items-center justify-between gap-3 pl-1">
               <span className="text-footnote tabular-nums text-muted-foreground">
@@ -649,11 +644,15 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
             do grupo pode perguntar: não coloque senhas nem dados pessoais.
             Para enviar um aviso em horário marcado, crie uma missão no grupo; salvar este texto orienta as respostas.
           </p>
-        </section>
+        </AssistantSection>
       )}
 
       {data?.platform_enabled && !needsDecision && <AutomaticNoticeSettings key={teamId} teamId={teamId} disabled={!data.team_enabled} />}
-      {data?.platform_enabled && !needsDecision && <AssistantMissions key={`missions-${teamId}`} teamId={teamId} name={name} disabled={!data.team_enabled} />}
+      {data?.platform_enabled && !needsDecision && (
+        <AssistantSection title="Missões agendadas" subtitle="Acompanhe os avisos programados" icon={Clock3}>
+          <AssistantMissions key={`missions-${teamId}`} teamId={teamId} name={name} disabled={!data.team_enabled} />
+        </AssistantSection>
+      )}
 
       {consent && (
         <AssistantAiConsentDialog
@@ -707,8 +706,7 @@ function AutomaticNoticeSettings({ teamId, disabled }: { teamId: string; disable
     } finally { setSaving(null); }
   };
   return (
-    <section aria-labelledby="assistant-notifications-title">
-      <h3 id="assistant-notifications-title" className={GROUP_LABEL}>Avisos automáticos</h3>
+    <AssistantSection title="Avisos automáticos" subtitle="Escolha o que chega ao grupo" icon={MessageCircle}>
       <div className={GROUP}>
         {NOTIFICATION_OPTIONS.map((option) => (
           <Row key={option.key} leading={<IconTile icon={MessageCircle} />}>
@@ -726,12 +724,12 @@ function AutomaticNoticeSettings({ teamId, disabled }: { teamId: string; disable
         Vale para os grupos conectados desta equipe. As mudanças são agrupadas por alguns instantes antes do envio.
         As menções usam o WhatsApp vinculado ao cadastro. Os avisos não gastam o limite de perguntas.
       </p>
-    </section>
+    </AssistantSection>
   );
 }
 
 /**
- * Ajustes > Meu usuário: o assistente reconhece a pessoa pelo telefone do
+ * Usuário > Asafe: o assistente reconhece a pessoa pelo telefone do
  * cadastro. Quando o WhatsApp esconde o número, um código mandado NO PRIVADO do
  * assistente liga o WhatsApp dela; dá para desfazer se não tiver sido ela.
  */
@@ -846,7 +844,7 @@ export function MyAssistantSettings() {
 
   return (
     <section aria-labelledby="settings-assistant">
-      <h2 id="settings-assistant" className={GROUP_LABEL}>Assistente no WhatsApp</h2>
+      <h2 id="settings-assistant" className={GROUP_LABEL}>Meu WhatsApp</h2>
       <div className={GROUP}>
         <Row leading={<IconTile icon={Bot} />}>
           <span className="min-w-0 flex-1 text-body">{name}</span>
@@ -936,9 +934,9 @@ export function MyAssistantSettings() {
         )}
       </div>
       <p className={GROUP_FOOTER}>
-        No grupo do ministério, marque @{name} e pergunte sua escala, o repertório ou o tom de uma música. Ele reconhece
-        você pelo telefone acima. Se o WhatsApp esconder seu número, use o código: ele abre uma conversa privada com o {name}.
-        {consent && ` As respostas são geradas pela IA da ${ASSISTANT_AI_PROVIDER}. `}
+        Marque @{name} no grupo para conversar.
+        {!data.has_phone && " Cadastre seu telefone na aba Perfil ou vincule seu WhatsApp por código."}
+        {consent && ` Respostas com IA da ${ASSISTANT_AI_PROVIDER}. `}
         {consent && (
           <button type="button" onClick={() => setConsentDialog("member-review")} className="font-medium text-primary underline-offset-2 hover:underline">
             Ver o aviso de privacidade

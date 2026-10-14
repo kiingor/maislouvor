@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CreditCard, RefreshCw } from 'lucide-react';
+import { CreditCard, RefreshCw, RotateCcw, Settings2, SlidersHorizontal } from 'lucide-react';
 import { useTeam } from '@/contexts/TeamContext';
 import { GlassCard } from '@/components/GlassCard';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,8 @@ export default function TeamBilling({ initialSeats }: { initialSeats?: number })
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [pendingProduct, setPendingProduct] = useState<string | null>(null);
+  const [planEditor, setPlanEditor] = useState<{ key: string; open: boolean } | null>(null);
+  const editorId = useId();
   const awaitingConfirmation = pendingProduct !== null;
   const configured = isBillingConfigured();
   const portalReturnHandled = useRef(false);
@@ -96,6 +98,9 @@ export default function TeamBilling({ initialSeats }: { initialSeats?: number })
   const subscription = context.subscription;
   const canBuy = configured && canStartSubscription(context) && !offers.data?.active && !awaitingConfirmation;
   const canBuild = !subscription.is_unlimited && (canBuy || configured && context.can_manage && subscription.is_active && subscription.provider === 'revenuecat' && !awaitingConfirmation);
+  const editorKey = `${teamId}:${subscription.product_id ?? 'new'}:${initialSeats ?? ''}`;
+  const editingPlan = planEditor?.key === editorKey ? planEditor.open : initialSeats !== undefined;
+  const showBuilder = canBuild && (!subscription.is_active || editingPlan);
   const native = billingPlatform() !== 'web';
   const offerError = offers.error instanceof NativeBillingError ? offers.error : null;
   const accountDetails = <GlassCard className="billing-account p-5 space-y-4">
@@ -103,7 +108,8 @@ export default function TeamBilling({ initialSeats }: { initialSeats?: number })
         <h2 className="billing-account-heading font-semibold">Assinatura da equipe</h2>
         <p className="text-sm text-muted-foreground">{currentTeam.name} · {context.member_count} integrantes</p>
       </div></div>
-      <div><p className="font-medium">{subscription.is_unlimited ? 'Ilimitado' : planLabels[subscription.plan as keyof typeof planLabels] ?? subscription.plan}</p>
+      <div>{subscription.is_active && !subscription.is_unlimited && <p className="billing-current-label">PLANO ATUAL</p>}
+        <p className="billing-current-plan font-medium">{subscription.is_unlimited ? 'Ilimitado' : planLabels[subscription.plan as keyof typeof planLabels] ?? subscription.plan}</p>
         {subscription.is_unlimited ? <p className="text-sm text-muted-foreground">Acesso liberado, sem limite de integrantes.{subscription.unlimited_reason === 'legacy' && ' Sua equipe mantém as condições anteriores.'}</p> : <>
         <p className="text-sm text-muted-foreground">{subscriptionStatusLabels[subscription.status as keyof typeof subscriptionStatusLabels] ?? subscription.status}</p>
         {(context.capacity?.member_limit ?? subscription.member_limit) && <p className="text-sm mt-1">Até {context.capacity?.member_limit ?? subscription.member_limit} integrantes, incluindo o líder.</p>}
@@ -113,10 +119,15 @@ export default function TeamBilling({ initialSeats }: { initialSeats?: number })
         {subscription.environment === 'SANDBOX' && <p className="text-sm mt-2">Assinatura de teste.</p>}
         </>}
       </div>
-      {!context.can_manage ? <p className="text-sm text-muted-foreground">O líder responsável pela equipe gerencia a assinatura.</p> : (!subscription.is_unlimited || subscription.provider === 'revenuecat') && <div className="flex flex-wrap gap-2">
-        <Button variant="outline" disabled={busy} onClick={() => void act('sync')}><RefreshCw className="h-4 w-4 mr-2" />Atualizar</Button>
-        {configured && native && !subscription.is_unlimited && <Button variant="outline" disabled={busy} onClick={() => void act('restore')}>Restaurar compras</Button>}
-        {subscription.provider === 'revenuecat' && <Button variant="outline" disabled={busy} onClick={() => void act('manage')}>Gerenciar assinatura</Button>}
+      {canBuild && subscription.is_active && <Button variant="outline" className="billing-edit-plan" disabled={busy}
+        aria-expanded={editingPlan} aria-controls={editingPlan ? editorId : undefined}
+        onClick={() => setPlanEditor({ key: editorKey, open: !editingPlan })}>
+        <SlidersHorizontal aria-hidden className="h-4 w-4" />{editingPlan ? 'Cancelar alteração' : 'Alterar plano'}
+      </Button>}
+      {!context.can_manage ? <p className="text-sm text-muted-foreground">O líder responsável pela equipe gerencia a assinatura.</p> : (!subscription.is_unlimited || subscription.provider === 'revenuecat') && <div className="billing-actions" role="group" aria-label="Ações da assinatura">
+        <Button variant="ghost" disabled={busy} onClick={() => void act('sync')}><RefreshCw aria-hidden /><span>Atualizar</span></Button>
+        {configured && native && !subscription.is_unlimited && <Button variant="ghost" aria-label="Restaurar compras" disabled={busy} onClick={() => void act('restore')}><RotateCcw aria-hidden /><span>Restaurar</span></Button>}
+        {subscription.provider === 'revenuecat' && <Button variant="ghost" aria-label="Gerenciar assinatura" disabled={busy} onClick={() => void act('manage')}><Settings2 aria-hidden /><span>Gerenciar</span></Button>}
       </div>}
       {awaitingConfirmation && <p role="status" className="text-sm">A compra está aguardando confirmação. Use Atualizar em alguns instantes.</p>}
     </GlassCard>;
@@ -128,10 +139,10 @@ export default function TeamBilling({ initialSeats }: { initialSeats?: number })
       {offerError && <p className="text-xs text-muted-foreground">Código de suporte: <code className="select-all break-all">{offerError.supportCode}</code></p>}
       <Button variant="outline" disabled={busy} onClick={() => void offers.refetch()}>Recarregar planos</Button>
     </GlassCard>}
-    {canBuild && !offers.isError && (offers.isLoading ? <p role="status">Carregando planos…</p> :
+    {showBuilder && !offers.isError && <div id={editorId}>{offers.isLoading ? <p role="status">Carregando planos…</p> :
       <PlanBuilder key={`${teamId}:${subscription.product_id ?? 'new'}`} context={context} offers={offers.data?.offers ?? []}
         loading={offers.isLoading} busy={busy} platform={billingPlatform()} initialSeats={initialSeats}
-        onPurchase={(offer) => void act('purchase', offer)} onExpand={(offer) => void act('expand', offer)} onManage={() => void act('manage')} />)}
+        onPurchase={(offer) => void act('purchase', offer)} onExpand={(offer) => void act('expand', offer)} onManage={() => void act('manage')} />}</div>}
     {canBuild && !subscription.is_active && accountDetails}
     {offers.data?.active && !subscription.is_active && <p role="status" className="text-sm">Encontramos uma compra ativa. Use Atualizar para confirmar o acesso da equipe.</p>}
   </div>;

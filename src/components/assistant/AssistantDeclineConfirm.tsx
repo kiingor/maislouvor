@@ -9,7 +9,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { MY_SETTINGS_IN_APP, TEAM_SETTINGS_IN_APP } from "@/lib/legal";
+import { ASAFE_SETTINGS_IN_APP } from "@/lib/legal";
 
 interface Props {
   open: boolean;
@@ -55,7 +55,7 @@ export function AssistantDeclineConfirm({
                 </p>
                 <p>
                   Para voltar, um líder aceita o aviso de novo, gera outro código e manda “@{name} ativar CÓDIGO” em cada
-                  grupo. Depois, retome as missões em {TEAM_SETTINGS_IN_APP}, e cada pessoa permite de novo o uso dos próprios dados.
+                  grupo. Depois, retome as missões em {ASAFE_SETTINGS_IN_APP}, e cada pessoa permite de novo o uso dos próprios dados.
                 </p>
               </div>
             ) : (
@@ -67,7 +67,7 @@ export function AssistantDeclineConfirm({
                 </p>
                 <p>
                   No app, nada muda: seu nome continua nas escalas da equipe. Dá para permitir de novo quando quiser em{" "}
-                  {MY_SETTINGS_IN_APP}.
+                  {ASAFE_SETTINGS_IN_APP}.
                 </p>
               </div>
             )}

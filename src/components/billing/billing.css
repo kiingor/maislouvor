@@ -136,6 +136,14 @@
 .billing-team .billing-account { border: 0; border-radius: 24px; box-shadow: none; background: hsl(var(--billing-card)); -webkit-backdrop-filter: none; backdrop-filter: none; }
 .billing-account button { border-radius: 999px; min-height: 44px; }
 .billing-account .billing-account-heading { font-size: 1.0625rem; }
+.billing-current-label { margin: 0 0 4px; font-size: .6875rem; font-weight: 600; letter-spacing: .1em; color: hsl(var(--billing-secondary)); }
+.billing-account .billing-current-plan { font-size: 1.5rem; font-weight: 650; letter-spacing: -.035em; }
+.billing-account .billing-edit-plan { width: 100%; gap: 8px; border-color: hsl(var(--billing-separator)); }
+.billing-actions { display: flex; gap: 0; padding: 4px; border-radius: 20px; background: hsl(var(--billing-fill)); }
+.billing-account .billing-actions > button { flex: 1 1 0; min-width: 0; height: auto; min-height: 64px; flex-direction: column; gap: 5px; padding: 8px 4px; border: 0; border-radius: 16px; background: transparent; box-shadow: none; font-size: .8125rem; font-weight: 500; line-height: 1.25; }
+.billing-account .billing-actions > button:hover:not(:disabled) { background: hsl(var(--billing-card)); }
+.billing-actions svg { width: 18px; height: 18px; flex-shrink: 0; }
+.billing-builder[data-editing='true'] .billing-heading h3 { font-size: 1.5rem; }
 
 
 @media (min-width: 700px) {

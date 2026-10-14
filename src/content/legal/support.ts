@@ -5,6 +5,7 @@
 import {
   APP_NAME,
   ASAFE_ALLOW_LABEL,
+  ASAFE_SETTINGS_IN_APP,
   DELETE_ACCOUNT_IN_APP,
   LEGAL_PATHS,
   MIN_AGE,
@@ -76,7 +77,7 @@ export const supportPage: LegalDocumentContent = {
             },
             {
               q: "Como desativo o Asafe, o assistente no WhatsApp?",
-              a: `Para você: desligue **${ASAFE_ALLOW_LABEL}** em **${MY_SETTINGS_IN_APP}** (ou toque em **Não permitir** no aviso); o Asafe deixa de reconhecer você e apaga o seu histórico com ele. Para toda a equipe: líderes desativam o assistente em **Usuário › Equipe**.`,
+              a: `Para você: desligue **${ASAFE_ALLOW_LABEL}** em **${ASAFE_SETTINGS_IN_APP}** (ou toque em **Não permitir** no aviso); o Asafe deixa de reconhecer você e apaga o seu histórico com ele. Para toda a equipe: líderes desativam o assistente em **${ASAFE_SETTINGS_IN_APP}**.`,
             },
             {
               q: "Não concordo com os Termos atualizados. E agora?",

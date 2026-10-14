@@ -102,7 +102,8 @@ export default function TeamSettings() {
   const location = useLocation();
   const linkedTab = searchParams.get("billing") === "return" ? "billing"
     : searchParams.get("aba") === "assinatura" ? "billing"
-    : searchParams.get("aba") === "membros" ? "members" : "profile";
+    : searchParams.get("aba") === "membros" ? "members"
+    : searchParams.get("aba") === "asafe" ? "asafe" : "profile";
   const [activeTab, setActiveTab] = useState(linkedTab);
   useEffect(() => {
     setActiveTab(location.hash === `#${DELETE_ACCOUNT_ANCHOR}` ? "profile" : linkedTab);
@@ -382,11 +383,12 @@ export default function TeamSettings() {
   return (
     <Tabs value={activeTab} onValueChange={changeTab} className="w-full">
       <PageHeader title="Usuário">
-        <TabsList className="flex w-full lg:w-[540px]">
-          <TabsTrigger value="profile" className="flex-1 px-1.5 text-[13px] sm:px-3 sm:text-subhead">Perfil</TabsTrigger>
-          <TabsTrigger value="members" className="flex-1 px-1.5 text-[13px] sm:px-3 sm:text-subhead">Membros</TabsTrigger>
-          {isAdmin && <TabsTrigger value="team" className="flex-1 px-1.5 text-[13px] sm:px-3 sm:text-subhead">Equipe</TabsTrigger>}
-          <TabsTrigger value="billing" className="flex-1 px-1.5 text-[13px] sm:px-3 sm:text-subhead">Assinatura</TabsTrigger>
+        <TabsList aria-label="Ajustes do usuário" className="flex min-h-11 w-full lg:w-[640px]">
+          <TabsTrigger value="profile" className="min-h-10 flex-auto px-1 text-[12px] min-[380px]:text-[13px] sm:px-3 sm:text-subhead">Perfil</TabsTrigger>
+          <TabsTrigger value="members" className="min-h-10 flex-auto px-1 text-[12px] min-[380px]:text-[13px] sm:px-3 sm:text-subhead">Membros</TabsTrigger>
+          {isAdmin && <TabsTrigger value="team" className="min-h-10 flex-auto px-1 text-[12px] min-[380px]:text-[13px] sm:px-3 sm:text-subhead">Equipe</TabsTrigger>}
+          <TabsTrigger value="asafe" className="min-h-10 flex-auto px-1 text-[12px] min-[380px]:text-[13px] sm:px-3 sm:text-subhead">Asafe</TabsTrigger>
+          <TabsTrigger value="billing" className="min-h-10 flex-auto px-1 text-[12px] min-[380px]:text-[13px] sm:px-3 sm:text-subhead">Assinatura</TabsTrigger>
         </TabsList>
       </PageHeader>
 
@@ -506,8 +508,6 @@ export default function TeamSettings() {
               </div>
             </section>
 
-            {/* Assistente no WhatsApp: reconhece a pessoa pelo telefone acima */}
-            <MyAssistantSettings />
             <FaceIdSettings />
 
             {/* Minhas funções */}
@@ -777,6 +777,17 @@ export default function TeamSettings() {
         </div>
       </TabsContent>
 
+      <TabsContent value="asafe" className="mt-2">
+        <div className="space-y-6 lg:max-w-3xl">
+          <div className="px-1">
+            <h2 className="text-title2">Asafe</h2>
+            <p className="mt-1 text-subhead text-muted-foreground">Sua equipe conectada ao WhatsApp.</p>
+          </div>
+          <MyAssistantSettings />
+          {isAdmin && currentTeam && <TeamAssistantSettings key={currentTeam.id} teamId={currentTeam.id} />}
+        </div>
+      </TabsContent>
+
       {/* ===== ABA: EQUIPE (SOMENTE LÍDER) ===== */}
       {isAdmin && currentTeam && (
         <TabsContent value="team" className="mt-2">
@@ -786,7 +797,6 @@ export default function TeamSettings() {
               value={currentTeam.availability_mode}
               onSaved={refetch}
             />
-            <TeamAssistantSettings key={currentTeam.id} teamId={currentTeam.id} />
           </div>
         </TabsContent>
       )}

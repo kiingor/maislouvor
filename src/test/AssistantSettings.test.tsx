@@ -56,6 +56,7 @@ describe("TeamAssistantSettings", () => {
       return { data: null, error: null };
     });
     renderWithQuery(<TeamAssistantSettings teamId="team-1" />);
+    fireEvent.click(await screen.findByText("Avisos automáticos"));
     const option = await screen.findByRole("switch", { name: "Escalas" });
     expect(option).toBeChecked();
     fireEvent.click(option);
@@ -74,6 +75,7 @@ describe("TeamAssistantSettings", () => {
       return { data: null, error: { message: "offline" } };
     });
     renderWithQuery(<TeamAssistantSettings teamId="team-1" />);
+    fireEvent.click(await screen.findByText("Avisos automáticos"));
     const option = await screen.findByRole("switch", { name: "Lembrete na véspera" });
     fireEvent.click(option);
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Não foi possível salvar" })));
@@ -95,11 +97,13 @@ describe("TeamAssistantSettings", () => {
     renderWithQuery(<TeamAssistantSettings teamId="team-1" />);
 
     expect(await screen.findByText("+55 (11) 95555-4444")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Uso de hoje"));
     expect(screen.getByText("12 de 100")).toBeInTheDocument();
     expect(screen.getByText("Louvor 🎸")).toBeInTheDocument();
     expect(screen.getByText(/Cada pessoa pode fazer até 20 perguntas por dia/)).toBeInTheDocument();
     expect(screen.getByText("Minha escala")).toBeInTheDocument();
 
+    fireEvent.click(screen.getByText("Conectar um grupo"));
     fireEvent.click(screen.getByRole("button", { name: "Gerar código de ativação" }));
     expect(await screen.findByText("@Asafe ativar K7Q2PD")).toBeInTheDocument();
     expect(mocks.rpc).toHaveBeenCalledWith("assistant_create_activation_code", { p_team_id: "team-1" });
@@ -111,6 +115,7 @@ describe("TeamAssistantSettings", () => {
     );
     renderWithQuery(<TeamAssistantSettings teamId="team-1" />);
 
+    fireEvent.click(await screen.findByText("Instruções do ministério"));
     const field = await screen.findByLabelText("Instruções do ministério para o Asafe");
     const save = screen.getByRole("button", { name: "Salvar instruções" });
     expect(field).toHaveValue("Ensaio quinta 20h.");

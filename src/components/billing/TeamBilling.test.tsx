@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TeamBilling from './TeamBilling';
 import { getBillingContext, getWebBillingPortal, requireBillingOwner, syncBilling } from '@/lib/billing/api';
@@ -33,12 +33,42 @@ beforeEach(() => {
   vi.mocked(expandSubscription).mockResolvedValue(undefined);
 });
 afterEach(cleanup);
-function mount() {
+function mount(initialSeats?: number) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(<QueryClientProvider client={client}><TeamBilling /></QueryClientProvider>);
+  return render(<QueryClientProvider client={client}><TeamBilling initialSeats={initialSeats} /></QueryClientProvider>);
 }
 
 describe('Team subscription UI', () => {
+  it('shows the current subscription first and opens changes only when requested', async () => {
+    context.subscription = { ...context.subscription, plan: 'completo', provider: 'revenuecat', status: 'active',
+      is_active: true, store: 'app_store', product_id: 'completo_20', member_limit: 20 };
+    mount();
+    const edit = await screen.findByRole('button', { name: 'Alterar plano' });
+    expect(edit).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('billing-checkout')).not.toBeInTheDocument();
+    const actions = within(screen.getByRole('group', { name: 'Ações da assinatura' }));
+    expect(actions.getByRole('button', { name: 'Atualizar' })).toBeEnabled();
+    expect(actions.getByRole('button', { name: 'Restaurar compras' })).toBeEnabled();
+    expect(actions.getByRole('button', { name: 'Gerenciar assinatura' })).toBeEnabled();
+    fireEvent.click(edit);
+    expect(await screen.findByRole('heading', { name: 'Ajuste seu plano' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Plano atual' })).toBeDisabled();
+    expect(screen.getByLabelText('Resumo da alteração')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar alteração' }));
+    expect(screen.queryByTestId('billing-checkout')).not.toBeInTheDocument();
+    expect(purchaseSubscription).not.toHaveBeenCalled();
+    expect(expandSubscription).not.toHaveBeenCalled();
+    expect(openBillingManagement).not.toHaveBeenCalled();
+  });
+  it('opens a requested capacity change directly but still lets the owner cancel', async () => {
+    context.subscription = { ...context.subscription, plan: 'completo', provider: 'revenuecat', status: 'active',
+      is_active: true, store: 'app_store', product_id: 'completo_20', member_limit: 20 };
+    mount(21);
+    expect(await screen.findByRole('spinbutton', { name: 'Integrantes' })).toHaveValue(21);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar alteração' }));
+    expect(screen.queryByTestId('billing-checkout')).not.toBeInTheDocument();
+    expect(purchaseSubscription).not.toHaveBeenCalled();
+  });
   it('shows safe native support details and can reload the plans', async () => {
     vi.mocked(getBillingOffers).mockRejectedValueOnce(new NativeBillingError('offerings', 'ios', { code: 23, message: 'private-customer' }, 'BRA'));
     mount();
@@ -75,6 +105,7 @@ describe('Team subscription UI', () => {
     const offers = context.products.map((product, i) => ({ key: product.product_id, product, title: 'Completo', price: i ? 'R$ 89,90' : 'R$ 61,90', priceAmount: i ? 89.9 : 61.9, currency: 'BRL' }));
     vi.mocked(getBillingOffers).mockResolvedValue({ active: true, offers });
     mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Alterar plano' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Adicionar mais um integrante' }));
     fireEvent.click(screen.getByRole('button', { name: /Confirmar novas vagas:/ }));
     await waitFor(() => expect(getWebBillingPortal).toHaveBeenCalledWith('team', offers[1]));
@@ -147,6 +178,7 @@ describe('Team subscription UI', () => {
       key: product.product_id, product, title: 'Completo', price: i ? 'R$ 89,90' : 'R$ 61,90', priceAmount: i ? 89.9 : 61.9, currency: 'BRL',
     })) });
     mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Alterar plano' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Adicionar mais um integrante' }));
     expect(screen.getByText(/Diferença para seu plano atual/)).toHaveTextContent(/28,00/);
     fireEvent.click(screen.getByRole('button', { name: /Confirmar novas vagas:/ }));

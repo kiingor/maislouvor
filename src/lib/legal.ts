@@ -81,7 +81,9 @@ export const DELETE_ACCOUNT_ANCHOR = "excluir-conta";
  * este endereço: ninguém precisa aceitar os termos para excluir a conta.
  */
 export const DELETE_ACCOUNT_SETTINGS_PATH = `/app/settings#${DELETE_ACCOUNT_ANCHOR}`;
-/** Interruptor do Asafe em Usuário › Perfil (AssistantSettings). */
+/** Aba do assistente, com permissão pessoal e controles da equipe. */
+export const ASAFE_SETTINGS_IN_APP = "Usuário › Asafe";
+/** Interruptor do Asafe em Usuário › Asafe (AssistantSettings). */
 export const ASAFE_ALLOW_LABEL = "Permitir que o Asafe use meus dados";
 
 /* Asafe (assistente no WhatsApp): o que os documentos e o aviso de IA do app

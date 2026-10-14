@@ -76,7 +76,7 @@ describe("aviso de IA", () => {
     expect(text).toContain("Não são enviados à OpenAI");
     expect(text).toContain("30 dias");
     expect(text).toContain("É opcional");
-    expect(text).toContain("Usuário › Equipe › Assistente no WhatsApp");
+    expect(text).toContain("Usuário › Asafe");
     expect(text).toContain(`versão ${consentVersionLabel()}`);
     expect(within(dialog).getByRole("link", { name: /Política de Privacidade/ }).getAttribute("href")).toMatch(/\/privacidade$/);
 
@@ -118,7 +118,7 @@ describe("aviso de IA", () => {
 
   it("tells leaders that each person still chooses for their own data", () => {
     render(<AssistantAiConsentDialog open variant="team-activate" onAccept={vi.fn()} onDecline={vi.fn()} onClose={vi.fn()} />);
-    expect(screen.getByRole("dialog").textContent).toContain("cada pessoa (inclusive você) escolhe em Usuário › Perfil");
+    expect(screen.getByRole("dialog").textContent).toContain("cada pessoa (inclusive você) escolhe em Usuário › Asafe");
   });
 
   it("explains the database errors", () => {

@@ -6,6 +6,7 @@
 import {
   APP_NAME,
   ASAFE_ALLOW_LABEL,
+  ASAFE_SETTINGS_IN_APP,
   LEGAL_ADDRESS,
   LEGAL_DOCUMENT,
   LEGAL_ENTITY_NAME,
@@ -151,7 +152,7 @@ export const termsOfUse: LegalDocumentContent = {
           "O assistente Asafe usa inteligência artificial para responder no WhatsApp. A separação de faixas também usa modelos de processamento de áudio, executados em infraestrutura operada por nós. A transposição de tons das cifras é feita no próprio app.",
           "**As respostas do Asafe podem conter erros.** Confira as informações antes de usar; elas não substituem a decisão da liderança. As faixas separadas podem conter ruídos ou partes de outros instrumentos.",
           `Para gerar as respostas do Asafe, o conteúdo necessário é enviado à OpenAI, como explica a ${link("Política de Privacidade", LEGAL_PATHS.privacy)}.`,
-          `O Asafe é opcional e só funciona nas equipes em que um líder o ativa; para ativá-lo, o líder aceita um aviso sobre o envio de dados à OpenAI (equipes que já o usavam recebem o mesmo aviso para manter ou desativar). Cada pessoa escolhe em **${MY_SETTINGS_IN_APP}** se ele pode usar os dados dela (**${ASAFE_ALLOW_LABEL}**): sem essa permissão, ele não reconhece a pessoa nem a marca nos avisos. Contas antigas também precisam dar o aceite atual antes do uso dos dados pela IA. Líderes podem desativá-lo para toda a equipe em **Usuário › Equipe**.`,
+          `O Asafe é opcional e só funciona nas equipes em que um líder o ativa; para ativá-lo, o líder aceita um aviso sobre o envio de dados à OpenAI (equipes que já o usavam recebem o mesmo aviso para manter ou desativar). Cada pessoa escolhe em **${ASAFE_SETTINGS_IN_APP}** se ele pode usar os dados dela (**${ASAFE_ALLOW_LABEL}**): sem essa permissão, ele não reconhece a pessoa nem a marca nos avisos. Contas antigas também precisam dar o aceite atual antes do uso dos dados pela IA. Líderes podem desativá-lo para toda a equipe em **${ASAFE_SETTINGS_IN_APP}**.`,
           "Não envie ao Asafe dados sensíveis, como informações de saúde, documentos ou senhas.",
         ],
       ],
