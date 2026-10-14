@@ -1,22 +1,25 @@
 # Notas para a revisão das lojas
 
-Material atualizado em **09/10/2026**. O iOS **1.0.0 (11)** foi gerado da
-fonte **`94b9a93`**, enviado, processado e disponibilizado ao grupo interno
-**Teste iPhone**. A ficha 1.0.0 seleciona esse build, mantém lançamento manual
-e está em **Preparar para envio**, sem submissão pública. Foram salvas seis
-capturas de iPhone, cinco de iPad e estas notas; a declaração App Privacy foi
-publicada com doze categorias. Ver o
-[registro final](preparacao-final-20261009.md).
+Atualização de preparação em **13/10/2026**: iOS **1.0.0 (16)**, fonte
+`3dee928`, processado pela Apple e confirmado **Em testes** no grupo interno
+Teste iPhone. Compra, sincronização e restauração foram confirmadas em iPhone
+físico com desenvolvimento + Sandbox Brasil. Asafe e mixer foram confirmados
+pelo responsável. Não extrapolar esse resultado para o cenário anterior de
+TestFlight com a conta Apple pessoal.
 
-**Pendências de envio:** o teste anterior no iPhone brasileiro apresentou
-`ML-IOS-OFFERINGS-23-BRA`. Carregamento dos produtos, compra, restauração e
-liberação do plano no build 11 continuam sem validação concluída. O teste direto
-StoreKit do simulador USA não encontrou produtos, mas não explica sozinho a
-falha brasileira. Não é solicitado logout da conta Apple pessoal. Também faltam
-conferência dos direitos e da apresentação do conteúdo enviado por usuários. O
-grupo do Asafe foi conectado à demo; vínculo pessoal e teste de conversa seguem
-pendentes, conforme o [registro específico](asafe-grupo-revisao-20261009.md).
-Ver o [diagnóstico](diagnostico-nativo-assinaturas-20261009.md).
+**Este roteiro é um rascunho local atualizado, ainda não salvo na Apple.**
+Na conferência desta etapa, a distribuição permanece em Preparar para envio,
+com build 11 selecionado e notas antigas. Tentativas de editar por acessibilidade
+não produziram alteração confirmada; não houve envio público. Capturas nativas,
+ícone e App Privacy já preparados anteriormente permanecem conforme o registro
+de [preparação final](preparacao-final-20261009.md).
+
+Pendências confirmadas: selecionar a build final e salvar as notas abaixo;
+completar os materiais dos produtos de assinatura (Asafe 10 mensal conferido sem
+captura de revisão); conferir a autorização Sandbox restrita da conta de revisão
+e incluir grupo/produtos na primeira submissão. Há aviso anterior de novo acordo
+Apple a conferir com o titular. Não foi presumida licença geral para o conteúdo
+enviado pelos usuários. Ver [diagnóstico e publicação 16](diagnostico-assinaturas-iphone-20261013.md).
 
 ## Contas e campos privados
 
@@ -57,10 +60,9 @@ exigidos pela loja devem ser preenchidos diretamente no formulário privado.
 
 **Password:** `{{APPLE_REVIEW_PASSWORD}}`
 
-Texto em inglês salvo no App Store Connect e conferido por leitura após salvar.
-O marcador do convite abaixo foi substituído somente no formulário privado da
-Apple; não publicar o link do grupo no Git ou na ficha pública.
-Atualizar as ressalvas somente quando os respectivos testes estiverem concluídos.
+Texto em inglês revisado localmente; pendente salvar e conferir no App Store Connect.
+Preservar o convite já existente apenas no formulário privado da Apple ao salvar.
+Não publicar o link do grupo no Git ou na ficha pública.
 
 ```text
 +Louvor helps church worship teams organize services, rehearse and communicate. The interface is in Brazilian Portuguese.
@@ -69,23 +71,23 @@ ACCESS
 Use the supplied demo email/password and tap Entrar. Google, Apple and Face ID are optional. Accept Terms/Privacy if prompted. The account owns Igreja Demonstração (App Review) with four fictitious members. Demo participation records are explicitly marked as fictitious; no real person's consent was inferred.
 
 FEATURES
-1. Repertório > Repertório da Demonstração: six songs with lyrics/chords. Ensaio > Baby Bird (demo) > Mixer opens five stems. Playback/pause was checked on iPhone and iPad simulators. Loop provides saved practice sections. The five original songs and synthesized guides were created for this demo. Baby Bird is a credited CC BY 3.0 excerpt by Admiral Bob, with source/license and modifications described in the song.
+1. Repertório > Repertório da Demonstração: six songs with lyrics/chords. Ensaio > Baby Bird (demo) > Mixer opens five stems. Loop provides saved practice sections. The five original songs and synthesized guides were created for this demo. Baby Bird is a credited CC BY 3.0 excerpt by Admiral Bob, with source/license and modifications described in the song.
 2. Cultos > Culto de Domingo shows the service order and Escala. Início > Disponibilidade opens the availability calendar.
 3. Chat > Geral: hold a member's message to Denunciar or block the sender. Leaders review reports at Usuário > Membros > Denúncias do chat. Manage blocks at Usuário > Perfil > Usuários bloqueados.
 4. Creating repertoires, registering/editing songs and importing audio are web management actions. The native app explains Continue pelo computador. Existing songs can be added to an existing repertoire with permission. Native YouTube video actions open the YouTube app or external browser; no YouTube embed runs inside this iOS build. Uploaded audio, mixer and track separation remain in the app.
-5. Track separation: open a song > Ensaio > Gravação > Separar em faixas (IA). It runs on infrastructure operated by +Louvor and requires the appropriate team permission/plan. Existing demo stems are not proof of a new separation run.
+5. Track separation: open a song > Ensaio > Gravação > Separar em faixas (IA). It runs on infrastructure operated by +Louvor and requires the appropriate team permission/plan.
 
 PRIVACY AND DELETION
 Real users separately authorize team participation on Sua participação, sua escolha. Continuing without authorization preserves privacy choices, support and deletion. Withdraw at Usuário > Perfil > Minhas escolhas de privacidade. Excluir minha conta is on Perfil. If ownership transfer is required, select Ana Exemplo, tap Transferir, then type EXCLUIR and confirm. Deleting an account does not cancel an App Store subscription.
 
 SUBSCRIPTIONS
-Usuário > Assinatura. Essencial is free for up to five team members including the owner. Paid plans expand capacity and may include separation, Asafe or both. Only the owner manages billing. iOS uses Apple In-App Purchase through RevenueCat and offers Restaurar compras and Atualizar. Gerenciar assinatura appears for RevenueCat subscriptions. +Louvor includes no advertising SDK.
+Usuário > Assinatura. Essencial is free for up to five team members including the owner. Paid plans expand capacity and may include separation, Asafe or both. Only the owner manages billing. iOS uses Apple In-App Purchase through RevenueCat and offers Atualizar, Restaurar and Gerenciar together. Active subscriptions show Plano atual and Alterar plano. Usuário > Membros shows members and plan capacity. +Louvor includes no advertising SDK.
 
 ASAFE (OPTIONAL WHATSAPP ASSISTANT)
-Usuário > Equipe > Assistente no WhatsApp > Gerar código de ativação presents the OpenAI data-sharing notice. A leader authorizes activation; each person separately permits their own data under Usuário > Perfil > Permitir que o Asafe use meus dados. Both choices are revocable. Group Teste a safe is connected only to this fictitious team; automatic notices are off. Join: {{PRIVATE_WHATSAPP_REVIEW_INVITE}} . In Perfil > Assistente no WhatsApp, allow personal AI sharing and generate a link code; send it privately to Asafe, then mention Asafe in the group. Team activation was prepared under the fictitious account at the owner's request. No real member consent or identity was assigned; conversational QA remains pending.
+Usuário > Asafe separates personal and team setup. Under Seu WhatsApp pessoal, authorize optional OpenAI data sharing and tap Conectar meu WhatsApp; send the code privately to Asafe from your own WhatsApp. Activating a team group does not identify the leader personally. Ativar um grupo da equipe is for leaders; each member separately permits use of their own data. Both permissions are revocable. Group Teste a safe is connected only to this fictitious team, with automatic notices off. Join: {{PRIVATE_WHATSAPP_REVIEW_INVITE}} . After personal linking, mention Asafe in the group. The owner confirmed the Asafe functional test; no real member identity or consent was assigned.
 
 VALIDATION LIMIT
-The earlier Brazilian iPhone TestFlight test reported ML-IOS-OFFERINGS-23-BRA. Build 11 purchase/restoration and paid access are not yet validated. Public submission is held while purchases remain unresolved. Content is user-supplied; demo material is original/licensed. No blanket rights over user uploads are claimed.
+Catalog loading, purchase, paid access synchronization and restoration were validated on a physical iPhone with a development build and Apple Sandbox Brazil. The earlier TestFlight personal-account error ML-IOS-OFFERINGS-23-BRA has not been revalidated in that separate scenario. Content is user-supplied; demo material is original/licensed. No blanket rights over user uploads are claimed.
 
 Support: https://maislouvor.com/suporte
 Privacy: https://maislouvor.com/privacidade
@@ -188,10 +190,10 @@ questionário deve refletir esse uso concreto, além do manifest do fornecedor.
 - Conferir a política de compras de teste para a conta usada pela revisão. A
   exceção sandbox existente é limitada a uma equipe e prazo; não presumir que
   cubra demos ou revisores. Compra, restauração e acesso seguem pendentes.
-- O build 11 foi exportado para App Store Connect sem limitação a testes internos
-  e selecionado na versão pública em preparação. Os materiais de revisão dos
-  produtos de assinatura e os testes de compra continuam pendentes. Capturas
-  com preços fictícios não comprovam compra nem substituem a conferência final.
+- A build 16 está em testes internos e é a fonte final desta etapa; a ficha
+  pública ainda seleciona a 11. Os materiais de revisão dos produtos de assinatura
+  permanecem pendentes. Capturas com preços fictícios não devem ser enviadas como
+  evidência do catálogo Apple real.
 - Gestão de músicas/repertórios na web não regulariza o acervo: o app continua
   acessando o conteúdo disponibilizado pela equipe. Não afirmar que música
   pública ou uso religioso implica licença. Documentar as permissões necessárias

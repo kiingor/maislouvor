@@ -190,3 +190,51 @@ Nenhuma regra de consentimento, vínculo, música ou assinatura foi alterada no 
 Verificações: 104 testes de interface/cobrança; 140 verificações unitárias do Asafe;
 TypeScript e WebKit 320/390/440/1280 claro/escuro para Asafe e Membros.
 Preparação da compilação 16, que inclui estes refinamentos posteriores à 15.
+
+
+## Implantação dos refinamentos — 13/10
+
+- Fonte final: `3dee928` (sobre `32a08f0`). Web `20261013-web-settings-ux-r2`
+  publicada às 23:05 BRT: 226 arquivos, 143 assets HTTPS, sete rotas verificadas;
+  marketing, APKs e assets anteriores preservados.
+- Texto de navegação do Asafe publicado com backup em
+  `/var/lib/maislouvor-deploy/20261013-asafe-navigation-copy`. Mudou somente
+  `whatsapp-assistant/persona.ts`, de hash conhecido; imagem, ambiente e fontes
+  das demais funções preservados. Health autenticado confirmou Asafe, Evolution
+  e OpenAI configurados; nenhum envio de mensagem nem alteração de banco.
+- Desenvolvimento 1.0.0 (16) instalado e aberto no iPhone. Assinatura e 225 assets
+  conferidos. Archive Release 16 também validado, sem o probe de diagnóstico.
+- A ficha pública continua em preparação: suas notas ainda citam navegação antiga
+  do Asafe e pendência de compra do build 11. Atualizar esses textos e selecionar
+  o build final na próxima preparação da submissão pública; o teste aqui validou
+  desenvolvimento + Sandbox Brasil, não o cenário anterior da conta pessoal no
+  TestFlight. Rever também o aviso de contrato Apple com o titular.
+
+Upload da compilação 16 aceito pela Apple às **23:08:35 BRT**, com
+`EXPORT SUCCEEDED`. Disponibilidade do grupo verificada abaixo.
+
+## Conferência de prontidão para revisão pública
+
+Em 13/10, após o processamento Apple, **1.0.0 (16)** foi adicionada ao grupo
+interno existente **Teste iPhone**. A tabela do grupo confirmou **Em testes**,
+um tester e treze compilações. A 15 não foi adicionada, pois a 16 a substitui.
+No iPhone: TestFlight → +Louvor → Atualizar, conferindo 1.0.0 (16). A instalação
+pelo cabo já existente continua separada da evidência de disponibilidade TestFlight.
+
+O responsável perguntou se já estava tudo pronto para revisão. Não: a ficha
+pública consultada ainda seleciona 11; notas antigas precisam ser substituídas
+pelo roteiro local atualizado. Edição via acessibilidade não foi confirmada e
+nenhum metadado público foi considerado salvo nesta etapa. Não houve submissão.
+
+O grupo de assinaturas contém 70 cadastros, em Preparar para envio. O produto
+representativo Asafe 10 mensal mantém preço/localização e disponibilidade em uma
+região, mas **sem captura para revisão**. Completar os materiais dos produtos
+oferecidos (o catálogo do teste retornou 66), e adicionar grupo/produtos à mesma
+primeira submissão do app. Não alterar preços, países ou remover produtos por
+inferência da diferença de contagem.
+
+Também falta conferir o escopo Sandbox da conta fictícia de revisão: a validação
+de compra desta sessão abrange somente a equipe pessoal de teste autorizada,
+não libera automaticamente a demo da Apple. Aviso de novo contrato Apple deve
+ser conferido com o titular. Asafe e mixer já testados não voltam à lista sem
+nova falha. Não exigir nova saída da conta pessoal do iPhone.
