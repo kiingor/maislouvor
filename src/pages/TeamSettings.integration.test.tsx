@@ -32,6 +32,7 @@ vi.mock('@/components/AvatarCropModal', () => ({ AvatarCropModal: () => null }))
 vi.mock('@/components/MyAvailabilityCalendar', () => ({ MyAvailabilityCalendar: () => null }));
 vi.mock('@/components/UserNotificationPrefs', () => ({ UserNotificationPrefs: () => null }));
 vi.mock('@/components/UserStatsCard', () => ({ UserStatsCard: () => null }));
+vi.mock('@/components/TeamMemberCapacity', () => ({ TeamMemberCapacity: ({ onViewPlan }: any) => <button onClick={onViewPlan}>Ver capacidade e plano</button> }));
 vi.mock('@/components/TeamAvailabilitySettings', () => ({ TeamAvailabilitySettings: () => null }));
 vi.mock('@/components/AppearanceControl', () => ({ AppearanceSegmented: () => null }));
 vi.mock('@/components/FaceIdSettings', () => ({ FaceIdSettings: () => <p>Face ID</p> }));
@@ -138,6 +139,12 @@ describe('junção de assinaturas, moderação e ajustes de conta', () => {
     expect(screen.getByRole('tab', { name: 'Asafe' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByText('Grupos do Asafe')).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Equipe' })).not.toBeInTheDocument();
+  });
+
+  it('abre Assinatura a partir do resumo de vagas na aba Membros', async () => {
+    mount('/app/settings?aba=membros');
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver capacidade e plano' }));
+    expect(await screen.findByText('Plano para 5 pessoas')).toBeVisible();
   });
 
   it('o convite acima do limite abre a assinatura da equipe escolhida e volta a Membros', async () => {

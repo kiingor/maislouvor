@@ -9,7 +9,7 @@ import type { MemberAiConsent, TeamAiConsent } from "./assistantAiConsent";
 
 export const DEFAULT_INSTRUCTIONS_MAX = 2000;
 
-/** assistant_team_overview (Ajustes > Equipe, só líder). */
+/** assistant_team_overview (Usuário > Asafe, só líder). */
 export interface AssistantOverview {
   platform_enabled: boolean;
   team_enabled: boolean;
@@ -24,7 +24,7 @@ export interface AssistantOverview {
   ai_consent?: TeamAiConsent;
 }
 
-/** assistant_my_status (Ajustes > Meu usuário). */
+/** assistant_my_status (Usuário > Asafe). */
 export interface AssistantMyStatus {
   enabled: boolean;
   assistant_name: string;

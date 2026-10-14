@@ -103,8 +103,8 @@ describe("TeamAssistantSettings", () => {
     expect(screen.getByText(/Cada pessoa pode fazer até 20 perguntas por dia/)).toBeInTheDocument();
     expect(screen.getByText("Minha escala")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Conectar um grupo"));
-    fireEvent.click(screen.getByRole("button", { name: "Gerar código de ativação" }));
+    fireEvent.click(screen.getByText("Ativar um grupo da equipe"));
+    fireEvent.click(screen.getByRole("button", { name: "Gerar código do grupo" }));
     expect(await screen.findByText("@Asafe ativar K7Q2PD")).toBeInTheDocument();
     expect(mocks.rpc).toHaveBeenCalledWith("assistant_create_activation_code", { p_team_id: "team-1" });
   });
@@ -140,7 +140,7 @@ describe("TeamAssistantSettings", () => {
     renderWithQuery(<TeamAssistantSettings teamId="team-1" />);
 
     expect(await screen.findByText("Em breve")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Gerar código de ativação" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Gerar código do grupo" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Instruções do ministério para o Asafe")).toBeInTheDocument();
   });
 
@@ -166,16 +166,37 @@ describe("MyAssistantSettings", () => {
     );
     renderWithQuery(<MyAssistantSettings />);
 
-    expect(await screen.findByText("Cadastre seu telefone")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "O WhatsApp esconde meu número" }));
+    expect(await screen.findByText("WhatsApp não conectado")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Conectar meu WhatsApp" }));
     expect(await screen.findByText("vincular K7Q2PD")).toBeInTheDocument();
-    expect(screen.getByText(/Mande no privado do Asafe, não no grupo/)).toBeInTheDocument();
+    expect(screen.getByText(/Código pessoal: mande no privado do Asafe/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Abrir conversa" }));
     await waitFor(() =>
       expect(open).toHaveBeenCalledWith("https://wa.me/5511955554444?text=vincular%20K7Q2PD", "_blank", "noopener"),
     );
     open.mockRestore();
+  });
+
+  it("keeps group activation separate from personal identification and updates after linking", async () => {
+    let linked = false;
+    mocks.rpc.mockImplementation(async (fn: string) => {
+      if (fn === "assistant_team_overview") return { data: overview(), error: null };
+      if (fn === "assistant_my_status") return { data: status({ has_phone: true, linked }), error: null };
+      if (fn === "assistant_create_link_code") return { data: { code: "K7Q2PD", expires_at: "2099-01-01T12:00:00Z" }, error: null };
+      return { data: null, error: null };
+    });
+    renderWithQuery(<><MyAssistantSettings /><TeamAssistantSettings teamId="team-1" /></>);
+    expect(await screen.findByText("Louvor 🎸")).toBeInTheDocument();
+    expect(screen.getByText("Telefone cadastrado")).toBeVisible();
+    expect(screen.queryByText("Conectado ao seu perfil")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Conectar meu WhatsApp" }));
+    expect(await screen.findByText("vincular K7Q2PD")).toBeVisible();
+    expect(screen.queryByText("Conectado ao seu perfil")).not.toBeInTheDocument();
+    linked = true;
+    fireEvent.click(screen.getByRole("button", { name: "Atualizar vínculo pessoal" }));
+    expect(await screen.findByText("Conectado ao seu perfil")).toBeVisible();
+    await waitFor(() => expect(screen.queryByText("vincular K7Q2PD")).not.toBeInTheDocument());
   });
 
   it("lets the person undo the link", async () => {
@@ -187,13 +208,13 @@ describe("MyAssistantSettings", () => {
     });
     renderWithQuery(<MyAssistantSettings />);
 
-    expect(await screen.findByText("Reconhece você")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Vincular outro WhatsApp" })).toBeInTheDocument();
+    expect(await screen.findByText("Conectado ao seu perfil")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Conectar outro WhatsApp pessoal" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Desvincular meu WhatsApp" }));
     fireEvent.click(await screen.findByRole("button", { name: "Desvincular" }));
 
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith("assistant_unlink_me", undefined));
-    expect(await screen.findByText("Pelo seu telefone")).toBeInTheDocument();
+    expect(await screen.findByText("Telefone cadastrado")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Desvincular meu WhatsApp" })).not.toBeInTheDocument();
   });
 

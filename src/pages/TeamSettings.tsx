@@ -12,6 +12,7 @@ import { MyAvailabilityCalendar } from "@/components/MyAvailabilityCalendar";
 import { UserNotificationPrefs } from "@/components/UserNotificationPrefs";
 import { FaceIdSettings } from "@/components/FaceIdSettings";
 import { UserStatsCard } from "@/components/UserStatsCard";
+import { TeamMemberCapacity } from "@/components/TeamMemberCapacity";
 import { TeamAvailabilitySettings } from "@/components/TeamAvailabilitySettings";
 import { MyAssistantSettings, TeamAssistantSettings } from "@/components/AssistantSettings";
 import { SettingsAboutGroup } from "@/components/legal/SettingsAboutGroup";
@@ -608,6 +609,8 @@ export default function TeamSettings() {
       {/* ===== ABA: MEMBROS ===== */}
       <TabsContent value="members" className="mt-2">
         <div className="space-y-7 lg:max-w-3xl">
+          {currentTeam && <TeamMemberCapacity teamId={currentTeam.id} profileId={profileId}
+            memberCountHint={members.length} onViewPlan={() => changeTab('billing')} />}
           {/* Código de convite da equipe */}
           {canManageMembers && (
             <section aria-labelledby="settings-team-code">

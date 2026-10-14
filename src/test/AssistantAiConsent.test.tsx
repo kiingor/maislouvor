@@ -145,7 +145,7 @@ describe("TeamAssistantSettings com o aviso de IA", () => {
     });
     renderWithQuery(<TeamAssistantSettings teamId="team-1" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Gerar código de ativação" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Gerar código do grupo" }));
     const dialog = await screen.findByRole("dialog", { name: "Ativar o Asafe com IA da OpenAI?" });
     expect(mocks.rpc).not.toHaveBeenCalledWith("assistant_create_activation_code", expect.anything());
 
@@ -153,7 +153,7 @@ describe("TeamAssistantSettings com o aviso de IA", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(mocks.rpc).not.toHaveBeenCalledWith("give_assistant_consent", expect.anything());
 
-    fireEvent.click(screen.getByRole("button", { name: "Gerar código de ativação" }));
+    fireEvent.click(screen.getByRole("button", { name: "Gerar código do grupo" }));
     fireEvent.click(await screen.findByRole("button", { name: "Concordo e ativar" }));
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith("give_assistant_consent", {
       p_scope: "team_activation", p_team_id: "team-1", p_version: ASSISTANT_AI_CONSENT_VERSION,
@@ -205,7 +205,7 @@ describe("TeamAssistantSettings com o aviso de IA", () => {
     await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith("revoke_assistant_consent", {
       p_scope: "team_activation", p_team_id: "team-1",
     }));
-    expect(await screen.findByRole("button", { name: "Gerar código de ativação" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Gerar código do grupo" })).toBeInTheDocument();
   });
 });
 
@@ -307,7 +307,7 @@ describe("MyAssistantSettings com o aviso de IA", () => {
     });
     renderWithQuery(<MyAssistantSettings />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "O WhatsApp esconde meu número" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Conectar meu WhatsApp" }));
     fireEvent.click(await screen.findByRole("button", { name: "Concordo e vincular" }));
     expect(await screen.findByText("vincular K7Q2PD")).toBeInTheDocument();
     const order = mocks.rpc.mock.calls.map(([fn]) => fn).filter((fn) => fn !== "assistant_my_status");

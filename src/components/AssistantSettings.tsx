@@ -1,9 +1,9 @@
 import { ReportContentButton } from "@/components/moderation/ReportContentButton";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Capacitor } from "@capacitor/core";
 import { format, parseISO } from "date-fns";
-import { BookOpen, Bot, Check, Clock3, ChevronRight, Copy, FileText, KeyRound, Link2, Loader2, MessageCircle, PowerOff, ShieldCheck, TriangleAlert, Unlink, Users } from "lucide-react";
+import { BookOpen, Bot, Check, Clock3, RefreshCw, ChevronRight, Copy, FileText, KeyRound, Link2, Loader2, MessageCircle, PowerOff, ShieldCheck, TriangleAlert, Unlink, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -486,9 +486,10 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
                 ))
               )}
             </div>
+            {data.groups.length > 0 && <p className={GROUP_FOOTER}>O grupo está ativo. Cada pessoa, inclusive o líder, conecta o próprio WhatsApp acima.</p>}
           </section>
 
-          <AssistantSection title="Conectar um grupo" subtitle="Adicione o Asafe e ative com um código" icon={Link2} initiallyOpen={data.groups.length === 0 || Boolean(pendingCode)}>
+          <AssistantSection title="Ativar um grupo da equipe" subtitle="Código para enviar no grupo" icon={Link2} initiallyOpen={data.groups.length === 0 || Boolean(pendingCode)}>
             {/* 1. Número */}
             <section aria-labelledby="assistant-number-title">
               <h3 id="assistant-number-title" className={GROUP_LABEL}>1. Adicione este número ao grupo</h3>
@@ -532,7 +533,7 @@ export function TeamAssistantSettings({ teamId }: { teamId: string }) {
                   <IconTile icon={generating ? Loader2 : KeyRound} className={generating ? "[&>svg]:animate-spin" : undefined} />
                   <span className={ROW_BODY}>
                     <span className="min-w-0 flex-1 text-body text-primary">
-                      {pendingCode ? "Gerar outro código" : "Gerar código de ativação"}
+                      {pendingCode ? "Gerar outro código do grupo" : "Gerar código do grupo"}
                     </span>
                     <ChevronRight className="h-[18px] w-[18px] text-label-tertiary" strokeWidth={2.5} aria-hidden="true" />
                   </span>
@@ -736,17 +737,21 @@ function AutomaticNoticeSettings({ teamId, disabled }: { teamId: string; disable
 export function MyAssistantSettings() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [code, setCode] = useState<{ code: string; expires_at: string } | null>(null);
+  const [code, setCode] = useState<{ code: string; expires_at: string; replacing: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   // Aviso de IA: "member" ao ligar o uso dos dados, "member-link" antes do código de vínculo.
   const [consentDialog, setConsentDialog] = useState<Extract<AssistantConsentVariant, "member" | "member-link" | "member-review"> | null>(null);
   const [consentBusy, setConsentBusy] = useState<"accept" | "decline" | null>(null);
   const [optOutOpen, setOptOutOpen] = useState(false);
 
-  const { data, isError } = useQuery({
+  const { data, isError, isFetching, refetch } = useQuery({
     queryKey: ["assistant-my-status"],
     queryFn: () => callRpc<AssistantMyStatus>("assistant_my_status"),
+    refetchInterval: () => code && Date.parse(code.expires_at) > Date.now() ? 3000 : false,
   });
+  useEffect(() => {
+    if (code && !code.replacing && data?.linked) setCode(null);
+  }, [code, data?.linked]);
 
   if (isError || !data?.enabled) return null;
   const name = data.assistant_name;
@@ -761,10 +766,10 @@ export function MyAssistantSettings() {
     : consent && !granted
       ? { label: "Falta autorizar", className: "text-ios-orange" }
       : data.linked
-          ? { label: "Reconhece você", className: "text-ios-green" }
+          ? { label: "Conectado ao seu perfil", className: "text-ios-green" }
           : data.has_phone
-            ? { label: "Pelo seu telefone", className: "text-muted-foreground" }
-            : { label: "Cadastre seu telefone", className: "text-ios-orange" };
+            ? { label: "Telefone cadastrado", className: "text-muted-foreground" }
+            : { label: "WhatsApp não conectado", className: "text-ios-orange" };
 
   const consentStatus = !consent
     ? null
@@ -782,7 +787,8 @@ export function MyAssistantSettings() {
   const generateLinkCode = async () => {
     setBusy(true);
     try {
-      setCode(await callRpc<{ code: string; expires_at: string }>("assistant_create_link_code"));
+      const generated = await callRpc<{ code: string; expires_at: string }>("assistant_create_link_code");
+      setCode({ ...generated, replacing: data.linked });
     } catch (error) {
       if (isConsentRequiredError(error)) setConsentDialog("member-link");
       toast({ title: "Não foi possível gerar o código", description: consentErrorMessage(error), variant: "destructive" });
@@ -805,7 +811,7 @@ export function MyAssistantSettings() {
       setConsentDialog(null);
       await refreshStatus();
       if (linking) await generateLinkCode();
-      else toast({ title: "Uso dos dados permitido", description: `O ${name} reconhece você nos grupos da equipe.` });
+      else toast({ title: "Uso dos dados permitido", description: data.linked ? "Seu vínculo pessoal está autorizado." : "Agora conecte seu WhatsApp pessoal. Isso é separado da ativação do grupo." });
     } catch (error) {
       toast({ title: "Não foi possível registrar o aceite", description: consentErrorMessage(error), variant: "destructive" });
     } finally {
@@ -844,11 +850,16 @@ export function MyAssistantSettings() {
 
   return (
     <section aria-labelledby="settings-assistant">
-      <h2 id="settings-assistant" className={GROUP_LABEL}>Meu WhatsApp</h2>
+      <h2 id="settings-assistant" className={GROUP_LABEL}>Você no Asafe</h2>
       <div className={GROUP}>
         <Row leading={<IconTile icon={Bot} />}>
-          <span className="min-w-0 flex-1 text-body">{name}</span>
-          <span className={cn("shrink-0 text-subhead", status.className)}>{status.label}</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-body">Seu WhatsApp pessoal</span>
+            <span className={cn("block text-footnote", status.className)}>{status.label}</span>
+          </span>
+          <button type="button" className={CIRCLE_BUTTON} aria-label="Atualizar vínculo pessoal" disabled={isFetching} onClick={() => void refetch()}>
+            <RefreshCw className={cn("h-[18px] w-[18px]", isFetching && "animate-spin")} aria-hidden="true" />
+          </button>
         </Row>
 
         {consent && (
@@ -881,7 +892,7 @@ export function MyAssistantSettings() {
             <span className="min-w-0 flex-1">
               <span className="block break-words font-mono text-body">{linkMessage(code.code)}</span>
               <span className="block text-footnote text-muted-foreground">
-                Mande no privado do {name}, não no grupo. Vale até {dateTime(code.expires_at)}.
+                Código pessoal: mande no privado do {name}, usando seu WhatsApp. Não envie no grupo. Vale até {dateTime(code.expires_at)}.
               </span>
             </span>
             {chatLink ? (
@@ -901,7 +912,7 @@ export function MyAssistantSettings() {
             <IconTile icon={busy ? Loader2 : MessageCircle} className={busy ? "[&>svg]:animate-spin" : undefined} />
             <span className={ROW_BODY}>
               <span className="min-w-0 flex-1 text-body text-primary">
-                {data.linked ? "Vincular outro WhatsApp" : "O WhatsApp esconde meu número"}
+                {data.linked ? "Conectar outro WhatsApp pessoal" : "Conectar meu WhatsApp"}
               </span>
               <ChevronRight className="h-[18px] w-[18px] text-label-tertiary" strokeWidth={2.5} aria-hidden="true" />
             </span>
@@ -934,8 +945,8 @@ export function MyAssistantSettings() {
         )}
       </div>
       <p className={GROUP_FOOTER}>
-        Marque @{name} no grupo para conversar.
-        {!data.has_phone && " Cadastre seu telefone na aba Perfil ou vincule seu WhatsApp por código."}
+        Ativar o grupo não conecta o seu WhatsApp pessoal.
+        {data.has_phone && !data.linked && " O telefone do Perfil também pode identificar você; se não funcionar, conecte por código."}
         {consent && ` Respostas com IA da ${ASSISTANT_AI_PROVIDER}. `}
         {consent && (
           <button type="button" onClick={() => setConsentDialog("member-review")} className="font-medium text-primary underline-offset-2 hover:underline">

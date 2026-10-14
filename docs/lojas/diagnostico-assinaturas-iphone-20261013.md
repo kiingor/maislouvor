@@ -152,3 +152,41 @@ Verificação de interface: WebKit nas larguras 320, 390, 440 e 1280, claro/escu
 Ações da assinatura em uma linha, cinco abas legíveis, sem overflow horizontal,
 abertura/fechamento das seções e separação da aba Equipe confirmados.
 Preparação de versão iOS 1.0.0 (15); publicação registrada separadamente após êxito.
+
+
+## Restauração e publicação inicial — 13/10, 22:54–22:58 BRT
+
+- Web publicada: `20261013-web-settings-ux`, commit `32a08f0`, às 22:54 BRT.
+  226 arquivos e 143 assets HTTPS conferidos, sete rotas válidas; marketing,
+  APKs e assets anteriores preservados.
+- Desenvolvimento 1.0.0 (15) instalado e aberto no iPhone via USB. Assinatura
+  verificada e 225 assets idênticos à fonte congelada, sem o probe StoreKit.
+- O responsável confirmou **Restaurou e mostrou meu plano**. Consulta somente
+  leitura às 22:56:23 BRT manteve Completo mensal/10 vagas, app_store/SANDBOX,
+  um entitlement e acesso ativo. Compra, sincronização e restauração validadas
+  nesta instalação de desenvolvimento com Sandbox Brasil.
+- Archive 15 validado e upload Apple concluído às 22:58 BRT. A disponibilidade
+  ao grupo TestFlight não foi conferida antes dos ajustes seguintes.
+
+## Refinamentos solicitados durante o teste
+
+O responsável apontou ambiguidade entre ativar um grupo e identificar o líder.
+O banco já distingue assistant_groups de assistant_wa_identities; a confirmação
+visual de consentimento pessoal dizia que o assistente reconhecia a pessoa mesmo
+sem vínculo individual. O aceite agora confirma só a permissão. A tela usa
+**Seu WhatsApp pessoal / Conectar meu WhatsApp** e **Ativar um grupo da equipe /
+Gerar código do grupo**, com instrução explícita de que o líder também precisa
+ser identificado. O estado Conectado ao seu perfil depende do vínculo pessoal.
+Após gerar o primeiro código, a tela consulta o vínculo enquanto o código vale;
+a confirmação limpa o código usado. Há também atualização manual do vínculo.
+
+Aba Membros: resumo da capacidade real via RPC existente, integrantes usados,
+limite do plano, vagas restantes, contagem incluindo o líder e acesso à aba
+Assinatura. Equipes ilimitadas continuam sem teto. Falha de consulta não mostra
+um limite presumido. Troca de equipe ou mudança na lista refaz a consulta.
+
+Instruções textuais do bot apontam para Usuário › Asafe / Conectar meu WhatsApp.
+Nenhuma regra de consentimento, vínculo, música ou assinatura foi alterada no banco.
+Verificações: 104 testes de interface/cobrança; 140 verificações unitárias do Asafe;
+TypeScript e WebKit 320/390/440/1280 claro/escuro para Asafe e Membros.
+Preparação da compilação 16, que inclui estes refinamentos posteriores à 15.
