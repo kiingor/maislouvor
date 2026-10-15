@@ -108,13 +108,9 @@ function RoteiroCover({ coverPath, title }: { coverPath?: string | null; title: 
 const linkButton =
   "inline-flex min-h-[44px] items-center gap-1 -my-2.5 px-1.5 -mr-1.5 rounded-[10px] text-subhead font-medium text-primary whitespace-nowrap transition-opacity active:opacity-60 disabled:opacity-40";
 
-/** Separador hairline recuado até o texto das linhas do roteiro (16 + 20 + 12 + 44 + 12). */
+/** No celular, o separador acompanha as vozes na largura inteira do roteiro. */
 const roteiroSeparator =
-  "before:absolute before:top-0 before:right-0 before:left-[104px] before:border-t before:border-border first:before:hidden";
-
-/** Chip de tema/tag da canção (mesmo estilo de AddCultoSongModal). */
-const songChip =
-  "inline-flex max-w-full items-center truncate rounded-full bg-fill-tertiary px-2 py-0.5 text-caption1 text-muted-foreground";
+  "before:absolute before:top-0 before:right-4 before:left-4 before:border-t before:border-border first:before:hidden sm:before:right-0 sm:before:left-[104px]";
 
 const KEY_OPTIONS = [...CHROMATIC_KEYS, ...CHROMATIC_KEYS.map((k) => k + "m")];
 const SONG_FALLBACK_SECONDS = 240;
@@ -719,20 +715,15 @@ export default function CultoDetail() {
                 const b = item.data;
                 const blockBody = (
                   <>
-                    <span className="w-5 shrink-0" aria-hidden="true" />
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-fill-tertiary">
+                    <span className="hidden w-5 shrink-0 sm:block" aria-hidden="true" />
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center sm:h-11 sm:w-11 sm:rounded-[10px] sm:bg-fill-tertiary">
                       <Clock className="h-5 w-5 text-muted-foreground" strokeWidth={2} aria-hidden="true" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-body text-foreground">{b.title}</span>
-                      {((b.kind && b.kind !== "moment") || b.notes) && (
-                        <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
-                          {b.kind && b.kind !== "moment" && (
-                            <span className="shrink-0 rounded-full bg-fill-tertiary px-2 py-px text-caption1 font-medium text-muted-foreground">
-                              {capitalize(b.kind)}
-                            </span>
-                          )}
-                          {b.notes && <span className="min-w-0 truncate text-footnote text-muted-foreground">{b.notes}</span>}
+                      <span className="block break-words text-body text-foreground sm:truncate">{b.title}</span>
+                      {b.notes && (
+                        <span className="mt-0.5 block break-words text-footnote text-muted-foreground sm:truncate">
+                          {b.notes}
                         </span>
                       )}
                     </span>
@@ -753,16 +744,16 @@ export default function CultoDetail() {
                         <button
                           type="button"
                           onClick={() => { setEditBlock(b); setBlockOpen(true); }}
-                          className="flex min-w-0 flex-1 items-center gap-3 min-h-[64px] py-2.5 pl-4 pr-2 text-left transition-colors active:bg-grouped-tertiary"
+                          className="flex min-w-0 flex-1 items-center gap-2.5 min-h-[52px] py-2.5 pl-4 pr-2 text-left transition-colors active:bg-grouped-tertiary sm:gap-3 sm:min-h-[64px]"
                         >
                           {blockBody}
                         </button>
                       ) : (
-                        <div className="flex min-w-0 flex-1 items-center gap-3 min-h-[64px] py-2.5 pl-4 pr-2">{blockBody}</div>
+                        <div className="flex min-w-0 flex-1 items-center gap-2.5 min-h-[52px] py-2.5 pl-4 pr-2 sm:gap-3 sm:min-h-[64px]">{blockBody}</div>
                       )}
                       <div className={cn("flex shrink-0 items-center gap-1", canEdit ? "pr-1.5" : "pr-4")}>
                         {!!b.duration_min && (
-                          <span className="px-1 text-footnote tabular-nums text-muted-foreground">{b.duration_min} min</span>
+                          <span className="whitespace-nowrap px-1 text-footnote tabular-nums text-muted-foreground">{b.duration_min} min</span>
                         )}
                         {canEdit && (
                           <DropdownMenu>
@@ -824,14 +815,19 @@ export default function CultoDetail() {
                         setSummaryNotes(cs.notes || null);
                         setSummaryNotesAuthor((cs as any).notes_author || null);
                       }}
-                      className="flex min-w-0 flex-1 items-center gap-3 min-h-[64px] py-2.5 pl-4 pr-2 text-left transition-colors active:bg-grouped-tertiary"
+                      className="flex min-w-0 flex-1 items-center gap-2.5 min-h-[64px] py-3 pl-4 pr-2 text-left transition-colors active:bg-grouped-tertiary sm:gap-3 sm:py-2.5"
                     >
-                      <span className="w-5 shrink-0 text-center text-footnote tabular-nums text-muted-foreground">{idx + 1}</span>
-                      <RoteiroCover coverPath={cs.songs?.cover_path} title={songTitle} />
+                      <span className="hidden w-5 shrink-0 text-center text-footnote tabular-nums text-muted-foreground sm:block">{idx + 1}</span>
+                      <span className="relative shrink-0">
+                        <RoteiroCover coverPath={cs.songs?.cover_path} title={songTitle} />
+                        <span className="absolute -bottom-1 -left-1 flex min-h-5 min-w-5 items-center justify-center rounded-md border-2 border-card bg-foreground px-1 text-caption2 font-semibold tabular-nums text-background sm:hidden">
+                          {idx + 1}
+                        </span>
+                      </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-body text-foreground">{songTitle}</span>
+                        <span className="block break-words text-body text-foreground sm:truncate">{songTitle}</span>
                         {(cs.songs?.artist || transposed) && (
-                          <span className="block truncate text-footnote text-muted-foreground">
+                          <span className="block break-words text-footnote text-muted-foreground sm:truncate">
                             {cs.songs?.artist}
                             {transposed && (
                               <>
@@ -843,17 +839,9 @@ export default function CultoDetail() {
                             )}
                           </span>
                         )}
-                        {(cs.songs?.theme || (cs.songs?.tags && cs.songs.tags.length > 0)) && (
-                          <span className="mt-1 flex flex-wrap gap-1">
-                            {cs.songs?.theme && <span className={songChip}>{cs.songs.theme}</span>}
-                            {cs.songs?.tags?.map((tag: string, i: number) => (
-                              <span key={i} className={songChip}>{tag}</span>
-                            ))}
-                          </span>
-                        )}
                       </span>
                     </button>
-                    <div className={cn("flex shrink-0 items-center gap-1", canEdit || hasVocalists ? "pr-1.5" : "pr-4")}>
+                    <div className={cn("flex shrink-0 items-center gap-1", canEdit || (hasVocalists && lines.length === 0) ? "pr-1.5" : "pr-4", !canEdit && hasVocalists && "sm:pr-1.5")}>
                       {/* Tom de execução deste culto */}
                       <Select value={effectiveKey || undefined} onValueChange={(v) => updateSongKey(cs.id, v)} disabled={!canEdit}>
                         <SelectTrigger
@@ -861,8 +849,8 @@ export default function CultoDetail() {
                           aria-label={`Tocar em ${effectiveKey || "tom não definido"}`}
                           className={cn(
                             // 32px visíveis, alvo de toque de 44pt (::before), como Button size="sm".
-                            "relative h-8 w-auto min-w-[52px] gap-1 rounded-full border-0 bg-fill-tertiary px-3 text-subhead font-semibold text-foreground tabular-nums before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2 focus:ring-[3px] focus:ring-ios-blue/40 focus:ring-offset-0 disabled:cursor-default disabled:opacity-100",
-                            !canEdit && "justify-center [&>svg]:hidden",
+                            "relative h-8 w-auto min-w-11 justify-center gap-1 rounded-full border-0 bg-fill-tertiary px-2 text-subhead font-semibold text-foreground tabular-nums before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2 focus:ring-[3px] focus:ring-ios-blue/40 focus:ring-offset-0 disabled:cursor-default disabled:opacity-100 [&>svg]:hidden sm:min-w-[52px] sm:px-3 sm:[&>svg]:block",
+                            !canEdit && "sm:[&>svg]:hidden",
                           )}
                         >
                           <SelectValue placeholder="Tom" />
@@ -910,7 +898,7 @@ export default function CultoDetail() {
                           onClick={openVoices}
                           className={cn(
                             "flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-fill-quaternary active:bg-fill-tertiary",
-                            lines.length > 0 ? "text-primary" : "text-muted-foreground",
+                            lines.length > 0 ? "hidden text-primary sm:flex" : "text-muted-foreground",
                           )}
                         >
                           <Mic2 className="h-5 w-5" strokeWidth={2} />
@@ -925,21 +913,24 @@ export default function CultoDetail() {
                       type="button"
                       title="Vozes da canção"
                       onClick={openVoices}
-                      className="-mt-1.5 flex w-full flex-wrap items-center gap-x-3 gap-y-0.5 pb-2.5 pl-[104px] pr-4 text-left"
+                      className="grid min-h-11 w-full gap-y-1.5 px-4 pb-3 text-left sm:-mt-1.5 sm:flex sm:min-h-0 sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-0.5 sm:pb-2.5 sm:pl-[104px]"
                     >
-                      <Mic2 className="h-[13px] w-[13px] shrink-0 text-muted-foreground" strokeWidth={2.25} aria-hidden="true" />
+                      <span className="sr-only">Vozes de {songTitle}: </span>
+                      <Mic2 className="hidden h-[13px] w-[13px] shrink-0 text-muted-foreground sm:block" strokeWidth={2.25} aria-hidden="true" />
                       {lines.map((line) => (
-                        <span key={line.voice} className="text-footnote text-muted-foreground">
+                        <span key={line.voice} className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-x-1 text-footnote text-muted-foreground sm:block">
                           <span className="font-semibold text-foreground">{line.voice}ª</span>{" "}
-                          {line.people
-                            .map((p) => (p.part ? `${p.name} (${p.part.replace(" (voz)", "")})` : p.name))
-                            .join(", ")}
+                          <span className="min-w-0 break-words">
+                            {line.people
+                              .map((p) => (p.part ? `${p.name} (${p.part.replace(" (voz)", "")})` : p.name))
+                              .join(", ")}
+                          </span>
                         </span>
                       ))}
                     </button>
                   )}
                   {isEditingNotes ? (
-                    <div className="-mt-1 pb-3 pl-4 pr-4 sm:pl-[104px]">
+                    <div className="pb-3 pl-4 pr-4 sm:-mt-1 sm:pl-[104px]">
                       <Textarea
                         autoFocus
                         aria-label="Observação da canção"
@@ -955,7 +946,7 @@ export default function CultoDetail() {
                       </div>
                     </div>
                   ) : cs.notes ? (
-                    <p className="-mt-1.5 flex gap-1.5 pb-2.5 pl-[104px] pr-4 text-footnote text-muted-foreground">
+                    <p className="flex gap-1.5 px-4 pb-3 text-footnote text-muted-foreground sm:-mt-1.5 sm:pb-2.5 sm:pl-[104px]">
                       <MessageSquare className="mt-[3px] h-[13px] w-[13px] shrink-0" strokeWidth={2.25} aria-hidden="true" />
                       <span className="min-w-0 break-words">{cs.notes}</span>
                     </p>
