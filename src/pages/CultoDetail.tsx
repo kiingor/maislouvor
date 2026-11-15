@@ -54,6 +54,7 @@ import {
   ChevronDown,
   Mic2,
   MoreHorizontal,
+  MoreVertical,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -751,10 +752,10 @@ export default function CultoDetail() {
                       ) : (
                         <div className="flex min-w-0 flex-1 items-center gap-2.5 min-h-[52px] py-2.5 pl-4 pr-2 sm:gap-3 sm:min-h-[64px]">{blockBody}</div>
                       )}
-                      <div className={cn("flex shrink-0 items-center gap-1", canEdit ? "pr-1.5" : "pr-4")}>
-                        {!!b.duration_min && (
-                          <span className="whitespace-nowrap px-1 text-footnote tabular-nums text-muted-foreground">{b.duration_min} min</span>
-                        )}
+                      <div className={cn(
+                        "flex shrink-0 items-center",
+                        canEdit ? "flex-col self-start gap-2 py-1.5 pr-1.5 sm:flex-row sm:self-auto sm:gap-1 sm:py-0" : "gap-1 pr-4",
+                      )}>
                         {canEdit && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -763,7 +764,7 @@ export default function CultoDetail() {
                                 aria-label={`Ações do momento ${b.title}`}
                                 className="flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-fill-quaternary active:bg-fill-tertiary"
                               >
-                                <MoreHorizontal className="h-5 w-5" strokeWidth={2} />
+                                <MoreVertical className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
                               </button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
@@ -778,6 +779,9 @@ export default function CultoDetail() {
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
+                        )}
+                        {!!b.duration_min && (
+                          <span className="whitespace-nowrap px-1 text-footnote tabular-nums text-muted-foreground">{b.duration_min} min</span>
                         )}
                         {grip}
                       </div>
@@ -841,27 +845,13 @@ export default function CultoDetail() {
                         )}
                       </span>
                     </button>
-                    <div className={cn("flex shrink-0 items-center gap-1", canEdit || (hasVocalists && lines.length === 0) ? "pr-1.5" : "pr-4", !canEdit && hasVocalists && "sm:pr-1.5")}>
-                      {/* Tom de execução deste culto */}
-                      <Select value={effectiveKey || undefined} onValueChange={(v) => updateSongKey(cs.id, v)} disabled={!canEdit}>
-                        <SelectTrigger
-                          title="Tom em que o grupo vai tocar neste culto"
-                          aria-label={`Tocar em ${effectiveKey || "tom não definido"}`}
-                          className={cn(
-                            // 32px visíveis, alvo de toque de 44pt (::before), como Button size="sm".
-                            "relative h-8 w-auto min-w-11 justify-center gap-1 rounded-full border-0 bg-fill-tertiary px-2 text-subhead font-semibold text-foreground tabular-nums before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2 focus:ring-[3px] focus:ring-ios-blue/40 focus:ring-offset-0 disabled:cursor-default disabled:opacity-100 [&>svg]:hidden sm:min-w-[52px] sm:px-3 sm:[&>svg]:block",
-                            !canEdit && "sm:[&>svg]:hidden",
-                          )}
-                        >
-                          <SelectValue placeholder="Tom" />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-64">
-                          {KEY_OPTIONS.map((k) => (
-                            <SelectItem key={k} value={k}>{k}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {canEdit ? (
+                    <div className={cn(
+                      "flex shrink-0 items-center",
+                      canEdit ? "flex-col self-start gap-2 py-1.5 pr-1.5 sm:flex-row sm:self-auto sm:gap-1 sm:py-0" : "gap-1",
+                      !canEdit && (hasVocalists && lines.length === 0 ? "pr-1.5" : "pr-4"),
+                      !canEdit && hasVocalists && "sm:pr-1.5",
+                    )}>
+                      {canEdit && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
@@ -869,7 +859,7 @@ export default function CultoDetail() {
                               aria-label={`Ações de ${songTitle}`}
                               className="flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-fill-quaternary active:bg-fill-tertiary"
                             >
-                              <MoreHorizontal className="h-5 w-5" strokeWidth={2} />
+                              <MoreVertical className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" onCloseAutoFocus={(e) => { if (editingNotes[cs.id] !== undefined) e.preventDefault(); }}>
@@ -890,7 +880,29 @@ export default function CultoDetail() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      ) : hasVocalists ? (
+                      )}
+                      {/* Tom de execução deste culto */}
+                      <div className="flex min-h-11 items-center">
+                        <Select value={effectiveKey || undefined} onValueChange={(v) => updateSongKey(cs.id, v)} disabled={!canEdit}>
+                          <SelectTrigger
+                            title="Tom em que o grupo vai tocar neste culto"
+                            aria-label={`Tocar em ${effectiveKey || "tom não definido"}`}
+                            className={cn(
+                              // 32px visíveis, alvo de toque de 44pt (::before), como Button size="sm".
+                              "relative h-8 w-auto min-w-11 justify-center gap-1 rounded-full border-0 bg-fill-tertiary px-2 text-subhead font-semibold text-foreground tabular-nums before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2 focus:ring-[3px] focus:ring-ios-blue/40 focus:ring-offset-0 disabled:cursor-default disabled:opacity-100 [&>svg]:hidden sm:min-w-[52px] sm:px-3 sm:[&>svg]:block",
+                              !canEdit && "sm:[&>svg]:hidden",
+                            )}
+                          >
+                            <SelectValue placeholder="Tom" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-64">
+                            {KEY_OPTIONS.map((k) => (
+                              <SelectItem key={k} value={k}>{k}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {!canEdit && hasVocalists ? (
                         <button
                           type="button"
                           title="Vozes da canção"
