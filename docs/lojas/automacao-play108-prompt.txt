@@ -1,0 +1,41 @@
+Retome e conclua o envio autorizado da atualização Android 1.0.8 (versionCode 9) do +Louvor ao teste fechado Alpha no Google Play. Responda em português do Brasil.
+
+Autorização explícita do Filipe nesta conversa: "sobe pra play store essa atualizacao tbm"; após perda da chave, "pode gerar outro, deve ter perdido"; e em 17/11/2026 "Sim, agendar o envio" para retomar após a ativação da nova chave. A conclusão do upload e do envio para revisão/liberação no Alpha já está autorizada. Não solicite novamente aprovação genérica para essas ações. Se login/2FA exigir intervenção humana, informe o bloqueio exato no resultado da automação, sem declarar envio concluído.
+
+Esta é uma execução única. Nunca tente upload antes de 2026-11-19T17:40:00Z (19/11/2026 14:40 America/Fortaleza). Horário agendado: 2026-11-19T17:45:00Z (14:45 Fortaleza). Se iniciado antecipadamente por engano, pare e informe a data correta. Não crie novas automações nem novas chaves.
+
+Depois de conferir que chegou o horário, desative imediatamente os próximos disparos desta própria automação, ID 4af1db20-e8d1-4b7f-8b60-4c0178b35867, usando /Applications/Orca.app/Contents/Resources/bin/orca automations edit 4af1db20-e8d1-4b7f-8b60-4c0178b35867 --disabled --json. A desativação da agenda não exige interromper esta execução: prossiga com a tarefa atual. Isso implementa o envio único solicitado; não reative a agenda ao terminar, mesmo se houver bloqueio de login. Caso este disparo esteja atrasado além de 20/11/2026 14:45 Fortaleza, desative a agenda, informe que a janela foi perdida e não publique sem retomar o contexto com o usuário. O agendador também tem precheck limitado a essa janela para impedir recorrência anual.
+
+Área PESSOAL: leia /Users/filipecardone/HomeLab/AGENTS.md. Trabalhe na worktree /Users/filipecardone/orca/workspaces/maislouvor/android-roteiro-play, branch codex/android-roteiro-play. Não mexa no checkout principal sujo /Users/filipecardone/HomeLab/MaisLouvor/maislouvor, não acesse a área Softcom nem _segredos. Não exponha nem commite senhas, chaves privadas, tokens ou arquivos de ambiente. Não faça push/merge ou alterações de backend.
+
+Leia docs/lojas/release-android108-20261117.md e as evidências locais abaixo. O pacote já foi construído, assinado e validado: use esse AAB; não precisa rebuild, refazer QA ou acessar a chave privada.
+- Raiz: /Users/filipecardone/HomeLab/MaisLouvor/builds/Play-1.0.8-9-20261117
+- AAB: /Users/filipecardone/HomeLab/MaisLouvor/builds/Play-1.0.8-9-20261117/artifacts/MaisLouvor-1.0.8-9.aab
+- SHA-256 obrigatório: a7e015774a86d5c44cb7f460fff880601322bc45d120dab0714af8dd8ae82aca
+- Tamanho: 27675385 bytes; pacote com.maislouvor.app; versionName 1.0.8; versionCode 9.
+- Fonte: df8a909, inclui o menu vertical no canto superior direito com o tom abaixo. Base anterior Android d384668; configurações Google de compras/Firebase preservadas.
+- Evidências: validation/preparation-manifest.json, upload-key-reset.json, preflight-console.json e /Users/filipecardone/HomeLab/MaisLouvor/builds/Validation-play-20261117/validation-result.json.
+- Certificado de upload público novo: SHA-256 27b8c968d0384223a08b2476cf466e7ee4939aae27f507a54ce8dc7288f92164; SHA-1 74e9e3fcbe1d47716364151bb5a373fd34c257bb. O Google confirmou a ativação em 19/11/2026 17:40 UTC. Não altere a chave de assinatura do aplicativo mantida pelo Google.
+
+Use a skill orca-cli e o navegador autenticado do Orca. CLI usada nesta preparação: /Applications/Orca.app/Contents/Resources/bin/orca. Carregue o guia atual e references/browser.md antes de dirigir a página. O comando maestri não estava instalado; se continuar indisponível, use Orca como na preparação. Encontre a aba Google Play existente por URL; ID anterior f087cd0f-03cd-4ad3-9f2b-ea8b461a501f pode ter mudado. Reobtenha refs atuais; use --page e --expect-url para mutações. Não leia/exiba cookies ou credenciais.
+
+Destino EXATO:
+- Conta de desenvolvedor pessoal: 6722061799796684003.
+- App: 4972080730623843909, com.maislouvor.app, +Louvor.
+- Faixa: teste fechado Alpha, ID 4698888679988149607. Produção e teste interno não fazem parte desta execução.
+- Rascunho existente: release 2, nome "1.0.8 (9) — roteiro mobile".
+- URL rascunho: https://play.google.com/console/u/0/developers/6722061799796684003/app/4972080730623843909/tracks/4698888679988149607/releases/2/prepare
+- Faixa: https://play.google.com/console/u/0/developers/6722061799796684003/app/4972080730623843909/tracks/4698888679988149607?tab=releases
+- Chaves: https://play.google.com/console/u/0/developers/6722061799796684003/app/4972080730623843909/keymanagement
+- Notas pt-BR já salvas; cópia em release-notes-pt-BR.txt na raiz de evidências. Manter testadores, 178 países/regiões, preços, privacidade e configurações existentes. Publicação gerenciada estava desativada.
+
+Procedimento:
+1. Confira o horário atual, a existência e o hash do AAB. Se houver divergência ou ausência, pare com relato concreto; não substitua por outro artefato.
+2. Leia primeiro o estado real no console e qualquer comprovante upload-receipt.json local. Evite duplicidade: se o code 9 já estiver enviado, reutilize-o na biblioteca; se a 1.0.8 (9) já estiver em revisão ou disponível no Alpha, não reenviar nem criar outra release. Se houver versão mais recente que 9, pare e relate para não regredir. Não confunda upload aceito com versão publicada.
+3. Confirme ativação da nova chave na página de assinatura. Se ainda bloqueada apesar do prazo, registre o motivo e pare; não cancele nem refaça a redefinição. Se sessão expirada/2FA pendente, peça login humano e marque o trabalho como dependente de autenticação, sem inventar sucesso.
+4. No rascunho Alpha existente, faça upload do AAB validado (orca upload pelo botão/file input) apenas se o pacote 9 ainda não estiver no console. Aguarde o processamento e confira pacote, versão e ausência de erro bloqueante. Não altere targetSdk, permissões, catálogo ou código como solução improvisada.
+5. Confira o resumo da release. Conclua Avançar/Confirmar/Enviar para revisão ou iniciar lançamento conforme a interface real. Caso a visão geral de publicação seja necessária, envie somente as mudanças desta versão; não inclua outras alterações pendentes do usuário. A liberação no Alpha após aprovação está autorizada.
+6. Verifique o estado remoto final. Guarde um comprovante sem dados privados em /Users/filipecardone/HomeLab/MaisLouvor/builds/Play-1.0.8-9-20261117/upload-receipt.json com data, app/faixa/release, versão, hash, estado e URL. Capture evidência pertinente. Atualize docs/lojas/release-android108-20261117.md e o comentário da worktree; commits locais são permitidos, sem push.
+7. Informe ao Filipe o resultado exato na própria execução: disponível para testadores, aguardando revisão/processamento, ou bloqueio concreto. Não prometa acompanhar indefinidamente e não envie mensagens a terceiros.
+
+Não execute a automação de novo como teste. A tarefa já tem o AAB pronto e só requer a etapa autorizada na loja.

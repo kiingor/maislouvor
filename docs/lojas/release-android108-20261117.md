@@ -88,8 +88,21 @@ processamento, versão 1.0.8 (9), notas, países e público preservados, então
 concluir o lançamento/revisão e registrar o estado real retornado pelo Google.
 Não é necessário reconstruir o pacote, salvo se houver alteração ou rejeição.
 
-Foi oferecido agendamento da retomada ao usuário; não houve autorização para
-criar automação até o fechamento desta preparação. O envio continua pendente.
+O usuário autorizou o agendamento em 17/11/2026. Automação Orca habilitada:
+`4af1db20-e8d1-4b7f-8b60-4c0178b35867`, "Enviar MaisLouvor 1.0.8 ao Alpha".
+Próximo disparo confirmado: **19/11/2026 às 14:45 America/Fortaleza**
+(`2026-11-19T17:45:00Z`), cinco minutos após a ativação da chave.
+
+Execução local com Codex nesta mesma worktree. Como o agendador desta versão
+não suporta data única completa, cron `45 14 19 11 *` tem precheck restrito à
+janela de 19/11 às 14:45 até 20/11 às 14:45. O agente deve desativar a agenda
+logo ao iniciar e conferir o estado remoto para evitar reenvio. Tolerância
+para disparo perdido: 24 horas. Mac e serviço Orca precisam estar disponíveis;
+sessão Google expirada/2FA será relatada como bloqueio, sem alegar sucesso.
+
+Prompt completo: `docs/lojas/automacao-play108-prompt.txt`.
+Comprovante local: `automation-schedule.json` na pasta da entrega.
+Nenhuma execução foi disparada como teste e o envio continua pendente da data.
 
 O checkout principal com trabalho antigo foi preservado. Não houve push ou
 alteração na versão Apple nesta entrega.
