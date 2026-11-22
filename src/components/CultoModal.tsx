@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
 import { Dialog, DialogContent, DialogToolbar } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { DateField } from "@/components/DateField";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -24,9 +25,6 @@ const fieldInput = "min-w-0 flex-1 bg-transparent py-3 text-body text-foreground
 const keyboardFocusRow =
   "[html:not(.pointer-mode)_&:focus-within]:ring-[3px] [html:not(.pointer-mode)_&:focus-within]:ring-inset [html:not(.pointer-mode)_&:focus-within]:ring-ios-blue";
 
-const datePill =
-  "h-9 rounded-[8px] border-0 bg-fill-tertiary px-2.5 text-body text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ios-blue/40";
-
 export function CultoModal({ open, onOpenChange, editCulto }: Props) {
   const [name, setName] = useState("");
   const [date, setDate] = useState("");
@@ -35,6 +33,9 @@ export function CultoModal({ open, onOpenChange, editCulto }: Props) {
   const { currentTeam, profileId } = useTeam();
   const { toast } = useToast();
   const qc = useQueryClient();
+  // Mesmo corte da lista em Cultos.tsx: antes de hoje vai para "Passados" (PrimeTestLab 10957, S-01).
+  const todayStr = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD local
+  const isPastNew = !editCulto && !!date && date < todayStr;
 
   useEffect(() => {
     if (editCulto) {
@@ -101,16 +102,20 @@ export function CultoModal({ open, onOpenChange, editCulto }: Props) {
             </div>
             <div className={`${row} ${rowSeparator} justify-between`}>
               <label htmlFor="culto-date" className="text-body text-foreground">Data</label>
-              <input
+              <DateField
                 id="culto-date"
-                type="date"
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={setDate}
                 required
-                className={datePill}
+                aria-describedby={isPastNew ? "culto-date-past" : undefined}
               />
             </div>
           </div>
+          {isPastNew && (
+            <p id="culto-date-past" role="status" className="-mt-4 mx-4 text-footnote text-muted-foreground">
+              Essa data já passou. O culto vai aparecer em Passados, não em Próximos.
+            </p>
+          )}
           <div>
             <label htmlFor="culto-description" className={groupLabel}>Observações</label>
             <div className={group}>

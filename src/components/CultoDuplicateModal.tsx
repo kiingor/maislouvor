@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTeam } from "@/contexts/TeamContext";
 import { Dialog, DialogContent, DialogToolbar } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { DateField } from "@/components/DateField";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -26,8 +27,6 @@ const fieldInput = "min-w-0 flex-1 bg-transparent py-3 text-body text-foreground
 const keyboardFocusRow =
   "[html:not(.pointer-mode)_&:focus-within]:ring-[3px] [html:not(.pointer-mode)_&:focus-within]:ring-inset [html:not(.pointer-mode)_&:focus-within]:ring-ios-blue";
 
-const datePill =
-  "h-9 rounded-[8px] border-0 bg-fill-tertiary px-2.5 text-body text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ios-blue/40";
 
 export function CultoDuplicateModal({ open, onOpenChange, sourceCulto }: Props) {
   const { currentTeam, profileId } = useTeam();
@@ -176,14 +175,7 @@ export function CultoDuplicateModal({ open, onOpenChange, sourceCulto }: Props) 
             </div>
             <div className={`${row} ${rowSeparator} justify-between`}>
               <label htmlFor="dup-date" className="text-body text-foreground">Data</label>
-              <input
-                id="dup-date"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                required
-                className={datePill}
-              />
+              <DateField id="dup-date" value={date} onChange={setDate} required />
             </div>
           </div>
 

@@ -30,6 +30,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DateField } from "@/components/DateField";
 import { compareInstruments, instrumentIcon } from "@/data/instruments";
 
 // Uma série por gráfico → uma cor só para todas as barras (tinta da marca; clara no modo escuro).
@@ -351,8 +352,6 @@ export default function Relatorios() {
   const fmtDate = (d: string | null) =>
     d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "—";
 
-  const dateInput =
-    "h-9 rounded-[8px] border-0 bg-fill-tertiary px-2.5 text-body text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ios-blue/40";
   const rowSeparator =
     "relative before:absolute before:top-0 before:right-0 before:left-4 before:border-t before:border-border first:before:hidden";
   const showMoreButton =
@@ -408,21 +407,15 @@ export default function Relatorios() {
         </div>
         <label className="relative flex min-h-[52px] items-center justify-between gap-3 px-4 py-2 before:absolute before:top-0 before:right-0 before:left-4 before:border-t before:border-border">
           <span className="text-body text-foreground">De</span>
-          <input
-            type="date"
+          <DateField
             value={customFrom || (preset === "tudo" ? "" : from)}
-            onChange={(e) => setCustomFrom(e.target.value)}
-            className={dateInput}
+            onChange={setCustomFrom}
+            placeholder="Início"
           />
         </label>
         <label className="relative flex min-h-[52px] items-center justify-between gap-3 px-4 py-2 before:absolute before:top-0 before:right-0 before:left-4 before:border-t before:border-border">
           <span className="text-body text-foreground">Até</span>
-          <input
-            type="date"
-            value={customTo || to}
-            onChange={(e) => setCustomTo(e.target.value)}
-            className={dateInput}
-          />
+          <DateField value={customTo || to} onChange={setCustomTo} />
         </label>
       </section>
 
