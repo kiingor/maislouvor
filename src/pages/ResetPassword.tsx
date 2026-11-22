@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { authErrorMessage } from "@/lib/authErrors";
 import { KeyRound } from "lucide-react";
 import { AuthAppIcon, AuthField, AuthFieldGroup, AuthScreen, PasswordToggle, ProminentButton } from "./Login";
 
@@ -48,7 +49,7 @@ export default function ResetPassword() {
     const { error } = await supabase.auth.updateUser({ password });
 
     if (error) {
-      toast({ title: "Erro ao redefinir senha", description: error.message, variant: "destructive" });
+      toast({ title: "Erro ao redefinir senha", description: authErrorMessage(error), variant: "destructive" });
     } else {
       toast({ title: "Senha redefinida com sucesso!" });
       navigate("/login");

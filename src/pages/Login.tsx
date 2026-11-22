@@ -8,6 +8,7 @@ import { SocialLoginButtons } from "@/components/SocialLoginButtons";
 import { LegalLinksFooter } from "@/components/legal/LegalConsent";
 import { cn } from "@/lib/utils";
 import { authPageUrl, safeAppRedirect } from "@/lib/authRedirect";
+import { authErrorMessage } from "@/lib/authErrors";
 import { LoginShowcase } from "@/components/auth/LoginShowcase";
 import "@/styles/login.css";
 import { Music, ListMusic, Users, Mic2, MonitorSmartphone, Layers, Eye, EyeOff, Loader2, ArrowUpRight } from "lucide-react";
@@ -243,7 +244,7 @@ export default function Login() {
       redirectTo: `${window.location.origin}/reset-password`,
     });
     if (error) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
+      toast({ title: "Erro ao enviar o email", description: authErrorMessage(error), variant: "destructive" });
     } else {
       toast({ title: "Email enviado!", description: "Verifique sua caixa de entrada para redefinir a senha." });
     }
@@ -259,7 +260,7 @@ export default function Login() {
     if (error) {
       toast({
         title: "Erro ao entrar",
-        description: error.message,
+        description: authErrorMessage(error),
         variant: "destructive",
       });
     } else {

@@ -4,6 +4,7 @@ import { authPageUrl, safeAppRedirect } from "@/lib/authRedirect";
 import { supabase } from "@/integrations/supabase/client";
 import { acceptCurrentTerms } from "@/integrations/supabase/legal-client";
 import { useToast } from "@/hooks/use-toast";
+import { authErrorMessage } from "@/lib/authErrors";
 import { InstallPWABanner } from "@/components/InstallPWABanner";
 import { SocialLoginButtons } from "@/components/SocialLoginButtons";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -76,7 +77,7 @@ export default function SignUp() {
       clearPendingAcceptance();
       toast({
         title: "Erro ao criar conta",
-        description: error.message,
+        description: authErrorMessage(error),
         variant: "destructive",
       });
       setLoading(false);

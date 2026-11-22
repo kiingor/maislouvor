@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { authErrorMessage } from "@/lib/authErrors";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { AuthField, AuthFieldGroup, PasswordToggle, ProminentButton } from "./Login";
@@ -53,7 +54,7 @@ export default function ChangePassword() {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
 
     if (error) {
-      toast({ title: "Erro ao alterar senha", description: error.message, variant: "destructive" });
+      toast({ title: "Erro ao alterar senha", description: authErrorMessage(error), variant: "destructive" });
     } else {
       toast({ title: "Senha alterada com sucesso!" });
       navigate("/app/settings");
