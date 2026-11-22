@@ -19,7 +19,7 @@ import { useLoopSequence, type LoopPoint } from "@/hooks/useLoopSequence";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { applyAppearance } from "@/lib/appearance";
+import { applyAppearance, paintSystemBars } from "@/lib/appearance";
 import { openYouTubeExternally, usesExternalYouTube } from "@/lib/youtubePlayback";
 
 // Padrão estável: `= []` criava um array novo a cada render enquanto a consulta carregava,
@@ -1720,6 +1720,7 @@ export default function Presentation({ source = "culto" }: { source?: "culto" | 
     const apply = () => root.classList.toggle("dark", isDark);
     root.setAttribute("data-stage-theme", isDark ? "dark" : "light");
     apply();
+    paintSystemBars(isDark); // ícones da barra do app nativo na cor do palco; a saída volta via applyAppearance()
     // main.tsx reaplica o tema do sistema quando ele muda; este ouvinte roda depois e mantém o do palco.
     scheme?.addEventListener?.("change", apply);
     // Barra de status (PWA/Android) e barra do Safari na cor do palco (STAGE_BG), não na do sistema:
