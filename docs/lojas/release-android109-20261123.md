@@ -5,8 +5,11 @@
 **Versão 1.0.9 (10) enviada para análise no teste fechado Alpha em 23/11/2026
 às 13:37 (America/Fortaleza), `2026-11-23T16:37:03Z`.** Upload aceito e processado,
 release 3 salva e uma mudança enviada na Visão geral da publicação. Estado remoto
-observado: **"Alterações em análise"**, com verificações rápidas estimadas em até
-13 minutos. A versão 10 ainda não está disponível aos testadores.
+observado logo após o envio: "Alterações em análise".
+
+**Aprovada e disponível para os testadores selecionados no Alpha desde 23/11/2026
+às 14:14 (Fortaleza)**, conferido no console às 20:59: 178 países/regiões, 19.526
+dispositivos compatíveis, publicação registrada em 23/11.
 
 Antes deste envio, a 1.0.8 (9) estava **disponível para os testadores** no Alpha
 desde 21/11 às 23:37, sem nada em análise.
@@ -65,6 +68,5 @@ Comprovantes: `upload-receipt.json`, `console-submission-20261123.txt` e `.png`.
 
 ## Próximos passos
 
-- Aguardar a análise do Google; não reenviar nem reconstruir o pacote 10 enquanto estiver em análise.
 - Responder ao relatório 10957 no painel da PrimeTestLab quando a 1.0.9 estiver disponível.
 - Levar as correções para a `main` (esta branch e a `codex/android-roteiro-play` estão fora dela).
